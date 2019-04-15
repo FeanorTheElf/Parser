@@ -1,4 +1,4 @@
-use super::tokens::{Identifier, Literal, Keyword, Token, Stream};
+use super::tokens::*;
 
 use std::vec::Vec;
 use std::string::String;
@@ -6,15 +6,19 @@ use std::string::String;
 fn lex_str(string: String) -> Option<Token> {
 	match string.as_str() {
 		"" => None,
-		"if" => Some(Token::Keyword(Keyword::If)),
-		"while" => Some(Token::Keyword(Keyword::While)),
-		"pfor" => Some(Token::Keyword(Keyword::PFor)),
-		"fn" => Some(Token::Keyword(Keyword::Fn)),
-		"int" => Some(Token::Keyword(Keyword::Int)),
-		"return" => Some(Token::Keyword(Keyword::Return)),
-		"new" => Some(Token::Keyword(Keyword::New)),
-		"<=" => Some(Token::OpSmallerEq),
-		"<" => Some(Token::OpSmaller),
+		"if" => Some(Token::If),
+		"while" => Some(Token::While),
+		"pfor" => Some(Token::PFor),
+		"fn" => Some(Token::Fn),
+		"int" => Some(Token::Int),
+		"return" => Some(Token::Return),
+		"new" => Some(Token::New),
+		"let" => Some(Token::Let),
+		"void" => Some(Token::Void),
+		"||" => Some(Token::OpOr),
+		"&&" => Some(Token::OpAnd),
+		"<=" => Some(Token::OpLessEq),
+		"<" => Some(Token::OpLess),
 		">" => Some(Token::OpGreater),
 		"=" => Some(Token::Assign),
 		">=" => Some(Token::OpGreaterEq),

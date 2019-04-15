@@ -19,34 +19,18 @@ pub struct Literal {
 #[derive(Debug)]
 #[derive(PartialEq)]
 #[derive(Eq)]
-pub enum Keyword {
+pub enum Token {
+	Literal(Literal),
+	Identifier(Identifier),
 	If,
 	PFor,
 	While,
 	Int,
 	Fn,
 	Return,
-	New
-}
-
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[derive(Eq)]
-pub enum Token {
-	Literal(Literal),
-	Identifier(Identifier),
-	Keyword(Keyword),
-	OpAdd,
-	OpMult,
-	OpDivide,
-	OpSubtract,
-	OpSmaller,
-	OpGreater,
-	OpSmallerEq,
-	OpGreaterEq,
-	OpEqual,
-	OpUnequal,
-	OpNot,
+	New,
+	Let,
+	Void,
 	Assign,
 	SquareBracketOpen,
 	SquareBracketClose,
@@ -56,7 +40,20 @@ pub enum Token {
 	CurlyBracketClose,
 	Semicolon,
 	Comma,
-	Colon
+	Colon,
+	OpOr,
+	OpAnd,
+	OpAdd,
+	OpMult,
+	OpDivide,
+	OpSubtract,
+	OpLess,
+	OpGreater,
+	OpLessEq,
+	OpGreaterEq,
+	OpEqual,
+	OpUnequal,
+	OpNot
 }
 
 impl Token {
