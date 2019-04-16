@@ -105,7 +105,7 @@ macro_rules! rule_base_alt_parser {
 macro_rules! rule_parser {
 	($stream:ident; $result:ident; $variant:ident $alt:tt) => {
         rule_base_alt_parser!($stream; $result; {
-			panic!("Unexpected tokens: {:?}", $stream)
+			panic!("Unexpected tokens while parsing {}: {:?}", stringify!($result), $stream)
 		}; $variant $alt)
     };
     ($stream:ident; $result:ident; $variant:ident $alt:tt | $($tail:tt)*) => {

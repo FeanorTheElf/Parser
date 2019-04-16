@@ -38,16 +38,21 @@ impl Parse for Stmt {
 			return Stmt::Block(Box::new(stmts));
 		} else if stream.ends(&Token::Return) {
 			stream.expect_next(&Token::Return);
-			return Stmt::Return(Box::new(Expr::parse(stream)));
+			let expr = Expr::parse(stream);
+			stream.expect_next(&Token::Semicolon);
+			return Stmt::Return(Box::new(expr));
 		} else if stream.ends(&Token::Let) {
 			stream.expect_next(&Token::Let);
 			let name = stream.next().as_ident();
 			stream.expect_next(&Token::Colon);
 			let var_type = Type::parse(stream);
 			if stream.ends(&Token::Assign) {
+				stream.expect_next(&Token::Assign);
 				let value = Expr::parse(stream);
+				stream.expect_next(&Token::Semicolon);
 				return Stmt::Declaration(Box::new(var_type), Box::new(name), Some(Box::new(value)));
 			} else {
+				stream.expect_next(&Token::Semicolon);
 				return Stmt::Declaration(Box::new(var_type), Box::new(name), None);
 			}
 		} else if Expr::guess_can_parse(stream) {
@@ -55,8 +60,10 @@ impl Parse for Stmt {
 			if stream.ends(&Token::Assign) {
 				stream.expect_next(&Token::Assign);
 				let new_val = Expr::parse(stream);
+				stream.expect_next(&Token::Semicolon);
 				return Stmt::Assignment(Box::new(expr), Box::new(new_val));
 			} else {
+				stream.expect_next(&Token::Semicolon);
 				return Stmt::Expr(Box::new(expr));
 			}
 		} else {
