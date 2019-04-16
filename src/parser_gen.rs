@@ -1,9 +1,49 @@
 use super::tokens::{Stream, Token};
 use std::vec::Vec;
 
+use super::ast::BaseType;
+
 pub trait Parse {
 	fn guess_can_parse(stream: &Stream) -> bool;
 	fn parse(stream: &mut Stream) -> Self;
+}
+
+pub trait Flatten {
+	type Flattened;
+
+	fn flatten(self) -> Self::Flattened;
+}
+
+impl<A> Flatten for (A, ()) {
+	type Flattened = (A, );
+
+	fn flatten(self) -> Self::Flattened {
+		(self.0, )
+	}
+}
+
+impl<A, B> Flatten for (A, (B,)) {
+	type Flattened = (A, B);
+
+	fn flatten(self) -> Self::Flattened {
+		(self.0, (self.1).0)
+	}
+}
+
+impl<A, B, C> Flatten for (A, (B, C)) {
+	type Flattened = (A, B, C);
+
+	fn flatten(self) -> Self::Flattened {
+		(self.0, (self.1).0, (self.1).1)
+	}
+}
+
+impl<A, B, C, D> Flatten for (A, (B, C, D)) {
+	type Flattened = (A, B, C, D);
+
+	fn flatten(self) -> Self::Flattened {
+		(self.0, (self.1).0, (self.1).1, (self.1).2)
+	}
 }
 
 macro_rules! rule_alt_parser {
@@ -11,7 +51,7 @@ macro_rules! rule_alt_parser {
 		()
 	};
 	($stream:ident; identifier $($tail:tt)*) => {
-        (Box::new(($stream).next().as_ident()), rule_alt_parser!($stream; $($tail)*))
+        (Box::new(($stream).next().as_ident()), rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 	($stream:ident; { $name:ident } $($tail:tt)*) => {
         ({
@@ -20,13 +60,13 @@ macro_rules! rule_alt_parser {
 				els.push($name::parse($stream));
 			}
 			els
-		}, rule_alt_parser!($stream; $($tail)*))
+		}, rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 	($stream:ident; Token#$token:ident $($tail:tt)*) => {
         {($stream).expect_next(&Token::$token); rule_alt_parser!($stream; $($tail)*)}
     };
     ($stream:ident; $name:ident $($tail:tt)*) => {
-        (Box::new($name::parse($stream)), rule_alt_parser!($stream; $($tail)*))
+        (Box::new($name::parse($stream)), rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 }
 
@@ -34,28 +74,28 @@ macro_rules! rule_alt_parser {
 macro_rules! rule_base_alt_parser {
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(identifier $($tail:tt)*)) => {
         if $stream.ends_ident() {
-			$result::$variant(rule_alt_parser!($stream; identifier $($tail)*))
+			($result::$variant).call(rule_alt_parser!($stream; identifier $($tail)*))
 		} else {
 			$else_code
 		}
     };
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident({ $name:ident } $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
-			$result::$variant(rule_alt_parser!($stream; { $name } $($tail)*))
+			($result::$variant).call(rule_alt_parser!($stream; { $name } $($tail)*))
 		} else {
 			$else_code
 		}
     };
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(Token#$token:ident $($tail:tt)*)) => {
         if $stream.ends(&Token::$token) {
-			$result::$variant(rule_alt_parser!($stream; Token#$token $($tail)*))
+			($result::$variant).call(rule_alt_parser!($stream; Token#$token $($tail)*))
 		} else {
 			$else_code
 		}
     };
     ($stream:ident; $result:ident; $else_code:tt; $variant:ident($name:ident $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
-			$result::$variant(rule_alt_parser!($stream; $name $($tail)*))
+			($result::$variant).call(rule_alt_parser!($stream; $name $($tail)*))
 		} else {
 			$else_code
 		}
@@ -111,3 +151,22 @@ macro_rules! impl_parse {
 		}
 	}
 }
+
+//#[derive(Debug)]
+//pub enum Test {
+//	Test(Box<Foo>, Box<Foo>)
+//}
+
+//#[derive(Debug)]
+//pub enum Foo {
+//	Bar(),
+//	Foobar(Box<Test>)
+//}
+
+//fn test(stream: &mut Stream) -> Foo {
+//	Foo :: Foobar ( { ( stream ) . expect_next ( & Token :: Comma ) ; ( Box :: new ( Test :: parse ( stream ) ) , (  ) ) . flatten (  ) } ) 
+//}
+
+//impl_parse!{Test -> Test(Token#Int Foo Foo)}
+//impl_parse!{Foo -> Bar(Token#Colon)
+//                 | Foobar(Token#Comma Test)}

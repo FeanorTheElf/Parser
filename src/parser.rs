@@ -1,7 +1,7 @@
 use super::ast::*;
 use super::tokens::*;
 #[macro_use]
-use super::parser_gen::Parse;
+use super::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 
@@ -93,7 +93,7 @@ impl_parse!{ OrPart -> Expr(Token#OpOr ExprLvlAnd) }
 impl_parse!{ ExprLvlAnd -> And(ExprLvlCmp {AndPart}) }
 impl_parse!{ AndPart -> Expr(Token#OpAnd ExprLvlCmp) }
 
-impl_parse!{ ExprLvlCmp -> Or(ExprLvlAdd {CmpPart}) }
+impl_parse!{ ExprLvlCmp -> Cmp(ExprLvlAdd {CmpPart}) }
 impl_parse!{ CmpPart -> Eq(Token#OpEqual ExprLvlAdd)
                       | Neq(Token#OpUnequal ExprLvlAdd)
                       | Leq(Token#OpLessEq ExprLvlAdd)
@@ -101,7 +101,7 @@ impl_parse!{ CmpPart -> Eq(Token#OpEqual ExprLvlAdd)
                       | Ls(Token#OpLess ExprLvlAdd)
 					  | Gt(Token#OpGreater ExprLvlAdd) }
 
-impl_parse!{ ExprLvlAdd -> Or(ExprLvlMult {AddPart}) }
+impl_parse!{ ExprLvlAdd -> Add(ExprLvlMult {AddPart}) }
 impl_parse!{ AddPart -> Add(Token#OpAdd ExprLvlMult)
                       | Subtract(Token#OpSubtract ExprLvlMult) }
 
@@ -129,10 +129,10 @@ impl Parse for UnaryExpr {
 				stream.expect_next(&Token::BracketOpen);
 				let mut params: Vec<Expr> = vec![];
 				if !stream.ends(&Token::BracketClose) {
-					params.push(Expr::Parse(stream));
+					params.push(Expr::parse(stream));
 					while stream.ends(&Token::Comma) {
 						stream.expect_next(&Token::Comma);
-						params.push(Expr::Parse(stream));
+						params.push(Expr::parse(stream));
 					}
 				}
 				stream.expect_next(&Token::BracketClose);

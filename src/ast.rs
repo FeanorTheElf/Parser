@@ -7,7 +7,7 @@ pub enum Function {
 
 #[derive(Debug)]
 pub enum ParameterDeclaration {
-	ParameterDeclaration(Box<Type>, Box<Identifier>)
+	ParameterDeclaration(Box<Identifier>, Box<Type>)
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub enum AndPart {
 
 #[derive(Debug)]
 pub enum ExprLvlCmp {
-	And(Box<ExprLvlAdd>, Vec<CmpPart>)
+	Cmp(Box<ExprLvlAdd>, Vec<CmpPart>)
 }
 
 #[derive(Debug)]
@@ -71,7 +71,7 @@ pub enum CmpPart {
 
 #[derive(Debug)]
 pub enum ExprLvlAdd {
-	And(Box<ExprLvlMult>, Vec<AddPart>)
+	Add(Box<ExprLvlMult>, Vec<AddPart>)
 }
 
 #[derive(Debug)]

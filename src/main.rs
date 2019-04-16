@@ -1,4 +1,5 @@
 #![allow(warnings)]
+#![feature(fn_traits)]
 
 mod tokens;
 mod ast;
