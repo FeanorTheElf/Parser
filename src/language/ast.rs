@@ -1,4 +1,4 @@
-use super::tokens::{Identifier, Literal};
+use super::super::parser::tokens::{Identifier, Literal};
 
 #[derive(Debug)]
 pub enum Function {

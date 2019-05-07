@@ -1,5 +1,5 @@
 use super::ast::*;
-use super::tokens::*;
+use super::super::parser::tokens::*;
 
 use std::string::String;
 use std::collections::HashMap;

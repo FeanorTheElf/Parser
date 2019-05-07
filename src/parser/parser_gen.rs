@@ -1,8 +1,6 @@
 use super::tokens::{Stream, Token};
 use std::vec::Vec;
 
-use super::ast::BaseType;
-
 pub trait Parse {
 	fn guess_can_parse(stream: &Stream) -> bool;
 	fn parse(stream: &mut Stream) -> Self;
@@ -151,22 +149,3 @@ macro_rules! impl_parse {
 		}
 	}
 }
-
-//#[derive(Debug)]
-//pub enum Test {
-//	Test(Box<Foo>, Box<Foo>)
-//}
-
-//#[derive(Debug)]
-//pub enum Foo {
-//	Bar(),
-//	Foobar(Box<Test>)
-//}
-
-//fn test(stream: &mut Stream) -> Foo {
-//	Foo :: Foobar ( { ( stream ) . expect_next ( & Token :: Comma ) ; ( Box :: new ( Test :: parse ( stream ) ) , (  ) ) . flatten (  ) } ) 
-//}
-
-//impl_parse!{Test -> Test(Token#Int Foo Foo)}
-//impl_parse!{Foo -> Bar(Token#Colon)
-//                 | Foobar(Token#Comma Test)}

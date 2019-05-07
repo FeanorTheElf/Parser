@@ -1,7 +1,7 @@
 use super::ast::*;
-use super::tokens::*;
+use super::super::parser::tokens::*;
 #[macro_use]
-use super::parser_gen::{ Parse, Flatten };
+use super::super::parser::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 

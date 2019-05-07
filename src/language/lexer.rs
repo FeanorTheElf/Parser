@@ -1,4 +1,4 @@
-use super::tokens::*;
+use super::super::parser::tokens::*;
 
 use std::vec::Vec;
 use std::string::String;
