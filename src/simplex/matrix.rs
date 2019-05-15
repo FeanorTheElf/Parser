@@ -1,6 +1,5 @@
-use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign };
+use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref };
 use std::cmp::{ min, max };
-use super::vector::{ Indexed, IndexedMut, FixedLen };
 
 #[derive(Debug)]
 pub struct Matrix<T> {
@@ -10,12 +9,12 @@ pub struct Matrix<T> {
 }
 
 #[derive(Debug)]
-pub struct MRow<'a, T> {
+pub struct RowRef<'a, T> {
 	data: &'a [T]
 }
 
 #[derive(Debug)]
-pub struct MRowMut<'a, T> {
+pub struct RowRefMut<'a, T> {
 	data: &'a mut [T]
 }
 
@@ -63,32 +62,44 @@ impl<T> IndexMut<usize> for Matrix<T> {
 	}
 }
 
+pub trait Indexed<'a, T> {
+	type Output;
+
+	fn get(&'a self, index: T) -> Self::Output;
+}
+
+pub trait IndexedMut<'a, T> {
+	type Output;
+
+	fn get_mut(&'a mut self, index: T) -> Self::Output;
+}
+
 impl<'a, T: 'a> Indexed<'a, usize> for Matrix<T> {
-	type Output = MRow<'a, T>;
+	type Output = RowRef<'a, T>;
 
 	fn get(&'a self, index: usize) -> Self::Output {
 		self.assert_in_range(index);
 		let offset = self.cols * index;
-		MRow {
+		RowRef {
 			data: &self.data[offset..(offset + self.cols)]
 		}
 	}
 }
 
 impl<'a, T: 'a> IndexedMut<'a, usize> for Matrix<T> {
-	type Output = MRowMut<'a, T>;
+	type Output = RowRefMut<'a, T>;
 
 	fn get_mut(&'a mut self, index: usize) -> Self::Output {
 		self.assert_in_range(index);
 		let offset = self.cols * index;
-		MRowMut {
+		RowRefMut {
 			data: &mut self.data[offset..(offset + self.cols)]
 		}
 	}
 }
 
 impl<'a, T: 'a> Indexed<'a, (usize, usize)> for Matrix<T> {
-	type Output = (MRow<'a, T>, MRow<'a, T>);
+	type Output = (RowRef<'a, T>, RowRef<'a, T>);
 
 	fn get(&'a self, indices: (usize, usize)) -> Self::Output {
 		(self.get(indices.0), self.get(indices.1))
@@ -96,7 +107,7 @@ impl<'a, T: 'a> Indexed<'a, (usize, usize)> for Matrix<T> {
 }
 
 impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
-	type Output = (MRowMut<'a, T>, MRowMut<'a, T>);
+	type Output = (RowRefMut<'a, T>, RowRefMut<'a, T>);
 
 	fn get_mut(&'a mut self, indices: (usize, usize)) -> Self::Output {
 		self.assert_in_range(indices.0);
@@ -107,33 +118,46 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
 			let part: &mut [T] = &mut self.data[(indices.0 * self.cols)..((indices.1 + 1) * self.cols)];
 			let (fst_row, rest) = part.split_at_mut(self.cols);
 			let snd_row_start = rest.len() - self.cols;
-			return (MRowMut {
+			return (RowRefMut {
 					data: fst_row 
-				}, MRowMut {
+				}, RowRefMut {
 					data: &mut rest[snd_row_start..]
 				});
 		} else {
 			let part: &mut [T] = &mut self.data[(indices.1 * self.cols)..((indices.0 + 1) * self.cols)];
 			let (snd_row, rest) = part.split_at_mut(self.cols);
 			let fst_row_start = rest.len() - self.cols;
-			return (MRowMut {
+			return (RowRefMut {
 					data: &mut rest[fst_row_start..] 
-				}, MRowMut {
+				}, RowRefMut {
 					data: snd_row
 				});
 		}
 	}
 }
 
-impl<'a, T: 'a> MRow<'a, T> {
+impl<'a, T: 'a> RowRef<'a, T> {
 
-	pub fn get_slice(&self) -> &'a [T] 
-	{
+	fn len(&self) -> usize {
+		self.data.len()
+	}
+
+	pub fn get_slice(&self) -> &'a [T] {
 		self.data
 	}
 }
 
-impl<'a, T: 'a> MRowMut<'a, T> {
+impl<'a, T: 'a> RowRefMut<'a, T> {
+
+	fn len(&self) -> usize {
+		self.data.len()
+	}
+
+	pub fn as_const<'b>(&'b self) -> RowRef<'b, T> {
+		RowRef {
+			data: self.data
+		}
+	}
 
 	pub fn as_slice<'b>(&'b mut self) -> &'b mut [T] 
 		where 'a: 'b
@@ -145,23 +169,20 @@ impl<'a, T: 'a> MRowMut<'a, T> {
 	{
 		self.data
 	}
-}
 
-impl<'a, T> FixedLen for MRow<'a, T> {
-
-	fn len(&self) -> usize {
-		self.data.len()
+	pub fn add_multiple<'c, V, U>(&mut self, other: RowRef<'c, U>, mult: V) 
+		where V: Copy,
+			U: Mul<V> + Clone,
+			T: AddAssign<<U as Mul<V>>::Output>
+	{
+		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
+        for i in 0..self.len() {
+			(*self.get_mut(i)).add_assign(other.get(i).clone() * mult);
+		}
 	}
 }
 
-impl<'a, T> FixedLen for MRowMut<'a, T> {
-
-	fn len(&self) -> usize {
-		self.data.len()
-	}
-}
-
-impl<'a, 'b, T: 'a> Indexed<'a, usize> for MRow<'b, T> {
+impl<'a, 'b, T: 'a> Indexed<'a, usize> for RowRef<'b, T> {
 	type Output = &'a T;
 
 	fn get(&'a self, index: usize) -> Self::Output {
@@ -169,7 +190,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, usize> for MRow<'b, T> {
 	}
 }
 
-impl<'a, 'b, T: 'a> Indexed<'a, usize> for MRowMut<'b, T> {
+impl<'a, 'b, T: 'a> Indexed<'a, usize> for RowRefMut<'b, T> {
 	type Output = &'a T;
 
 	fn get(&'a self, index: usize) -> Self::Output {
@@ -177,7 +198,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, usize> for MRowMut<'b, T> {
 	}
 }
 
-impl<'a, 'b, T: 'a> IndexedMut<'a, usize> for MRowMut<'b, T> {
+impl<'a, 'b, T: 'a> IndexedMut<'a, usize> for RowRefMut<'b, T> {
 	type Output = &'a mut T;
 
 	fn get_mut(&'a mut self, index: usize) -> Self::Output {
@@ -185,65 +206,51 @@ impl<'a, 'b, T: 'a> IndexedMut<'a, usize> for MRowMut<'b, T> {
 	}
 }
 
-
-fn mult(vec: &mut [f64], factor: f64) {
-	for i in 0..vec.len() {
-		vec[i] *= factor;
-	}
-}
-
-fn add(vec: &mut [f64], subtract: &[f64], factor: f64) {
-	assert!(vec.len() == subtract.len(), "To subtract two vectors, they must have equal length. Got {} and {}", vec.len(), subtract.len());
-	for i in 0..vec.len() {
-		vec[i] += subtract[i] * factor;
-	}
-}
-
-impl<'a, 'c, T, U> AddAssign<MRow<'c, U>> for MRowMut<'a, T>
+impl<'a, 'c, T, U> AddAssign<RowRef<'c, U>> for RowRefMut<'a, T>
 	where for<'b> T: AddAssign<&'b U>
 {
-	fn add_assign(&mut self, other: MRow<'c, U>) {
+	fn add_assign(&mut self, other: RowRef<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
         for i in 0..self.len() {
-			(*self.get_mut(i)).add_assign(other.get(i).clone());
+			(*self.get_mut(i)).add_assign(other.get(i));
 		}
     }
 }
 
-impl<'a, 'c, T, U> AddAssign<MRowMut<'c, U>> for MRowMut<'a, T>
+impl<'a, 'c, T, U> AddAssign<RowRefMut<'c, U>> for RowRefMut<'a, T>
 	where for<'b> T: AddAssign<&'b U>
 {
-	fn add_assign(&mut self, other: MRowMut<'c, U>) {
+	fn add_assign(&mut self, other: RowRefMut<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
         for i in 0..self.len() {
-			(*self.get_mut(i)).add_assign(other.get(i).clone());
+			(*self.get_mut(i)).add_assign(other.get(i));
 		}
     }
 }
 
-impl<'a, 'c, T, U> SubAssign<MRow<'c, U>> for MRowMut<'a, T>
+impl<'a, 'c, T, U> SubAssign<RowRef<'c, U>> for RowRefMut<'a, T>
 	where for<'b> T: SubAssign<&'b U>
 {
-	fn sub_assign(&mut self, other: MRow<'c, U>) {
+	fn sub_assign(&mut self, other: RowRef<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
         for i in 0..self.len() {
-			(*self.get_mut(i)).sub_assign(other.get(i).clone());
+			(*self.get_mut(i)).sub_assign(other.get(i));
 		}
     }
 }
 
-impl<'a, 'c, T, U> SubAssign<MRowMut<'c, U>> for MRowMut<'a, T>
+impl<'a, 'c, T, U> SubAssign<RowRefMut<'c, U>> for RowRefMut<'a, T>
 	where for<'b> T: SubAssign<&'b U>
 {
-	fn sub_assign(&mut self, other: MRowMut<'c, U>) {
+	fn sub_assign(&mut self, other: RowRefMut<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
         for i in 0..self.len() {
-			(*self.get_mut(i)).sub_assign(other.get(i).clone());
+			(*self.get_mut(i)).sub_assign(other.get(i));
 		}
     }
 }
 
-impl<'a, T, U> MulAssign<U> for MRowMut<'a, T>
+impl<'a, T, U> MulAssign<U> for RowRefMut<'a, T>
 	where T: MulAssign<U>, U: Copy
 {
 	fn mul_assign(&mut self, other: U) {
