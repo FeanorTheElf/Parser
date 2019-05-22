@@ -1,6 +1,4 @@
-pub mod matrix;
-
-use matrix::{ Indexed, IndexedMut, Matrix };
+use super::matrix::{ Indexed, IndexedMut, Matrix };
 use std::ops::{ Index, IndexMut, MulAssign, AddAssign };
 use std::vec::Vec;
 use std::collections::HashMap;
@@ -10,17 +8,49 @@ type Tableau = Matrix<f64>;
 type TableauRow = [f64];
 type BasicVars = Box<[usize]>;
 
-fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), ()> {
+/*
+ * Optimize c^T x with x >= 0 and Ax=b
+ * table: (c^T | 0)
+ *        ( A  | b)
+ * 
+ * Returns Err if problem is unbounded
+ */
+pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), ()> {
 	while let Some(pivot_col) = find_pivot_col(&table[0]) {
 		pivot(table, pivot_col, basic_vars)?;
 	}
 	return Ok(());
 }
 
-pub fn solve(table: &Tableau) -> Box<[f64]> {
+/*
+ * Find solution of Ax=b with x >= 0
+ * table: (A | b)
+ */
+pub fn solve(table: &Tableau) -> Option<Vec<f64>> {
 	let (mut matrix, mut basic_vars) = add_artificials(table);
 	simplex(&mut matrix, &mut basic_vars).unwrap();
-	return extract_solution(&matrix, &basic_vars);
+	let solution = extract_solution(&matrix, &basic_vars);
+
+	let mut result: Vec<f64> = Vec::from(&solution[0..(table.cols() - 1)]);
+	if is_solution(&result, table) {
+		return Some(result);	
+	} else {
+		return None;
+	}
+}
+
+fn is_solution(vars: &Vec<f64>, table: &Tableau) -> bool {
+	assert_eq!(vars.len() + 1, table.cols(), "Expected one variable for each column except the last, got {} variables and {} columns", vars.len(), table.cols());
+	for row_index in 0..table.rows() {
+		let mut current: f64 = 0.0;
+		for var_index in 0..vars.len() {
+			current += vars[var_index] * table[row_index][var_index];
+		}
+		if current != table[row_index][vars.len()] {
+			return false;
+		}
+	}
+	return true;
 }
 
 fn extract_solution(table: &Tableau, basic_vars: &BasicVars) -> Box<[f64]> {
@@ -93,11 +123,7 @@ fn add_artificials(table: &Tableau) -> (Tableau, BasicVars) {
 		vec.resize(table.rows(), 0);
 		vec.into_boxed_slice()
 	};
-	let mut result = Matrix::new({
-		let mut vec = Vec::new();
-		vec.resize(rows * cols, 0.0);
-		vec.into_boxed_slice()
-	}, rows);
+	let mut result: Matrix<f64> = Matrix::zero(rows, cols);
 	for row_index in 1..rows {
 		for col_index in 0..(table.cols() - 1) {
 			result[row_index][col_index] = table[row_index - 1][col_index];
@@ -160,13 +186,25 @@ fn test_solve() {
 								  1.0,  1.0,  0.0, 1.0, 0.0, 4.0,
 								  1.0,  -1.0, 0.0, 0.0, 1.0, 0.0]), 3);
 	let solution = solve(&m);
-	assert_eq!(&[2.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0], &*solution);
+	assert_eq!(&[2.0, 2.0, 1.0, 0.0, 0.0], &*solution.unwrap());
+}
+
+#[test]
+fn test_solve_zero_vec_solution() {
+	let m = Matrix::new(Box::new([1.0, 1.0, -1.0, 0.0,  0.0,
+	                              1.0, 0.0, -1.0, -1.0, 0.0]), 2);
+	assert_eq!(&[0.0, 0.0, 0.0, 0.0], &*solve(&m).unwrap());
+}
+
+#[test]
+fn test_impossible_system_solve() {
+	let m = Matrix::new(Box::new([1.0, 0.0, -1.0, -1.0, 1.0,
+	                              1.0, 1.0, 0.0, -1.0, 0.0]), 2);
+	assert_eq!(None, solve(&m));
 }
 
 pub fn experiment() {
-	let m = Matrix::new(Box::new([0.0,  0.0,  0.0, 0.0, 0.0, 0.0,
-	                              -1.0, 0.0,  1.0, 0.0, 0.0, -1.0, 
-								  1.0,  1.0,  0.0, 1.0, 0.0, 4.0,
-								  1.0,  -1.0, 0.0, 0.0, 1.0, 0.0]), 4);
+	let m = Matrix::new(Box::new([2.0, 0.0, 2.0, 0.0, 1.0,
+	                              0.0, 2.0, 0.0, 2.0, 1.0]), 2);
 	println!("{:?}", solve(&m));
 }

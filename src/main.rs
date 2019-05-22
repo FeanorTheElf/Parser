@@ -4,13 +4,13 @@
 #[macro_use]
 mod parser;
 mod language;
-mod simplex;
+mod la;
 
 use parser::tokens::*;
 use parser::parser_gen::Parse;
 use language::lexer::lex;
 use language::ast::*;
-use simplex::experiment;
+use la::simplex::experiment;
 
 fn main() {
 	experiment();
