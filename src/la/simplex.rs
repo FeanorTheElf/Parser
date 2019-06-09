@@ -10,10 +10,13 @@ type BasicVars = Box<[usize]>;
 
 /*
  * Optimize c^T x with x >= 0 and Ax=b
- * table: (c^T | 0)
- *        ( A  | b)
+ * table: (0 | c^T)
+ *        (b |  A )
  * 
- * Returns Err if problem is unbounded
+ * Returns Err if problem is unbounded, 
+ * otherwise table (0 | c^T)
+ *                 (b |  A )
+ * with 
  */
 pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), ()> {
 	while let Some(pivot_col) = find_pivot_col(&table[0]) {
@@ -24,7 +27,7 @@ pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), ()
 
 /*
  * Find solution of Ax=b with x >= 0
- * table: (A | b)
+ * table: (b | A)
  */
 pub fn solve(table: &Tableau) -> Option<Vec<f64>> {
 	let (mut matrix, mut basic_vars) = add_artificials(table);
@@ -39,14 +42,14 @@ pub fn solve(table: &Tableau) -> Option<Vec<f64>> {
 	}
 }
 
-fn is_solution(vars: &Vec<f64>, table: &Tableau) -> bool {
-	assert_eq!(vars.len() + 1, table.cols(), "Expected one variable for each column except the last, got {} variables and {} columns", vars.len(), table.cols());
+fn is_solution(vars: &[f64], table: &Tableau) -> bool {
+	assert_eq!(vars.len() + 1, table.cols(), "Expected one variable for each column except the first, got {} variables and {} columns", vars.len(), table.cols());
 	for row_index in 0..table.rows() {
 		let mut current: f64 = 0.0;
 		for var_index in 0..vars.len() {
-			current += vars[var_index] * table[row_index][var_index];
+			current += vars[var_index] * table[row_index][var_index + 1];
 		}
-		if current != table[row_index][vars.len()] {
+		if current != table[row_index][0] {
 			return false;
 		}
 	}
@@ -61,10 +64,10 @@ fn extract_solution(table: &Tableau, basic_vars: &BasicVars) -> Box<[f64]> {
 		vec.into_boxed_slice()
 	};
 	for row_index in 0..basic_vars.len() {
-		result[basic_vars[row_index]] = table[row_index + 1][table.cols() - 1];
+		result[basic_vars[row_index] - 1] = table[row_index + 1][0];
 		debug_assert!(table[row_index + 1][basic_vars[row_index]] == 1.0);
 	}
-	result[table.cols() - 1] = -table[0][table.cols() - 1];
+	result[table.cols() - 1] = -table[0][0];
 	return result;
 }
 
@@ -125,86 +128,119 @@ fn add_artificials(table: &Tableau) -> (Tableau, BasicVars) {
 	};
 	let mut result: Matrix<f64> = Matrix::zero(rows, cols);
 	for row_index in 1..rows {
-		for col_index in 0..(table.cols() - 1) {
+		for col_index in 0..table.cols() {
 			result[row_index][col_index] = table[row_index - 1][col_index];
 		}
-		result[row_index][cols - 1] = table[row_index - 1][table.cols() - 1];
-		if result[row_index][cols - 1] < 0.0 {
+		if result[row_index][0] < 0.0 {
 			result.get_mut(row_index).mul_assign(-1.0);
 		}
 		let (mut dst_row, cnt_row) = result.get_mut((0, row_index));
 		dst_row.add_multiple(cnt_row.as_const(), 1.0);
 	}
 	for row_index in 1..rows {
-		let basic_var_col = table.cols() + row_index - 2;
+		let basic_var_col = table.cols() + row_index - 1;
 		result[row_index][basic_var_col] = 1.0;
 		basic_vars[row_index - 1] = basic_var_col;
 	}
-	result[0][cols - 1] = 0.0;
+	result[0][0] = 0.0;
 	return (result, basic_vars);
 }
 
 #[test]
 fn test_simplex_no_artificials() {
-	let mut basic_vars: Box<[usize]> = Box::new([4, 5]);
-	let mut m = Matrix::new(Box::new([2.0, 3.0, 4.0, 0.0, 0.0, 0.0,
-	                                  3.0, 2.0, 1.0, 1.0, 0.0, 10.0,
-									  2.0, 5.0, 3.0, 0.0, 1.0, 15.0]), 3);
+	let mut basic_vars: Box<[usize]> = Box::new([2, 3]);
+	let mut m = Matrix::new(Box::new([3.0, 4.0, 0.0, 0.0, 0.0,  2.0,
+	                                  2.0, 1.0, 1.0, 0.0, 10.0, 3.0,
+									  5.0, 3.0, 0.0, 1.0, 15.0, 2.0]), 3);
 	assert_eq!(Ok(()), simplex(&mut m, &mut basic_vars));
-	assert_eq!(&[-0.6666666666666669, -3.666666666666667, 0.0, 0.0, -1.3333333333333333, -20.0, 
-	             2.333333333333334,   0.3333333333333333, 0.0, 1.0, -0.3333333333333334, 5.0,
-				 0.6666666666666669,  1.6666666666666665, 1.0, 0.0, 0.33333333333333326, 5.0], m.data());
-	assert_eq!(&[3, 2], &*basic_vars);
+	assert_approx_eq!(&[-3.6666, 0.0, 0.0, -1.3333, -20.0, -0.6666,
+	                    0.3333,  0.0, 1.0, -0.3333, 5.0,   2.3333, 
+			            1.6666,  1.0, 0.0, 0.3333,  5.0,   0.6666], m.data(), 0.001);
+	assert_eq!(&[2, 1], &*basic_vars);
 }
 
 #[test]
 fn test_extract_solution() {
-	let mut m = Matrix::new(Box::new([-2.0, -11.0, 0.0, 0.0, -4.0, -60.0, 
-	                                  7.0,  1.0,   0.0, 1.0, -1.0, 15.0,
-				                      2.0,  5.0,   1.0, 0.0, 1.0,  10.0]), 3);
-	let basic_vars: Box<[usize]> = Box::new([3, 2]);
+	let mut m = Matrix::new(Box::new([-11.0, 0.0, 0.0, -4.0, -60.0, -2.0,  
+	                                  1.0,   0.0, 1.0, -1.0, 15.0,  7.0,  
+				                      5.0,   1.0, 0.0, 1.0,  10.0,  2.0]), 3);
+	let basic_vars: Box<[usize]> = Box::new([2, 1]);
 	let solution = extract_solution(&m, &basic_vars);
-	assert_eq!(&[0.0, 0.0, 10.0, 15.0, 0.0, 60.0], &*solution);
+	assert_eq!(&[5.0, 1.0, 0.0, 0.0, 0.0, 11.0], &*solution);
+}
+
+#[test]
+fn test_is_solution() {
+	let mut m = Matrix::new(Box::new([1.0, 0.0, 1.0, -1.0, 15.0,  7.0,  
+				                      5.0, 1.0, 0.0, 1.0,  10.0,  2.0]), 2);
+	assert_eq!(true, is_solution(&[5.0, 1.0, 0.0, 0.0, 0.0], &m));
+
+	m = Matrix::new(Box::new([9.0, 3.0, 0.0, 0.0, 0.0,  2.0,
+	                          2.0, 1.0, 1.0, 0.0, 10.0, 3.0,
+							  5.0, 3.0, 0.0, 1.0, 15.0, 2.0]), 3);
+	assert_eq!(true, is_solution(&[3.0, -1.0, -4.0, 0.0, 0.0], &m));
+	assert_eq!(false, is_solution(&[4.0, -1.0, -4.0, 0.0, 0.0], &m));
 }
 
 #[test]
 fn test_add_artificials() {
-	let m = Matrix::new(Box::new([4.0,  5.0,  6.0, 
-								  7.0,  8.0,  -9.0, 
-								  10.0, 11.0, 12.0]), 3);
+	let m = Matrix::new(Box::new([6.0,  5.0,  4.0, 
+								  -9.0, 8.0,  7.0, 
+								  12.0, 11.0, 10.0]), 3);
 	let (result, basic_vars) = add_artificials(&m);
-	assert_eq!(&[7.0,  8.0,  0.0, 0.0, 0.0, 0.0,
-	             4.0,  5.0,  1.0, 0.0, 0.0, 6.0,
-				 -7.0, -8.0, 0.0, 1.0, 0.0, 9.0,
-				 10.0, 11.0, 0.0, 0.0, 1.0, 12.0], result.data());
-	assert_eq!(&[2, 3, 4], &*basic_vars);
+	assert_eq!(&[0.0,  8.0,  7.0,  0.0, 0.0, 0.0, 
+	             6.0,  5.0,  4.0,  1.0, 0.0, 0.0, 
+				 9.0,  -8.0, -7.0, 0.0, 1.0, 0.0, 
+				 12.0, 11.0, 10.0, 0.0, 0.0, 1.0, ], result.data());
+	assert_eq!(&[3, 4, 5], &*basic_vars);
 }
 
 #[test]
 fn test_solve() {
-	let m = Matrix::new(Box::new([-1.0, 0.0,  1.0, 0.0, 0.0, -1.0, 
-								  1.0,  1.0,  0.0, 1.0, 0.0, 4.0,
-								  1.0,  -1.0, 0.0, 0.0, 1.0, 0.0]), 3);
+	let m = Matrix::new(Box::new([-1.0, -1.0, 0.0,  1.0, 0.0, 0.0, 
+								  4.0,  1.0,  1.0,  0.0, 1.0, 0.0, 
+								  0.0,  1.0,  -1.0, 0.0, 0.0, 1.0]), 3);
 	let solution = solve(&m);
-	assert_eq!(&[2.0, 2.0, 1.0, 0.0, 0.0], &*solution.unwrap());
+	assert!(is_solution(&solution.unwrap()[0..5], &m));
 }
 
 #[test]
 fn test_solve_zero_vec_solution() {
-	let m = Matrix::new(Box::new([1.0, 1.0, -1.0, 0.0,  0.0,
-	                              1.0, 0.0, -1.0, -1.0, 0.0]), 2);
+	let m = Matrix::new(Box::new([0.0, 1.0, 1.0, -1.0, 0.0,
+	                              0.0, 1.0, 0.0, -1.0, -1.0]), 2);
 	assert_eq!(&[0.0, 0.0, 0.0, 0.0], &*solve(&m).unwrap());
 }
 
 #[test]
 fn test_impossible_system_solve() {
-	let m = Matrix::new(Box::new([1.0, 0.0, -1.0, -1.0, 1.0,
-	                              1.0, 1.0, 0.0, -1.0, 0.0]), 2);
+	let m = Matrix::new(Box::new([1.0, 1.0,  -1.0,
+	                              1.0, -1.0, 1.0]), 2);
 	assert_eq!(None, solve(&m));
 }
 
 pub fn experiment() {
-	let m = Matrix::new(Box::new([2.0, 0.0, 2.0, 0.0, 1.0,
-	                              0.0, 2.0, 0.0, 2.0, 1.0]), 2);
-	println!("{:?}", solve(&m));
+	let mut m = Matrix::new(Box::new([1.0,  1.0,  -13.0,  -2.0,
+	                                  -2.0, 1.0,  30.0,   1.0, 
+								      1.0,   -2.0, -17.0, 1.0]), 3);
+	let (mut r1, mut r2) = m.get_mut((0, 1));
+	r2 *= 2.0;
+	r1 += r2;
+
+	let (mut r2, mut r3) = m.get_mut((1, 2));
+	r3 *= 4.0;
+	r2 += r3;
+
+	m.get_mut(0).mul_assign(-1.0/3.0);
+	m.get_mut(1).mul_assign(-1.0/6.0);
+	m.get_mut(2).mul_assign(-1.0/4.0);
+
+	let (mut r2, mut r3) = m.get_mut((1, 2));
+	r3 -= r2;
+
+	let (mut r1, mut r3) = m.get_mut((0, 2));
+	r3 += r1;
+
+	m.get_mut(1).mul_assign(-3.0);
+	m.get_mut(0).mul_assign(3.0);
+	println!("{:?}", &m);
 }

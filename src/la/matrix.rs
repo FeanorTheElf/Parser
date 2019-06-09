@@ -1,5 +1,6 @@
 use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref, Range };
 use std::cmp::{ min, max };
+use std::borrow::{ Borrow, BorrowMut };
 
 #[derive(Debug)]
 pub struct Matrix<T> {
@@ -82,6 +83,22 @@ impl<T> Matrix<T> {
 		MatRefMut {
 			rows: rows,
 			cols: cols,
+			matrix: self
+		}
+	}
+
+	fn borrow<'a>(&'a self) -> MatRef<'a, T> {
+		MatRef {
+			cols: 0..self.cols(),
+			rows: 0..self.rows(),
+			matrix: self
+		}
+	}
+
+	fn borrow_mut<'a>(&'a mut self) -> MatRefMut<'a, T> {
+		MatRefMut {
+			cols: 0..self.cols(),
+			rows: 0..self.rows(),
 			matrix: self
 		}
 	}
@@ -201,6 +218,14 @@ impl<'a, T> MatRefMut<'a, T> {
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
 	}
 	
+	pub fn as_const<'b>(&'b self) -> MatRef<'b, T> {
+		MatRef {
+			rows: self.rows.start..self.rows.end,
+			cols: self.cols.start..self.cols.end,
+			matrix: &self.matrix
+		}
+	}
+
 	pub fn cols(&self) -> usize {
 		self.cols.end - self.cols.start
 	}

@@ -2,6 +2,8 @@
 #![feature(fn_traits)]
 
 #[macro_use]
+mod util;
+#[macro_use]
 mod parser;
 mod language;
 mod la;
