@@ -57,7 +57,8 @@ pub enum Token {
 	OpGreaterEq,
 	OpEqual,
 	OpUnequal,
-	OpNot
+	OpNot,
+	Wildcard
 }
 
 #[derive(Debug)]

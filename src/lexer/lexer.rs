@@ -31,6 +31,7 @@ fn lex_op(string: &str) -> Option<Token> {
 		"}" => Some(Token::CurlyBracketClose),
 		"," => Some(Token::Comma),
 		":" => Some(Token::Colon),
+		"?" => Some(Token::Wildcard)
 		_ => None
 	}
 }
