@@ -3,15 +3,15 @@
 
 #[macro_use]
 mod util;
-#[macro_use]
+mod lexer;
 mod parser;
 mod language;
 mod la;
 
-use parser::tokens::*;
+use lexer::tokens::*;
 use parser::parser_gen::Parse;
-use language::lexer::lex;
-use language::ast::*;
+use lexer::lexer::lex;
+use parser::ast::*;
 use la::simplex::experiment;
 
 fn main() {

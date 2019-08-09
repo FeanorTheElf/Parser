@@ -1,7 +1,7 @@
 use super::ast::*;
-use super::super::parser::tokens::*;
+use super::super::lexer::tokens::*;
 #[macro_use]
-use super::super::parser::parser_gen::{ Parse, Flatten };
+use super::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 
@@ -17,30 +17,31 @@ impl Parse for Stmt {
 	}
 
 	fn parse(stream: &mut Stream) -> Self {
+		let pos = stream.pos();
 		if stream.ends(&Token::If) {
 			stream.expect_next(&Token::If);
 			let condition = Expr::parse(stream);
 			stream.expect_next(&Token::CurlyBracketOpen);
 			let stmts = Stmts::parse(stream);
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Stmt::If(Box::new(condition), Box::new(stmts));
+			return Stmt::If(pos, Box::new(condition), Box::new(stmts));
 		} else if stream.ends(&Token::While) {
 			stream.expect_next(&Token::While);
 			let condition = Expr::parse(stream);
 			stream.expect_next(&Token::CurlyBracketOpen);
 			let stmts = Stmts::parse(stream);
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Stmt::While(Box::new(condition), Box::new(stmts));
+			return Stmt::While(pos, Box::new(condition), Box::new(stmts));
 		} else if stream.ends(&Token::CurlyBracketOpen) {
 			stream.expect_next(&Token::CurlyBracketOpen);
 			let stmts = Stmts::parse(stream);
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Stmt::Block(Box::new(stmts));
+			return Stmt::Block(pos, Box::new(stmts));
 		} else if stream.ends(&Token::Return) {
 			stream.expect_next(&Token::Return);
 			let expr = Expr::parse(stream);
 			stream.expect_next(&Token::Semicolon);
-			return Stmt::Return(Box::new(expr));
+			return Stmt::Return(pos, Box::new(expr));
 		} else if stream.ends(&Token::Let) {
 			stream.expect_next(&Token::Let);
 			let name = stream.next().as_ident();
@@ -50,10 +51,10 @@ impl Parse for Stmt {
 				stream.expect_next(&Token::Assign);
 				let value = Expr::parse(stream);
 				stream.expect_next(&Token::Semicolon);
-				return Stmt::Declaration(Box::new(var_type), Box::new(name), Some(Box::new(value)));
+				return Stmt::Declaration(pos, Box::new(var_type), Box::new(name), Some(Box::new(value)));
 			} else {
 				stream.expect_next(&Token::Semicolon);
-				return Stmt::Declaration(Box::new(var_type), Box::new(name), None);
+				return Stmt::Declaration(pos, Box::new(var_type), Box::new(name), None);
 			}
 		} else if Expr::guess_can_parse(stream) {
 			let expr = Expr::parse(stream);
@@ -61,10 +62,10 @@ impl Parse for Stmt {
 				stream.expect_next(&Token::Assign);
 				let new_val = Expr::parse(stream);
 				stream.expect_next(&Token::Semicolon);
-				return Stmt::Assignment(Box::new(expr), Box::new(new_val));
+				return Stmt::Assignment(pos, Box::new(expr), Box::new(new_val));
 			} else {
 				stream.expect_next(&Token::Semicolon);
-				return Stmt::Expr(Box::new(expr));
+				return Stmt::Expr(pos, Box::new(expr));
 			}
 		} else {
 			panic!("Expected statement, got {:?}", stream);
@@ -78,8 +79,9 @@ impl Parse for Type {
 	}
 
 	fn parse(stream: &mut Stream) -> Self {
+		let pos = stream.pos();
 		if stream.ends(&Token::Void) {
-			return Type::Void();
+			return Type::Void(pos);
 		} else if BaseType::guess_can_parse(stream) {
 			let base_type = BaseType::parse(stream);
 			let mut dimensions: u8 = 0;
@@ -87,7 +89,7 @@ impl Parse for Type {
 				stream.expect_next(&Token::SquareBracketOpen);
 				stream.expect_next(&Token::SquareBracketClose);
 			}
-			return Type::Arr(Box::new(base_type), dimensions);
+			return Type::Arr(pos, Box::new(base_type), dimensions);
 		} else {
 			panic!("Expected type, got {:?}", stream);
 		}
@@ -125,11 +127,12 @@ impl Parse for UnaryExpr {
 	}
 
 	fn parse(stream: &mut Stream) -> Self {
+		let pos = stream.pos();
 		if stream.ends(&Token::BracketOpen) {
 			stream.expect_next(&Token::BracketOpen);
 			let expr = Expr::parse(stream);
 			stream.expect_next(&Token::BracketClose);
-			return UnaryExpr::Brackets(Box::new(expr));
+			return UnaryExpr::Brackets(pos, Box::new(expr));
 		} else if stream.ends_ident() {
 			let ident = stream.next().as_ident();
 			if stream.ends(&Token::BracketOpen) {
@@ -143,12 +146,12 @@ impl Parse for UnaryExpr {
 					}
 				}
 				stream.expect_next(&Token::BracketClose);
-				return UnaryExpr::Call(Box::new(ident), params);
+				return UnaryExpr::Call(pos, Box::new(ident), params);
 			} else {
-				return UnaryExpr::Variable(Box::new(ident));
+				return UnaryExpr::Variable(pos, Box::new(ident));
 			}
 		} else if stream.ends_literal() {
-			return UnaryExpr::Literal(Box::new(stream.next().as_literal()));
+			return UnaryExpr::Literal(pos, Box::new(stream.next().as_literal()));
 		} else if stream.ends(&Token::New) {
 			stream.expect_next(&Token::New);
 			let base_type = BaseType::parse(stream);
@@ -156,7 +159,7 @@ impl Parse for UnaryExpr {
 			while IndexPart::guess_can_parse(stream) {
 				dimensions.push(IndexPart::parse(stream));
 			}
-			return UnaryExpr::New(Box::new(base_type), dimensions);
+			return UnaryExpr::New(pos, Box::new(base_type), dimensions);
 		} else {
 			panic!("Expected 'new', '(', identifier or literal, got {:?}", stream);
 		}

@@ -1,3 +1,5 @@
+use super::position::TextPosition;
+
 use std::vec::Vec;
 use std::string::String;
 use std::fmt::Debug;
@@ -6,7 +8,8 @@ use std::fmt::Debug;
 #[derive(PartialEq)]
 #[derive(Eq)]
 pub struct Identifier {
-	pub name: String
+	pub name: String,
+	pub key: Option<i32>
 }
 
 #[derive(Debug)]
@@ -73,24 +76,43 @@ impl Token {
 }
 
 #[derive(Debug)]
-pub struct Stream(Vec<Token>);
+pub struct PosToken {
+	token: Token,
+	pos: TextPosition
+}
+
+impl PosToken {
+	pub fn create(token: Token, pos: TextPosition) -> Self {
+		PosToken {
+			token: token,
+			pos: pos
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct Stream {
+	data: Vec<PosToken>
+}
 
 impl Stream {
-	pub fn create(tokens: Vec<Token>) -> Stream {
-		Stream(tokens)
+	pub fn create(tokens: Vec<PosToken>) -> Stream {
+		Stream {
+			data: tokens
+		}
 	}
 
 	pub fn peek(&self) -> Option<&Token> {
-		self.0.last()
+		self.data.last().map(|t|&t.token)
 	}
 
 	pub fn next(&mut self) -> Token {
-		self.0.pop().unwrap()
+		self.data.pop().unwrap().token
 	}
 
 	pub fn expect_next(&mut self, token: &Token) {
-		match self.0.pop() {
-			Some(value) => assert_eq!(*token, value, "Expected token {:?}, but got token {:?}", token, value),
+		match self.data.pop() {
+			Some(value) => assert_eq!(*token, value.token, "Expected token {:?}, but got token {:?}", token, value.token),
 			None => panic!("Expected token {:?}, but got end of stream", token)
 		}
 	}
@@ -111,5 +133,17 @@ impl Stream {
 			Some(Token::Identifier(_name)) => true,
 			_ => false
 		}
+	}
+
+	pub fn pos(&self) -> TextPosition {
+		self.data.last().unwrap().pos.clone()
+	}
+}
+
+impl Iterator for Stream {
+	type Item = Token;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.data.pop().map(|t|t.token)
 	}
 }

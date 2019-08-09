@@ -1,4 +1,4 @@
-use super::tokens::{Stream, Token};
+use super::super::lexer::tokens::{Stream, Token};
 use std::vec::Vec;
 
 pub trait Parse {
@@ -44,6 +44,14 @@ impl<A, B, C, D> Flatten for (A, (B, C, D)) {
 	}
 }
 
+impl<A, B, C, D, E> Flatten for (A, (B, C, D, E)) {
+	type Flattened = (A, B, C, D, E);
+
+	fn flatten(self) -> Self::Flattened {
+		(self.0, (self.1).0, (self.1).1, (self.1).2, (self.1).3)
+	}
+}
+
 macro_rules! rule_alt_parser {
     ($stream:ident;) => {
 		()
@@ -72,28 +80,32 @@ macro_rules! rule_alt_parser {
 macro_rules! rule_base_alt_parser {
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(identifier $($tail:tt)*)) => {
         if $stream.ends_ident() {
-			($result::$variant).call(rule_alt_parser!($stream; identifier $($tail)*))
+			let pos = ($stream).pos();
+			($result::$variant).call((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten())
 		} else {
 			$else_code
 		}
     };
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident({ $name:ident } $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
-			($result::$variant).call(rule_alt_parser!($stream; { $name } $($tail)*))
+			let pos = ($stream).pos();
+			($result::$variant).call((pos, rule_alt_parser!($stream; { $name } $($tail)*)).flatten())
 		} else {
 			$else_code
 		}
     };
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(Token#$token:ident $($tail:tt)*)) => {
         if $stream.ends(&Token::$token) {
-			($result::$variant).call(rule_alt_parser!($stream; Token#$token $($tail)*))
+			let pos = ($stream).pos();
+			($result::$variant).call((pos, rule_alt_parser!($stream; Token#$token $($tail)*)).flatten())
 		} else {
 			$else_code
 		}
     };
     ($stream:ident; $result:ident; $else_code:tt; $variant:ident($name:ident $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
-			($result::$variant).call(rule_alt_parser!($stream; $name $($tail)*))
+			let pos = ($stream).pos();
+			($result::$variant).call((pos, rule_alt_parser!($stream; $name $($tail)*)).flatten())
 		} else {
 			$else_code
 		}
