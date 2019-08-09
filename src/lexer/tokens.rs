@@ -1,4 +1,5 @@
 use super::position::TextPosition;
+use super::error::CompileError;
 
 use std::vec::Vec;
 use std::string::String;
@@ -59,22 +60,6 @@ pub enum Token {
 	OpNot
 }
 
-impl Token {
-	pub fn as_literal(self) -> Literal {
-		match self {
-			Token::Literal(lit) => lit,
-			_value => panic!("Expected literal, got {:?}", _value)
-		}
-	}
-
-	pub fn as_ident(self) -> Identifier {
-		match self {
-			Token::Identifier(ident) => ident,
-			_value => panic!("Expected identifier, got {:?}", _value)
-		}
-	}
-}
-
 #[derive(Debug)]
 pub struct PosToken {
 	token: Token,
@@ -110,10 +95,31 @@ impl Stream {
 		self.data.pop().unwrap().token
 	}
 
-	pub fn expect_next(&mut self, token: &Token) {
+	pub fn next_literal(&mut self) -> Result<Literal, CompileError> {
+		let pos = self.pos();
+		match self.next() {
+			Token::Literal(lit) => Ok(lit),
+			_value => Err(CompileError::new(pos, format!("Expected literal, got {:?}", _value)))
+		}
+	}
+
+	pub fn next_ident(&mut self) -> Result<Identifier, CompileError> {
+		let pos = self.pos();
+		match self.next() {
+			Token::Identifier(id) => Ok(id),
+			_value => Err(CompileError::new(pos, format!("Expected identifier, got {:?}", _value)))
+		}
+	}
+
+	pub fn expect_next(&mut self, token: &Token) -> Result<(), CompileError> {
+		let pos = self.pos();
 		match self.data.pop() {
-			Some(value) => assert_eq!(*token, value.token, "Expected token {:?}, but got token {:?}", token, value.token),
-			None => panic!("Expected token {:?}, but got end of stream", token)
+			Some(value) => if *token != value.token {
+				Err(CompileError::new(pos, format!("Expected token {:?}, but got token {:?}", token, value.token)))
+			} else {
+				Ok(())
+			},
+			None => Err(CompileError::new(pos, format!("Expected token {:?}, but got end of stream", token)))
 		}
 	}
 

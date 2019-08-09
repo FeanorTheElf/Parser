@@ -15,5 +15,5 @@ use parser::ast::*;
 use la::simplex::experiment;
 
 fn main() {
-	experiment();
+	Function::parse(&mut lex("fn test(a: int): int { return a; }".to_owned())).unwrap();
 }

@@ -1,9 +1,12 @@
 use super::super::lexer::tokens::{Stream, Token};
+use super::super::lexer::error::CompileError;
 use std::vec::Vec;
 
-pub trait Parse {
+pub trait Parse 
+	where Self: Sized
+{
 	fn guess_can_parse(stream: &Stream) -> bool;
-	fn parse(stream: &mut Stream) -> Self;
+	fn parse(stream: &mut Stream) -> Result<Self, CompileError>;
 }
 
 pub trait Flatten {
@@ -57,22 +60,22 @@ macro_rules! rule_alt_parser {
 		()
 	};
 	($stream:ident; identifier $($tail:tt)*) => {
-        (Box::new(($stream).next().as_ident()), rule_alt_parser!($stream; $($tail)*)).flatten()
+        (Box::new(($stream).next_ident()?), rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 	($stream:ident; { $name:ident } $($tail:tt)*) => {
         ({
 			let mut els: Vec<$name> = Vec::new();
 			while $name::guess_can_parse($stream) {
-				els.push($name::parse($stream));
+				els.push($name::parse($stream)?);
 			}
 			els
 		}, rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 	($stream:ident; Token#$token:ident $($tail:tt)*) => {
-        {($stream).expect_next(&Token::$token); rule_alt_parser!($stream; $($tail)*)}
+        {($stream).expect_next(&Token::$token)?; rule_alt_parser!($stream; $($tail)*)}
     };
     ($stream:ident; $name:ident $($tail:tt)*) => {
-        (Box::new($name::parse($stream)), rule_alt_parser!($stream; $($tail)*)).flatten()
+        (Box::new($name::parse($stream)?), rule_alt_parser!($stream; $($tail)*)).flatten()
     };
 }
 
@@ -81,7 +84,7 @@ macro_rules! rule_base_alt_parser {
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(identifier $($tail:tt)*)) => {
         if $stream.ends_ident() {
 			let pos = ($stream).pos();
-			($result::$variant).call((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten())
+			Ok(($result::$variant).call((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten()))
 		} else {
 			$else_code
 		}
@@ -89,7 +92,7 @@ macro_rules! rule_base_alt_parser {
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident({ $name:ident } $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
 			let pos = ($stream).pos();
-			($result::$variant).call((pos, rule_alt_parser!($stream; { $name } $($tail)*)).flatten())
+			Ok(($result::$variant).call((pos, rule_alt_parser!($stream; { $name } $($tail)*)).flatten()))
 		} else {
 			$else_code
 		}
@@ -97,7 +100,7 @@ macro_rules! rule_base_alt_parser {
 	($stream:ident; $result:ident; $else_code:tt; $variant:ident(Token#$token:ident $($tail:tt)*)) => {
         if $stream.ends(&Token::$token) {
 			let pos = ($stream).pos();
-			($result::$variant).call((pos, rule_alt_parser!($stream; Token#$token $($tail)*)).flatten())
+			Ok(($result::$variant).call((pos, rule_alt_parser!($stream; Token#$token $($tail)*)).flatten()))
 		} else {
 			$else_code
 		}
@@ -105,7 +108,7 @@ macro_rules! rule_base_alt_parser {
     ($stream:ident; $result:ident; $else_code:tt; $variant:ident($name:ident $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
 			let pos = ($stream).pos();
-			($result::$variant).call((pos, rule_alt_parser!($stream; $name $($tail)*)).flatten())
+			Ok(($result::$variant).call((pos, rule_alt_parser!($stream; $name $($tail)*)).flatten()))
 		} else {
 			$else_code
 		}
@@ -115,7 +118,7 @@ macro_rules! rule_base_alt_parser {
 macro_rules! rule_parser {
 	($stream:ident; $result:ident; $variant:ident $alt:tt) => {
         rule_base_alt_parser!($stream; $result; {
-			panic!("Unexpected tokens while parsing {}: {:?}", stringify!($result), $stream)
+			panic!("Unexpected tokens while parsing {} at position {}", stringify!($result), ($stream).pos())
 		}; $variant $alt)
     };
     ($stream:ident; $result:ident; $variant:ident $alt:tt | $($tail:tt)*) => {
@@ -155,7 +158,7 @@ macro_rules! impl_parse {
 			fn guess_can_parse(stream: &Stream) -> bool {
 				rule_guess_can_parse!(stream; $($tail)*)
 			}
-			fn parse(stream: &mut Stream) -> Self {
+			fn parse(stream: &mut Stream) -> Result<Self, CompileError> {
 				rule_parser!(stream; $result; $($tail)*)
 			}
 		}

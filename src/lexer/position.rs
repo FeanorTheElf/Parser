@@ -1,3 +1,4 @@
+use std::fmt::{ Display, Formatter, Error };
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -31,5 +32,12 @@ impl TextPosition {
     pub fn next_line(&mut self) {
         self.line += 1;
         self.column = 0;
+    }
+}
+
+impl Display for TextPosition {
+
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{}:{}", self.line(), self.column())
     }
 }

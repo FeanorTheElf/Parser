@@ -156,10 +156,10 @@ fn test_lex_position() {
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());
-	assert_eq!("a".to_owned(), stream.next().as_ident().name);
+	assert_eq!("a".to_owned(), stream.next_ident().unwrap().name);
 	assert_eq!(6, stream.pos().column());
 	assert_eq!(Token::Assign, stream.next());
-	assert_eq!("b".to_owned(), stream.next().as_ident().name);
+	assert_eq!("b".to_owned(), stream.next_ident().unwrap().name);
 	assert_eq!(Token::SquareBracketOpen, stream.next());
 	assert_eq!(10, stream.pos().column());
 	for _i in 0..7 {
@@ -167,7 +167,7 @@ fn test_lex_position() {
 	}
 	assert_eq!(1, stream.pos().column());
 	assert_eq!(2, stream.pos().line());
-	assert_eq!("a".to_owned(), stream.next().as_ident().name);
+	assert_eq!("a".to_owned(), stream.next_ident().unwrap().name);
 	stream.next();
 	stream.next();
 	assert_eq!(5, stream.pos().column());
