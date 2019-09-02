@@ -12,8 +12,8 @@ use lexer::tokens::*;
 use parser::parser_gen::Parse;
 use lexer::lexer::lex;
 use parser::ast::*;
-use la::simplex::experiment;
+use language::scope::{ ScopeTable, fill_sope_info_func };
 
 fn main() {
-	Function::parse(&mut lex("fn test(a: int): int { return a; }".to_owned())).unwrap();
+	la::diophantine::experiment();
 }

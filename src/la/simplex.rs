@@ -1,12 +1,17 @@
-use super::matrix::{ Indexed, IndexedMut, Matrix };
+use super::indexed::{ Indexed, IndexedMut };
+use super::vector::Vector;
+use super::matrix::Matrix;
 use std::ops::{ Index, IndexMut, MulAssign, AddAssign };
 use std::vec::Vec;
 use std::collections::HashMap;
-use std::option::Option;
 
 type Tableau = Matrix<f64>;
 type TableauRow = [f64];
 type BasicVars = Box<[usize]>;
+
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub struct SystemUnbounded;
 
 /*
  * Optimize c^T x with x >= 0 and Ax=b
@@ -18,11 +23,15 @@ type BasicVars = Box<[usize]>;
  *                 (b |  A )
  * with 
  */
-pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), ()> {
+pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), SystemUnbounded> {
 	while let Some(pivot_col) = find_pivot_col(&table[0]) {
 		pivot(table, pivot_col, basic_vars)?;
 	}
 	return Ok(());
+}
+
+pub fn opt(table: &Tableau, target: &Vector<f64>) {
+
 }
 
 /*
@@ -71,7 +80,7 @@ fn extract_solution(table: &Tableau, basic_vars: &BasicVars) -> Box<[f64]> {
 	return result;
 }
 
-fn pivot(table: &mut Tableau, pivot_col_index: usize, basic_vars: &mut BasicVars) -> Result<(), ()> {
+fn pivot(table: &mut Tableau, pivot_col_index: usize, basic_vars: &mut BasicVars) -> Result<(), SystemUnbounded> {
 	let pivot_row_index: usize = find_pivot_row(table, pivot_col_index)?;
 	basic_vars[pivot_row_index - 1] = pivot_col_index;
 	eliminate(table, pivot_row_index, pivot_col_index);
@@ -91,7 +100,7 @@ fn eliminate(table: &mut Tableau, row_index: usize, col_index: usize) {
 	}
 }
 
-fn find_pivot_row(table: &Tableau, pivot_col_index: usize) -> Result<usize, ()> {
+fn find_pivot_row(table: &Tableau, pivot_col_index: usize) -> Result<usize, SystemUnbounded> {
 	let last_col: usize = table.cols() - 1;
 	let mut current_min: Option<(usize, f64)> = None;
 	for row_index in 1..table.rows() {
@@ -105,7 +114,7 @@ fn find_pivot_row(table: &Tableau, pivot_col_index: usize) -> Result<usize, ()> 
 	if let Some((result, _value)) = current_min {
 		return Ok(result);
 	} else {
-		return Err(());
+		return Err(SystemUnbounded);
 	}
 }
 
@@ -126,7 +135,7 @@ fn add_artificials(table: &Tableau) -> (Tableau, BasicVars) {
 		vec.resize(table.rows(), 0);
 		vec.into_boxed_slice()
 	};
-	let mut result: Matrix<f64> = Matrix::zero(rows, cols);
+	let mut result: Tableau = Tableau::zero(rows, cols);
 	for row_index in 1..rows {
 		for col_index in 0..table.cols() {
 			result[row_index][col_index] = table[row_index - 1][col_index];

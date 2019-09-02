@@ -6,9 +6,9 @@ use super::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 
-impl_parse!{ Function -> Function(Token#Fn identifier Token#BracketOpen {ParameterDeclaration} Token#BracketClose Token#Colon Type Token#CurlyBracketOpen Stmts Token#CurlyBracketClose) }
+impl_parse!{ Function -> Function(Token#Fn identifier Token#BracketOpen {ParameterDeclaration} Token#BracketClose Token#Colon TypeDecl Token#CurlyBracketOpen Stmts Token#CurlyBracketClose) }
 
-impl_parse!{ ParameterDeclaration -> ParameterDeclaration(identifier Token#Colon Type Token#Comma) }
+impl_parse!{ ParameterDeclaration -> ParameterDeclaration(identifier Token#Colon TypeDecl Token#Comma) }
 
 impl_parse!{ Stmts -> Stmts({Stmt}) }
 
@@ -47,7 +47,7 @@ impl Parse for Stmt {
 			stream.expect_next(&Token::Let);
 			let name = stream.next_ident()?;
 			stream.expect_next(&Token::Colon);
-			let var_type = Type::parse(stream)?;
+			let var_type = TypeDecl::parse(stream)?;
 			if stream.ends(&Token::Assign) {
 				stream.expect_next(&Token::Assign);
 				let value = Expr::parse(stream)?;
@@ -74,7 +74,7 @@ impl Parse for Stmt {
 	}
 }
 
-impl Parse for Type {
+impl Parse for TypeDecl {
 	fn guess_can_parse(stream: &Stream) -> bool {
 		BaseType::guess_can_parse(stream) || stream.ends(&Token::Void)
 	}
@@ -82,7 +82,7 @@ impl Parse for Type {
 	fn parse(stream: &mut Stream) -> Result<Self, CompileError>  {
 		let pos = stream.pos();
 		if stream.ends(&Token::Void) {
-			return Ok(Type::Void(pos));
+			return Ok(TypeDecl::Void(pos));
 		} else if BaseType::guess_can_parse(stream) {
 			let base_type = BaseType::parse(stream)?;
 			let mut dimensions: u8 = 0;
@@ -90,7 +90,7 @@ impl Parse for Type {
 				stream.expect_next(&Token::SquareBracketOpen);
 				stream.expect_next(&Token::SquareBracketClose);
 			}
-			return Ok(Type::Arr(pos, Box::new(base_type), dimensions));
+			return Ok(TypeDecl::Arr(pos, Box::new(base_type), dimensions));
 		} else {
 			panic!("Expected type, got {:?} at position {}", stream.peek(), stream.pos());
 		}

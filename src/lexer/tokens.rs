@@ -10,7 +10,6 @@ use std::fmt::Debug;
 #[derive(Eq)]
 pub struct Identifier {
 	pub name: String,
-	pub key: Option<i32>
 }
 
 #[derive(Debug)]

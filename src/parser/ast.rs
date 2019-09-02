@@ -5,12 +5,12 @@ type Annotation = TextPosition;
 
 #[derive(Debug)]
 pub enum Function {
-	Function(Annotation, Box<Identifier>, Vec<ParameterDeclaration>, Box<Type>, Box<Stmts>)
+	Function(Annotation, Box<Identifier>, Vec<ParameterDeclaration>, Box<TypeDecl>, Box<Stmts>)
 }
 
 #[derive(Debug)]
 pub enum ParameterDeclaration {
-	ParameterDeclaration(Annotation, Box<Identifier>, Box<Type>)
+	ParameterDeclaration(Annotation, Box<Identifier>, Box<TypeDecl>)
 }
 
 #[derive(Debug)]
@@ -20,7 +20,7 @@ pub enum Stmts {
 
 #[derive(Debug)]
 pub enum Stmt {
-	Declaration(Annotation, Box<Type>, Box<Identifier>, Option<Box<Expr>>),
+	Declaration(Annotation, Box<TypeDecl>, Box<Identifier>, Option<Box<Expr>>),
 	Assignment(Annotation, Box<Expr>, Box<Expr>),
 	Expr(Annotation, Box<Expr>),
 	If(Annotation, Box<Expr>, Box<Stmts>),
@@ -30,7 +30,7 @@ pub enum Stmt {
 }
 
 #[derive(Debug)]
-pub enum Type {
+pub enum TypeDecl {
 	Arr(Annotation, Box<BaseType>, u8),
 	Void(Annotation)
 }
@@ -117,3 +117,62 @@ pub enum UnaryExpr {
 pub enum BaseType {
 	Int(Annotation)
 }
+
+pub trait Node {
+	fn dynamic_cast_function(&self) -> Option<&Function> {
+		None
+	}
+
+	fn dynamic_cast_stmts(&self) -> Option<&Stmts> {
+		None
+	}
+
+	fn dynamic_cast_stmt(&self) -> Option<&Stmt> {
+		None
+	}
+
+	fn dynamic_cast_type(&self) -> Option<&TypeDecl> {
+		None
+	}
+
+	fn dynamic_cast_expr(&self) -> Option<&Expr> {
+		None
+	}
+
+	fn dynamic_cast_un_expr(&self) -> Option<&UnaryExpr> {
+		None
+	}
+}
+
+macro_rules! derive_node {
+	($name:ident, $dynamic_cast_func_name:ident) => {
+		impl Node for $name {
+			fn $dynamic_cast_func_name (&self) -> Option<& $name> {
+				Some(&self)
+			}
+		}
+	};
+	($name:ident) => {
+		impl Node for $name {}
+	}
+}
+
+derive_node!(Function, dynamic_cast_function);
+derive_node!(ParameterDeclaration);
+derive_node!(Stmts, dynamic_cast_stmts);
+derive_node!(Stmt, dynamic_cast_stmt);
+derive_node!(TypeDecl, dynamic_cast_type);
+derive_node!(ExprLvlOr, dynamic_cast_expr);
+derive_node!(OrPart);
+derive_node!(ExprLvlAnd);
+derive_node!(AndPart);
+derive_node!(ExprLvlCmp);
+derive_node!(CmpPart);
+derive_node!(ExprLvlAdd);
+derive_node!(AddPart);
+derive_node!(ExprLvlMult);
+derive_node!(MultPart);
+derive_node!(ExprLvlIndex);
+derive_node!(IndexPart);
+derive_node!(UnaryExpr, dynamic_cast_un_expr);
+derive_node!(BaseType);

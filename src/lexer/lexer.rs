@@ -31,7 +31,7 @@ fn lex_op(string: &str) -> Option<Token> {
 		"}" => Some(Token::CurlyBracketClose),
 		"," => Some(Token::Comma),
 		":" => Some(Token::Colon),
-		"?" => Some(Token::Wildcard)
+		"?" => Some(Token::Wildcard),
 		_ => None
 	}
 }
@@ -56,7 +56,7 @@ fn lex_str(string: &str) -> Token {
 	.or_else(||lex_keyword(string))
 	.unwrap_or_else(||match string.parse::<i32>() {
 		Ok(value) => Token::Literal(Literal { value: value }),
-		Err(_err) => Token::Identifier(Identifier { name: string.to_string(), key: None })
+		Err(_err) => Token::Identifier(Identifier { name: string.to_string() })
 	})
 }
 
@@ -126,13 +126,13 @@ pub fn lex(mut input: String) -> Stream {
 #[test]
 fn test_lex() {
 	assert_eq!(vec![Token::Let, 
-		Token::Identifier(Identifier { name: "test".to_owned(), key: None }),
+		Token::Identifier(Identifier { name: "test".to_owned() }),
 		Token::Colon,
 		Token::Int,
 		Token::SquareBracketOpen,
 		Token::SquareBracketClose,
 		Token::Assign,
-		Token::Identifier(Identifier { name: "a".to_owned(), key: None }),
+		Token::Identifier(Identifier { name: "a".to_owned() }),
 		Token::SquareBracketOpen,
 		Token::Literal(Literal { value: 2 }),
 		Token::SquareBracketClose,
@@ -142,12 +142,12 @@ fn test_lex() {
 		Token::Literal(Literal { value: 1 }),
 		Token::SquareBracketClose,
 		Token::OpGreaterEq,
-		Token::Identifier(Identifier { name: "b".to_owned(), key: None }),
+		Token::Identifier(Identifier { name: "b".to_owned() }),
 		Token::OpAnd,
-		Token::Identifier(Identifier { name: "c".to_owned(), key: None }),
+		Token::Identifier(Identifier { name: "c".to_owned() }),
 		Token::OpAdd,
 		Token::OpSubtract,
-		Token::Identifier(Identifier { name: "d".to_owned(), key: None }),
+		Token::Identifier(Identifier { name: "d".to_owned() }),
 		Token::Semicolon], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;".to_owned())));
 }
 

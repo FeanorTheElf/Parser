@@ -1,5 +1,7 @@
+use super::indexed::{ Indexed, IndexedMut };
 use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref, Range };
 use std::cmp::{ min, max };
+use std::mem::swap;
 use std::borrow::{ Borrow, BorrowMut };
 
 #[derive(Debug)]
@@ -39,6 +41,31 @@ impl Matrix<f64> {
 		data.resize(rows * cols, 0.0);
 		return Matrix::new(data.into_boxed_slice(), rows);
 	}
+
+	pub fn identity(size: usize) -> Matrix<f64> {
+		let mut result = Matrix::<f64>::zero(size, size);
+		for i in 0..size {
+			result[i][i] = 1.0;
+		}
+		return result;
+	}
+}
+
+impl Matrix<i32> {
+
+	pub fn zero(rows: usize, cols: usize) -> Matrix<i32> {
+		let mut data: Vec<i32> = Vec::new();
+		data.resize(rows * cols, 0);
+		return Matrix::new(data.into_boxed_slice(), rows);
+	}
+
+	pub fn identity(size: usize) -> Matrix<i32> {
+		let mut result = Matrix::<i32>::zero(size, size);
+		for i in 0..size {
+			result[i][i] = 1;
+		}
+		return result;
+	}
 }
 
 impl<T> Matrix<T> {
@@ -50,11 +77,8 @@ impl<T> Matrix<T> {
 			data: data
 		}
 	}
-}
-
-impl<T> Matrix<T> {
 	
-	fn assert_in_range(&self, row_index: usize) {
+	fn assert_row_in_range(&self, row_index: usize) {
 		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows, "Expected row index {} to be smaller than the row count {}", row_index, self.rows);
 	}
@@ -87,20 +111,12 @@ impl<T> Matrix<T> {
 		}
 	}
 
-	fn borrow<'a>(&'a self) -> MatRef<'a, T> {
-		MatRef {
-			cols: 0..self.cols(),
-			rows: 0..self.rows(),
-			matrix: self
-		}
+	pub fn borrow<'a>(&'a self) -> MatRef<'a, T> {
+		self.sub_matrix(0..self.rows(), 0..self.cols())
 	}
 
-	fn borrow_mut<'a>(&'a mut self) -> MatRefMut<'a, T> {
-		MatRefMut {
-			cols: 0..self.cols(),
-			rows: 0..self.rows(),
-			matrix: self
-		}
+	pub fn borrow_mut<'a>(&'a mut self) -> MatRefMut<'a, T> {
+		self.sub_matrix_mut(0..self.rows(), 0..self.cols())
 	}
 }
 
@@ -119,23 +135,11 @@ impl<T> IndexMut<usize> for Matrix<T> {
 	}
 }
 
-pub trait Indexed<'a, T> {
-	type Output;
-
-	fn get(&'a self, index: T) -> Self::Output;
-}
-
-pub trait IndexedMut<'a, T> {
-	type Output;
-
-	fn get_mut(&'a mut self, index: T) -> Self::Output;
-}
-
 impl<'a, T: 'a> Indexed<'a, usize> for Matrix<T> {
 	type Output = RowRef<'a, T>;
 
 	fn get(&'a self, index: usize) -> Self::Output {
-		self.assert_in_range(index);
+		self.assert_row_in_range(index);
 		let offset = self.cols() * index;
 		RowRef {
 			data: &self.data[offset..(offset + self.cols())]
@@ -147,7 +151,7 @@ impl<'a, T: 'a> IndexedMut<'a, usize> for Matrix<T> {
 	type Output = RowRefMut<'a, T>;
 
 	fn get_mut(&'a mut self, index: usize) -> Self::Output {
-		self.assert_in_range(index);
+		self.assert_row_in_range(index);
 		let start = self.cols() * index;
 		let end = start + self.cols();
 		RowRefMut {
@@ -168,8 +172,8 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
 	type Output = (RowRefMut<'a, T>, RowRefMut<'a, T>);
 
 	fn get_mut(&'a mut self, indices: (usize, usize)) -> Self::Output {
-		self.assert_in_range(indices.0);
-		self.assert_in_range(indices.1);
+		self.assert_row_in_range(indices.0);
+		self.assert_row_in_range(indices.1);
 		assert!(indices.0 != indices.1, "When borrowing two rows, their indices must be different, got {}", indices.0);
 
 		let cols = self.cols();
@@ -197,9 +201,14 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
 
 impl<'a, T> MatRef<'a, T> {
 	
-	fn assert_in_range(&self, row_index: usize) {
+	fn assert_row_in_range(&self, row_index: usize) {
 		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
+	}
+
+	fn assert_col_in_range(&self, col_index: usize) {
+		assert!(col_index >= 0, "Expected column index {} to be greater than 0", col_index);
+		assert!(col_index < self.cols(), "Expected column index {} to be smaller than the column count {}", col_index, self.cols());
 	}
 	
 	pub fn cols(&self) -> usize {
@@ -209,13 +218,53 @@ impl<'a, T> MatRef<'a, T> {
 	pub fn rows(&self) -> usize {
 		self.rows.end - self.rows.start
 	}
+
+	pub fn sub_matrix<'b>(&'b self, rows: Range<usize>, cols: Range<usize>) -> MatRef<'b, T> {
+		assert!(rows.end <= self.rows());
+		assert!(cols.end <= self.cols());
+		MatRef {
+			rows: (rows.start + self.rows.start)..(rows.end + self.rows.start),
+			cols: (cols.start + self.cols.start)..(cols.end + self.cols.start),
+			matrix: self.matrix
+		}
+	}
+}
+
+impl<'a, T> MatRef<'a, T> 
+	where T: Clone
+{
+	pub fn transpose(&self) -> Matrix<T> {
+		let mut data = Vec::new();
+		let mut row = 0;
+		let mut col = 0;
+		let count = self.rows() * self.cols();
+		data.resize_with(count, || {
+			let result = self.get(col).get(row).clone();
+			col += 1;
+			if (col == self.rows()) {
+				col = 0;
+				row += 1;
+			}
+			return result;
+		});
+		return Matrix::new(data.into_boxed_slice(), self.cols());
+	}
 }
 
 impl<'a, T> MatRefMut<'a, T> {
 	
-	fn assert_in_range(&self, row_index: usize) {
+	fn assert_row_in_range(&self, row_index: usize) {
 		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
+	}
+
+	fn assert_col_in_range(&self, col_index: usize) {
+		assert!(col_index >= 0, "Expected column index {} to be greater than 0", col_index);
+		assert!(col_index < self.cols(), "Expected column index {} to be smaller than the column count {}", col_index, self.cols());
+	}
+
+	fn assert_square(&self) {
+		assert!(self.rows() == self.cols(), "Expected square matrix, but got {}x{} matrix", self.rows(), self.cols());
 	}
 	
 	pub fn as_const<'b>(&'b self) -> MatRef<'b, T> {
@@ -232,6 +281,75 @@ impl<'a, T> MatRefMut<'a, T> {
 
 	pub fn rows(&self) -> usize {
 		self.rows.end - self.rows.start
+	}
+
+	pub fn sub_matrix<'b>(&'b mut self, rows: Range<usize>, cols: Range<usize>) -> MatRefMut<'b, T> {
+		assert!(rows.end <= self.rows());
+		assert!(cols.end <= self.cols());
+		MatRefMut {
+			rows: (rows.start + self.rows.start)..(rows.end + self.rows.start),
+			cols: (cols.start + self.cols.start)..(cols.end + self.cols.start),
+			matrix: self.matrix
+		}
+	}
+
+	pub fn swap_cols(&mut self, fst: usize, snd: usize) {
+		self.assert_col_in_range(fst);
+		self.assert_col_in_range(snd);
+		if fst != snd {
+			for row in self.rows.clone() {
+				self.matrix[row].swap(fst + self.cols.start, snd + self.cols.start);
+			}
+		}
+	}
+
+	pub fn swap_rows(&mut self, fst: usize, snd: usize) {
+		if fst != snd {
+			let cols = self.cols();
+			let (mut fst_row, mut snd_row) = self.get_mut((fst, snd));
+			for col in 0..cols {
+				swap(fst_row.get_mut(col), snd_row.get_mut(col));
+			}
+		}
+	}
+}
+
+impl<'a, T> MatRefMut<'a, T> 
+	where T: Add<T, Output = T> + Copy + Mul<T, Output = T>
+{
+
+	/*
+	 * Let T be the identity matrix, in which the entries [fst,fst], [fst, snd],
+	 * [snd, fst], [snd, snd] are replaced by the values in transform.
+	 * This function performs the multiplication A' := T * A, where A is this matrix
+	 */
+	pub fn transform_two_dims_left(&mut self, fst: usize, snd: usize, transform: &[T; 4]) {
+		assert!(fst < snd);
+		self.assert_row_in_range(fst);
+		self.assert_row_in_range(snd);
+		self.assert_square();
+		for col in 0..self.cols() {
+			let b = self[fst][col];
+			self[fst][col] = self[fst][col] * transform[0] + self[snd][col] * transform[1];
+			self[snd][col] = b * transform[2] + self[snd][col] * transform[3];
+		}
+	}
+	
+	/*
+	 * Let T be the identity matrix, in which the entries [fst,fst], [fst, snd],
+	 * [snd, fst], [snd, snd] are replaced by the values in transform.
+	 * This function performs the multiplication A' := A * T, where A is this matrix
+	 */
+	pub fn transform_two_dims_right(&mut self, fst: usize, snd: usize, transform: &[T; 4]) {
+		assert!(fst < snd);
+		self.assert_row_in_range(fst);
+		self.assert_row_in_range(snd);
+		self.assert_square();
+		for row in 0..self.rows() {
+			let b = self[row][fst];
+			self[row][fst] = self[row][fst] * transform[0] + self[row][snd] * transform[2];
+			self[row][snd] = b * transform[1] + self[row][snd] * transform[3];
+		}
 	}
 }
 
@@ -262,7 +380,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, usize> for MatRef<'b, T> {
 	type Output = RowRef<'a, T>;
 
 	fn get(&'a self, index: usize) -> Self::Output {
-		self.assert_in_range(index);
+		self.assert_row_in_range(index);
 		self.matrix.get(index + self.rows.start).range(&self.cols)
 	}
 }
@@ -271,7 +389,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, usize> for MatRefMut<'b, T> {
 	type Output = RowRef<'a, T>;
 
 	fn get(&'a self, index: usize) -> Self::Output {
-		self.assert_in_range(index);
+		self.assert_row_in_range(index);
 		self.matrix.get(index + self.rows.start).range(&self.cols)
 	}
 }
@@ -280,7 +398,7 @@ impl<'a, 'b, T: 'a> IndexedMut<'a, usize> for MatRefMut<'b, T> {
 	type Output = RowRefMut<'a, T>;
 
 	fn get_mut(&'a mut self, index: usize) -> Self::Output {
-		self.assert_in_range(index);
+		self.assert_row_in_range(index);
 		self.matrix.get_mut(index + self.rows.start).range_mut(&self.cols)
 	}
 }
@@ -293,8 +411,8 @@ impl<'a, 'b, T: 'a> Indexed<'a, (usize, usize)> for MatRef<'b, T> {
 	type Output = (RowRef<'a, T>, RowRef<'a, T>);
 
 	fn get(&'a self, index: (usize, usize)) -> Self::Output {
-		self.assert_in_range(index.0);
-		self.assert_in_range(index.1);
+		self.assert_row_in_range(index.0);
+		self.assert_row_in_range(index.1);
 		map_tuple(self.matrix.get(map_tuple(index, |row_index|row_index + self.rows.start)), 
 			|row_ref: RowRef<'a, T>|row_ref.range(&self.cols))
 	}
@@ -304,8 +422,8 @@ impl<'a, 'b, T: 'a> Indexed<'a, (usize, usize)> for MatRefMut<'b, T> {
 	type Output = (RowRef<'a, T>, RowRef<'a, T>);
 
 	fn get(&'a self, index: (usize, usize)) -> Self::Output {
-		self.assert_in_range(index.0);
-		self.assert_in_range(index.1);
+		self.assert_row_in_range(index.0);
+		self.assert_row_in_range(index.1);
 		map_tuple(self.matrix.get(map_tuple(index, |row_index|row_index + self.rows.start)), 
 			|row_ref: RowRef<'a, T>|row_ref.range(&self.cols))
 	}
@@ -315,8 +433,8 @@ impl<'a, 'b, T: 'a> IndexedMut<'a, (usize, usize)> for MatRefMut<'b, T> {
 	type Output = (RowRefMut<'a, T>, RowRefMut<'a, T>);
 
 	fn get_mut(&'a mut self, index: (usize, usize)) -> Self::Output {
-		self.assert_in_range(index.0);
-		self.assert_in_range(index.1);
+		self.assert_row_in_range(index.0);
+		self.assert_row_in_range(index.1);
 		let cols = &self.cols;
 		map_tuple(self.matrix.get_mut(map_tuple(index, |row_index|row_index + self.rows.start)), 
 			|row_ref: RowRefMut<'a, T>|row_ref.range_mut(cols))
@@ -469,8 +587,8 @@ impl<'a, T, U> MulAssign<U> for RowRefMut<'a, T>
 fn test_matrix_get_rows() {
 	let mut m = Matrix::new(Box::new([1,  2,  3, 
 	                                  4,  5,  6, 
-								      							7,  8,  9, 
-								      							10, 11, 12]), 4);
+								      7,  8,  9, 
+								      10, 11, 12]), 4);
 	assert_eq!(3, m.cols());
 	assert_eq!(4, m.rows());
 	{
@@ -489,8 +607,8 @@ fn test_matrix_get_rows() {
 fn test_matrix_submatrix() {
 	let mut m = Matrix::new(Box::new([1,  2,  3,  7, 
 	                                  4,  5,  6,  11, 
-								      							7,  8,  9,  2, 
-								      							10, 11, 12, 4]), 4);
+								      7,  8,  9,  2, 
+								      10, 11, 12, 4]), 4);
 	assert_eq!(4, m.cols());
 	assert_eq!(4, m.rows());
 
@@ -513,4 +631,33 @@ fn test_matrix_submatrix() {
 	assert_eq!(2, m[0][1]);
 	assert_eq!(5, m[1][1]);
 	assert_eq!(11, m[3][1]);
+}
+
+#[test]
+fn test_matrix_transpose() {
+	let m = Matrix::new(Box::new([1, 2, 3,
+	                              4, 5, 6,
+								  7, 8, 9]), 3);
+	let t = m.sub_matrix(0..3, 1..3).transpose();
+	assert_eq!(2, t.rows());
+	assert_eq!(3, t.cols());
+	assert_eq!(2, t[0][0]);
+	assert_eq!(3, t[1][0]);
+	assert_eq!(5, t[0][1]);
+	assert_eq!(9, t[1][2]);
+}
+
+#[test]
+fn test_matrix_transform_two_dims_left() {
+	let mut m = Matrix::new(Box::new([1., 2., 3.,
+	                                  4., 5., 6.,
+								      7., 8., 9.]), 3);
+	m.borrow_mut().transform_two_dims_left(0, 2, &[0., 1., 1., 0.]);
+	assert_eq!(&[7., 8., 9.,
+	             4., 5., 6.,
+				 1., 2., 3.], m.data());
+	m.borrow_mut().transform_two_dims_left(1, 2, &[0.5, 0.5, 1.0, 0.5]);
+	assert_eq!(&[7.,  8.,  9.,
+	             2.5, 3.5, 4.5,
+				 4.5, 6.0, 7.5], m.data());
 }

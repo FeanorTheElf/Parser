@@ -1,2 +1,3 @@
 pub mod obj_type;
-pub mod symbol_table;
+pub mod scope;
+pub mod symbol;
