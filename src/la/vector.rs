@@ -25,6 +25,7 @@ impl<T> Vector<T> {
 }
 
 impl Vector<f64> {
+	
     pub fn zero(len: usize) -> Self {
         let mut data = Vec::new();
         data.resize(len, 0.0);
@@ -33,6 +34,7 @@ impl Vector<f64> {
 }
 
 impl Vector<i32> {
+
     pub fn zero(len: usize) -> Self {
         let mut data = Vec::new();
         data.resize(len, 0);

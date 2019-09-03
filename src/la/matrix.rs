@@ -275,6 +275,26 @@ impl<'a, 'b, T> Mul<&'b Vector<T>> for &MatRef<'a, T>
 	}
 }
 
+impl<'a, 'b, 'c, T> Mul<&'b MatRef<'c, T>> for &MatRef<'a, T> 
+	where T: Add<T, Output = T> + Copy + Mul<T, Output = T>
+{
+	type Output = Matrix<T>;
+
+	fn mul(self, rhs: &'b MatRef<'c, T>) -> Self::Output {
+		assert_eq!(self.cols(), rhs.rows());
+		let cols = rhs.cols();
+		let data: Vec<T> = (0..(cols * self.rows()))
+			.map(|index: usize| {
+				let row = index / cols;
+				let col = index % cols;
+				(1..self.cols())
+					.map(|k: usize| self[row][k].clone() * rhs[k][col].clone())
+					.fold(self[row][0].clone() * rhs[0][col].clone(), |acc: T, el: T| acc + el)
+			}).collect();
+		Matrix::new(data.into_boxed_slice(), self.rows())
+	}
+}
+
 impl<'a, T> MatRefMut<'a, T> {
 	
 	fn assert_row_in_range(&self, row_index: usize) {
@@ -614,7 +634,7 @@ impl<'a, T, U> MulAssign<U> for RowRefMut<'a, T>
 	where T: MulAssign<U>, U: Copy
 {
 	fn mul_assign(&mut self, other: U) {
-    for i in 0..self.len() {
+    	for i in 0..self.len() {
 			(*self.get_mut(i)).mul_assign(other);
 		}
   }
@@ -697,4 +717,11 @@ fn test_matrix_transform_two_dims_left() {
 	assert_eq!(&[7.,  8.,  9.,
 	             2.5, 3.5, 4.5,
 				 4.5, 6.0, 7.5], m.data());
+}
+
+#[test]
+fn test_matmul() {
+	let a = Matrix::new(Box::new([1, 2, 3, 2]), 2);
+	let b = Matrix::new(Box::new([1, 2, 3, 3, 4, 2]), 2);
+	assert_eq!(&[7, 10, 7, 9, 14, 13], (&a.borrow() * &b.borrow()).data());
 }
