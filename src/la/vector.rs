@@ -8,10 +8,34 @@ pub struct Vector<T> {
     data: Box<[T]>
 }
 
+impl<T> Vector<T> {
+
+	pub fn new(data: Box<[T]>) -> Vector<T> {
+		assert!(data.len() > 0, "Cannot create vector with zero elements");
+		Vector { data: data }
+	}
+
+	pub fn len(&self) -> usize {
+		self.data.len()
+	}
+
+	pub fn data(&self) -> &[T] {
+		&*self.data
+	}
+}
+
 impl Vector<f64> {
     pub fn zero(len: usize) -> Self {
         let mut data = Vec::new();
         data.resize(len, 0.0);
+        return Vector { data: data.into_boxed_slice() };
+    }
+}
+
+impl Vector<i32> {
+    pub fn zero(len: usize) -> Self {
+        let mut data = Vec::new();
+        data.resize(len, 0);
         return Vector { data: data.into_boxed_slice() };
     }
 }
@@ -40,7 +64,6 @@ impl<T> Index<usize> for Vector<T> {
 		self.get(index)
 	}
 }
-
 
 impl<T> IndexMut<usize> for Vector<T> {
 

@@ -1,4 +1,5 @@
 use super::indexed::{ Indexed, IndexedMut };
+use super::vector::Vector;
 use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref, Range };
 use std::cmp::{ min, max };
 use std::mem::swap;
@@ -32,6 +33,11 @@ pub struct MatRefMut<'a, T> {
 	rows: Range<usize>,
 	cols: Range<usize>,
 	matrix: &'a mut Matrix<T>
+}
+
+fn assert_legal_subrange(len: usize, range: &Range<usize>) {
+	assert!(range.end > range.start, "Subrange must have a positive number of elements");
+	assert!(range.end <= len, "Subrange must be included in total range");
 }
 
 impl Matrix<f64> {
@@ -71,6 +77,7 @@ impl Matrix<i32> {
 impl<T> Matrix<T> {
 
 	pub fn new(data: Box<[T]>, rows: usize) -> Matrix<T> {
+		assert!(data.len() > 0, "Cannot create matrix with zero elements");
 		assert!(data.len() % rows == 0, "Data length must be a multiple of row count, but got {} and {}", data.len(), rows);
 		Matrix {
 			rows: rows,
@@ -96,6 +103,8 @@ impl<T> Matrix<T> {
 	}
 
 	pub fn sub_matrix<'a>(&'a self, rows: Range<usize>, cols: Range<usize>) -> MatRef<'a, T> {
+		assert_legal_subrange(self.rows(), &rows);
+		assert_legal_subrange(self.cols(), &cols);
 		MatRef {
 			rows: rows,
 			cols: cols,
@@ -104,6 +113,8 @@ impl<T> Matrix<T> {
 	}
 
 	pub fn sub_matrix_mut<'a>(&'a mut self, rows: Range<usize>, cols: Range<usize>) -> MatRefMut<'a, T> {
+		assert_legal_subrange(self.rows(), &rows);
+		assert_legal_subrange(self.cols(), &cols);
 		MatRefMut {
 			rows: rows,
 			cols: cols,
@@ -220,8 +231,8 @@ impl<'a, T> MatRef<'a, T> {
 	}
 
 	pub fn sub_matrix<'b>(&'b self, rows: Range<usize>, cols: Range<usize>) -> MatRef<'b, T> {
-		assert!(rows.end <= self.rows());
-		assert!(cols.end <= self.cols());
+		assert_legal_subrange(self.rows(), &rows);
+		assert_legal_subrange(self.cols(), &cols);
 		MatRef {
 			rows: (rows.start + self.rows.start)..(rows.end + self.rows.start),
 			cols: (cols.start + self.cols.start)..(cols.end + self.cols.start),
@@ -234,20 +245,33 @@ impl<'a, T> MatRef<'a, T>
 	where T: Clone
 {
 	pub fn transpose(&self) -> Matrix<T> {
-		let mut data = Vec::new();
-		let mut row = 0;
-		let mut col = 0;
-		let count = self.rows() * self.cols();
-		data.resize_with(count, || {
-			let result = self.get(col).get(row).clone();
-			col += 1;
-			if (col == self.rows()) {
-				col = 0;
-				row += 1;
-			}
-			return result;
-		});
-		return Matrix::new(data.into_boxed_slice(), self.cols());
+		let rows = self.rows();
+		let data: Vec<T> = (0..(rows * self.cols()))
+			.map(|index: usize| self.get(index % rows).get(index / rows).clone())
+			.collect();
+		Matrix::new(data.into_boxed_slice(), self.cols())
+	}
+	
+	pub fn clone(&self) -> Matrix<T> {
+		let cols = self.cols();
+		let data: Vec<T> = (0..(self.rows() * cols))
+			.map(|index: usize| self.get(index / cols).get(index % cols).clone())
+			.collect();
+		Matrix::new(data.into_boxed_slice(), self.rows())
+	}
+}
+
+
+impl<'a, 'b, T> Mul<&'b Vector<T>> for &MatRef<'a, T> 
+	where T: Add<T, Output = T> + Copy + Mul<T, Output = T>
+{
+	type Output = Vector<T>;
+
+	fn mul(self, rhs: &'b Vector<T>) -> Self::Output {
+		let data: Vec<T> = (0..self.rows())
+			.map(|row: usize| &self.get(row) * rhs)
+			.collect();
+		Vector::new(data.into_boxed_slice())
 	}
 }
 
@@ -284,8 +308,8 @@ impl<'a, T> MatRefMut<'a, T> {
 	}
 
 	pub fn sub_matrix<'b>(&'b mut self, rows: Range<usize>, cols: Range<usize>) -> MatRefMut<'b, T> {
-		assert!(rows.end <= self.rows());
-		assert!(cols.end <= self.cols());
+		assert_legal_subrange(self.rows(), &rows);
+		assert_legal_subrange(self.cols(), &cols);
 		MatRefMut {
 			rows: (rows.start + self.rows.start)..(rows.end + self.rows.start),
 			cols: (cols.start + self.cols.start)..(cols.end + self.cols.start),
@@ -319,15 +343,14 @@ impl<'a, T> MatRefMut<'a, T>
 {
 
 	/*
-	 * Let T be the identity matrix, in which the entries [fst,fst], [fst, snd],
-	 * [snd, fst], [snd, snd] are replaced by the values in transform.
+	 * Let T be the identity matrix (mxm where this matrix is mxn), in which the entries 
+	 * [fst,fst], [fst, snd], [snd, fst], [snd, snd] are replaced by the values in transform.
 	 * This function performs the multiplication A' := T * A, where A is this matrix
 	 */
 	pub fn transform_two_dims_left(&mut self, fst: usize, snd: usize, transform: &[T; 4]) {
 		assert!(fst < snd);
 		self.assert_row_in_range(fst);
 		self.assert_row_in_range(snd);
-		self.assert_square();
 		for col in 0..self.cols() {
 			let b = self[fst][col];
 			self[fst][col] = self[fst][col] * transform[0] + self[snd][col] * transform[1];
@@ -336,15 +359,15 @@ impl<'a, T> MatRefMut<'a, T>
 	}
 	
 	/*
-	 * Let T be the identity matrix, in which the entries [fst,fst], [fst, snd],
-	 * [snd, fst], [snd, snd] are replaced by the values in transform.
+	 * Let T be the identity matrix (nxn where this matrix is mxn), in which 
+	 * the entries [fst,fst], [fst, snd], [snd, fst], [snd, snd] are replaced by the 
+	 * values in transform.
 	 * This function performs the multiplication A' := A * T, where A is this matrix
 	 */
 	pub fn transform_two_dims_right(&mut self, fst: usize, snd: usize, transform: &[T; 4]) {
 		assert!(fst < snd);
-		self.assert_row_in_range(fst);
-		self.assert_row_in_range(snd);
-		self.assert_square();
+		self.assert_col_in_range(fst);
+		self.assert_col_in_range(snd);
 		for row in 0..self.rows() {
 			let b = self[row][fst];
 			self[row][fst] = self[row][fst] * transform[0] + self[row][snd] * transform[2];
@@ -447,7 +470,8 @@ impl<'a, T: 'a> RowRef<'a, T> {
 		self.data.len()
 	}
 
-fn range(self, range: &Range<usize>) -> RowRef<'a, T> {
+	fn range(self, range: &Range<usize>) -> RowRef<'a, T> {
+		assert_legal_subrange(self.len(), range);
 		RowRef {
 			data: &self.data[range.start..range.end]
 		}
@@ -455,6 +479,19 @@ fn range(self, range: &Range<usize>) -> RowRef<'a, T> {
 
 	pub fn get_slice(&self) -> &'a [T] {
 		self.data
+	}
+}
+
+impl<'a, 'b, T> Mul<&'b Vector<T>> for &RowRef<'a, T> 
+	where T: Add<T, Output = T> + Copy + Mul<T, Output = T> + 'a
+{
+	type Output = T;
+
+	fn mul(self, rhs: &'b Vector<T>) -> T {
+		assert!(self.len() == rhs.len(), "Can only multiply vectors of same length, got row ref of length {} and vector of length {}", self.len(), rhs.len());
+		(1..self.len())
+			.map(|index: usize| *self.get(index) * *rhs.get(index))
+			.fold(*self.get(0) * *rhs.get(0), |acc: T, item: T| acc + item)
 	}
 }
 
@@ -499,7 +536,7 @@ impl<'a, T: 'a> RowRefMut<'a, T> {
 			T: AddAssign<<U as Mul<V>>::Output>
 	{
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
-    for i in 0..self.len() {
+		for i in 0..self.len() {
 			(*self.get_mut(i)).add_assign(other.get(i).clone() * mult);
 		}
 	}
@@ -534,7 +571,7 @@ impl<'a, 'c, T, U> AddAssign<RowRef<'c, U>> for RowRefMut<'a, T>
 {
 	fn add_assign(&mut self, other: RowRef<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
-    for i in 0..self.len() {
+    	for i in 0..self.len() {
 			(*self.get_mut(i)).add_assign(other.get(i));
 		}
   }
@@ -545,7 +582,7 @@ impl<'a, 'c, T, U> AddAssign<RowRefMut<'c, U>> for RowRefMut<'a, T>
 {
 	fn add_assign(&mut self, other: RowRefMut<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
-    for i in 0..self.len() {
+		for i in 0..self.len() {
 			(*self.get_mut(i)).add_assign(other.get(i));
 		}
   }
@@ -556,7 +593,7 @@ impl<'a, 'c, T, U> SubAssign<RowRef<'c, U>> for RowRefMut<'a, T>
 {
 	fn sub_assign(&mut self, other: RowRef<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
-    for i in 0..self.len() {
+		for i in 0..self.len() {
 			(*self.get_mut(i)).sub_assign(other.get(i));
 		}
   }
@@ -567,7 +604,7 @@ impl<'a, 'c, T, U> SubAssign<RowRefMut<'c, U>> for RowRefMut<'a, T>
 {
 	fn sub_assign(&mut self, other: RowRefMut<'c, U>) {
 		assert_eq!(self.len(), other.len(), "Expected the lengths of summed vectors to be equal, but got {} and {}", self.len(), other.len());
-    for i in 0..self.len() {
+    	for i in 0..self.len() {
 			(*self.get_mut(i)).sub_assign(other.get(i));
 		}
   }
