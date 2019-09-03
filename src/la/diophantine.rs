@@ -228,6 +228,22 @@ fn test_diophantine_three_dim() {
     assert_eq!(&[4, -1, 0], x.unwrap().data());
 }
 
+#[test]
+fn test_diophantine_unnecessary_conditions() {
+    let A = Matrix::new(Box::new([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2]), 4);
+    let b = Vector::new(Box::new([2, 2, 2, 4]));
+    let x = diophantine_solve(&A.borrow(), &b);
+    assert_eq!(&[4, -1, 0], x.unwrap().data());
+}
+
+#[test]
+fn test_diophantine_no_rational_solutions() {
+    let A = Matrix::new(Box::new([1, 2, 0, 1, 2, 0, 1, 0, 2]), 3);
+    let b = Vector::new(Box::new([2, 3, 4]));
+    let x = diophantine_solve(&A.borrow(), &b);
+    assert!(x.is_none());
+}
+
 pub fn experiment() {
     
 }
