@@ -5,15 +5,17 @@
 mod util;
 mod lexer;
 mod parser;
-mod language;
+//mod language;
 mod la;
 
 use lexer::tokens::*;
 use parser::parser_gen::Parse;
 use lexer::lexer::lex;
 use parser::ast::*;
-use language::scope::{ ScopeTable, fill_sope_info_func };
+//use language::scope::{ ScopeTable, fill_sope_info_func };
 
 fn main() {
-	la::diophantine::experiment();
+	let mut stream = lex("fn test(a: int[], b: int[],): int { let length: int = len(a); return a[0] + b[0] + length; }".to_owned());
+	let function = FunctionNode::parse(&mut stream);
+	println!("{:?}", function);
 }

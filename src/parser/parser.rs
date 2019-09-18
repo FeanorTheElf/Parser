@@ -6,67 +6,65 @@ use super::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 
-impl_parse!{ Function -> Function(Token#Fn identifier Token#BracketOpen {ParameterDeclaration} Token#BracketClose Token#Colon TypeDecl Token#CurlyBracketOpen Stmts Token#CurlyBracketClose) }
+impl_parse!{ FunctionNode -> FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose) }
+impl_parse!{ ParameterNode -> ParameterNode(identifier Token#Colon TypeNode Token#Comma) }
+impl_parse!{ StmtsNode -> StmtsNode({StmtNode}) }
 
-impl_parse!{ ParameterDeclaration -> ParameterDeclaration(identifier Token#Colon TypeDecl Token#Comma) }
-
-impl_parse!{ Stmts -> Stmts({Stmt}) }
-
-impl Parse for Stmt {
+impl Parse for StmtNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
-		Expr::guess_can_parse(stream) || stream.ends(&Token::If) || stream.ends(&Token::While) || stream.ends(&Token::CurlyBracketOpen) || stream.ends(&Token::Return) || stream.ends(&Token::Let)
+		ExprNode::guess_can_parse(stream) || stream.ends(&Token::If) || stream.ends(&Token::While) || stream.ends(&Token::CurlyBracketOpen) || stream.ends(&Token::Return) || stream.ends(&Token::Let)
 	}
 
-	fn parse(stream: &mut Stream) -> Result<Self, CompileError> {
+	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError> {
 		let pos = stream.pos();
 		if stream.ends(&Token::If) {
 			stream.expect_next(&Token::If);
-			let condition = Expr::parse(stream)?;
+			let condition = ExprNode::parse(stream)?;
 			stream.expect_next(&Token::CurlyBracketOpen);
-			let stmts = Stmts::parse(stream)?;
+			let stmts = StmtsNode::parse(stream)?;
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Ok(Stmt::If(pos, Box::new(condition), Box::new(stmts)));
+			return Ok(Box::new(IfNode::new(pos, condition, stmts)));
 		} else if stream.ends(&Token::While) {
 			stream.expect_next(&Token::While);
-			let condition = Expr::parse(stream)?;
+			let condition = ExprNode::parse(stream)?;
 			stream.expect_next(&Token::CurlyBracketOpen);
-			let stmts = Stmts::parse(stream)?;
+			let stmts = StmtsNode::parse(stream)?;
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Ok(Stmt::While(pos, Box::new(condition), Box::new(stmts)));
+			return Ok(Box::new(WhileNode::new(pos, condition, stmts)));
 		} else if stream.ends(&Token::CurlyBracketOpen) {
 			stream.expect_next(&Token::CurlyBracketOpen);
-			let stmts = Stmts::parse(stream)?;
+			let stmts = StmtsNode::parse(stream)?;
 			stream.expect_next(&Token::CurlyBracketClose);
-			return Ok(Stmt::Block(pos, Box::new(stmts)));
+			return Ok(Box::new(BlockNode::new(pos, stmts)));
 		} else if stream.ends(&Token::Return) {
 			stream.expect_next(&Token::Return);
-			let expr = Expr::parse(stream)?;
+			let expr = ExprNode::parse(stream)?;
 			stream.expect_next(&Token::Semicolon);
-			return Ok(Stmt::Return(pos, Box::new(expr)));
+			return Ok(Box::new(ReturnNode::new(pos, expr)));
 		} else if stream.ends(&Token::Let) {
 			stream.expect_next(&Token::Let);
 			let name = stream.next_ident()?;
 			stream.expect_next(&Token::Colon);
-			let var_type = TypeDecl::parse(stream)?;
+			let var_type = TypeNode::parse(stream)?;
 			if stream.ends(&Token::Assign) {
 				stream.expect_next(&Token::Assign);
-				let value = Expr::parse(stream)?;
+				let value = ExprNode::parse(stream)?;
 				stream.expect_next(&Token::Semicolon);
-				return Ok(Stmt::Declaration(pos, Box::new(var_type), Box::new(name), Some(Box::new(value))));
+				return Ok(Box::new(DeclarationNode::new(pos, var_type, name, Some(value))));
 			} else {
 				stream.expect_next(&Token::Semicolon);
-				return Ok(Stmt::Declaration(pos, Box::new(var_type), Box::new(name), None));
+				return Ok(Box::new(DeclarationNode::new(pos, var_type, name, None)));
 			}
-		} else if Expr::guess_can_parse(stream) {
-			let expr = Expr::parse(stream)?;
+		} else if ExprNode::guess_can_parse(stream) {
+			let expr = ExprNode::parse(stream)?;
 			if stream.ends(&Token::Assign) {
 				stream.expect_next(&Token::Assign);
-				let new_val = Expr::parse(stream)?;
+				let new_val = ExprNode::parse(stream)?;
 				stream.expect_next(&Token::Semicolon);
-				return Ok(Stmt::Assignment(pos, Box::new(expr), Box::new(new_val)));
+				return Ok(Box::new(AssignmentNode::new(pos, expr, new_val)));
 			} else {
 				stream.expect_next(&Token::Semicolon);
-				return Ok(Stmt::Expr(pos, Box::new(expr)));
+				return Ok(Box::new(ExprStmtNode::new(pos, expr)));
 			}
 		} else {
 			panic!("Expected statement, got {:?} at position {}", stream.peek(), stream.pos());
@@ -74,97 +72,98 @@ impl Parse for Stmt {
 	}
 }
 
-impl Parse for TypeDecl {
+impl Parse for TypeNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
-		BaseType::guess_can_parse(stream) || stream.ends(&Token::Void)
+		BaseTypeNode::guess_can_parse(stream) || stream.ends(&Token::Void)
 	}
 
-	fn parse(stream: &mut Stream) -> Result<Self, CompileError>  {
+	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>  {
 		let pos = stream.pos();
 		if stream.ends(&Token::Void) {
-			return Ok(TypeDecl::Void(pos));
-		} else if BaseType::guess_can_parse(stream) {
-			let base_type = BaseType::parse(stream)?;
+			return Ok(Box::new(VoidTypeNode::new(pos)));
+		} else if BaseTypeNode::guess_can_parse(stream) {
+			let base_type = BaseTypeNode::parse(stream)?;
 			let mut dimensions: u8 = 0;
 			while stream.ends(&Token::SquareBracketOpen) {
 				stream.expect_next(&Token::SquareBracketOpen);
 				stream.expect_next(&Token::SquareBracketClose);
+				dimensions += 1;
 			}
-			return Ok(TypeDecl::Arr(pos, Box::new(base_type), dimensions));
+			return Ok(Box::new(ArrTypeNode::new(pos, base_type, dimensions)));
 		} else {
 			panic!("Expected type, got {:?} at position {}", stream.peek(), stream.pos());
 		}
 	}
 }
 
-impl_parse!{ ExprLvlOr -> Or(ExprLvlAnd {OrPart}) }
-impl_parse!{ OrPart -> Expr(Token#OpOr ExprLvlAnd) }
+impl_parse!{ ExprNodeLvlOr -> ExprNodeLvlOr(ExprNodeLvlAnd {OrPartNode}) }
+impl_parse!{ OrPartNode -> OrPartNode(Token#OpOr ExprNodeLvlAnd) }
 
-impl_parse!{ ExprLvlAnd -> And(ExprLvlCmp {AndPart}) }
-impl_parse!{ AndPart -> Expr(Token#OpAnd ExprLvlCmp) }
+impl_parse!{ ExprNodeLvlAnd -> ExprNodeLvlAnd(ExprNodeLvlCmp {AndPartNode}) }
+impl_parse!{ AndPartNode -> AndPartNode(Token#OpAnd ExprNodeLvlCmp) }
 
-impl_parse!{ ExprLvlCmp -> Cmp(ExprLvlAdd {CmpPart}) }
-impl_parse!{ CmpPart -> Eq(Token#OpEqual ExprLvlAdd)
-                      | Neq(Token#OpUnequal ExprLvlAdd)
-                      | Leq(Token#OpLessEq ExprLvlAdd)
-                      | Geq(Token#OpGreaterEq ExprLvlAdd)
-                      | Ls(Token#OpLess ExprLvlAdd)
-					  | Gt(Token#OpGreater ExprLvlAdd) }
+impl_parse!{ ExprNodeLvlCmp -> ExprNodeLvlCmp(ExprNodeLvlAdd {CmpPartNode}) }
+impl_parse!{ CmpPartNode -> CmpPartNodeEq(Token#OpEqual ExprNodeLvlAdd)
+                      | CmpPartNodeNeq(Token#OpUnequal ExprNodeLvlAdd)
+                      | CmpPartNodeLeq(Token#OpLessEq ExprNodeLvlAdd)
+                      | CmpPartNodeGeq(Token#OpGreaterEq ExprNodeLvlAdd)
+                      | CmpPartNodeLs(Token#OpLess ExprNodeLvlAdd)
+					  | CmpPartNodeGt(Token#OpGreater ExprNodeLvlAdd) }
 
-impl_parse!{ ExprLvlAdd -> Add(ExprLvlMult {AddPart}) }
-impl_parse!{ AddPart -> Add(Token#OpAdd ExprLvlMult)
-                      | Subtract(Token#OpSubtract ExprLvlMult) }
+impl_parse!{ ExprNodeLvlAdd -> ExprNodeLvlAdd(ExprNodeLvlMult {SumPartNode}) }
+impl_parse!{ SumPartNode -> SumPartNodeAdd(Token#OpAdd ExprNodeLvlMult)
+                          | SumPartNodeSub(Token#OpSubtract ExprNodeLvlMult) }
 
-impl_parse!{ ExprLvlMult -> Mult(ExprLvlIndex {MultPart}) }
-impl_parse!{ MultPart -> Mult(Token#OpMult ExprLvlIndex)
-                       | Divide(Token#OpDivide ExprLvlIndex) }
+impl_parse!{ ExprNodeLvlMult -> ExprNodeLvlMult(ExprNodeLvlIndex {ProductPartNode}) }
+impl_parse!{ ProductPartNode -> ProductPartNodeMult(Token#OpMult ExprNodeLvlIndex)
+                              | ProductPartNodeDivide(Token#OpDivide ExprNodeLvlIndex) }
 
-impl_parse!{ ExprLvlIndex -> Index(UnaryExpr {IndexPart}) }
-impl_parse!{ IndexPart -> Expr(Token#SquareBracketOpen Expr Token#SquareBracketClose) }
+impl_parse!{ ExprNodeLvlIndex -> ExprNodeLvlIndex(UnaryExprNode {IndexPartNode}) }
+impl_parse!{ IndexPartNode -> IndexPartNode(Token#SquareBracketOpen ExprNode Token#SquareBracketClose) }
 
-impl Parse for UnaryExpr {
+impl Parse for UnaryExprNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
 		stream.ends_ident() || stream.ends_literal() || stream.ends(&Token::BracketOpen) || stream.ends(&Token::New)
 	}
 
-	fn parse(stream: &mut Stream) -> Result<Self, CompileError>  {
+	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>  {
 		let pos = stream.pos();
 		if stream.ends(&Token::BracketOpen) {
 			stream.expect_next(&Token::BracketOpen);
-			let expr = Expr::parse(stream)?;
+			let expr = ExprNode::parse(stream)?;
 			stream.expect_next(&Token::BracketClose);
-			return Ok(UnaryExpr::Brackets(pos, Box::new(expr)));
+			return Ok(Box::new(BracketExprNode::new(pos, expr)));
 		} else if stream.ends_ident() {
 			let ident = stream.next_ident()?;
 			if stream.ends(&Token::BracketOpen) {
 				stream.expect_next(&Token::BracketOpen);
-				let mut params: Vec<Expr> = vec![];
+				let mut params: AstVec<ExprNode> = vec![];
 				if !stream.ends(&Token::BracketClose) {
-					params.push(Expr::parse(stream)?);
+					params.push(ExprNode::parse(stream)?);
 					while stream.ends(&Token::Comma) {
 						stream.expect_next(&Token::Comma);
-						params.push(Expr::parse(stream)?);
+						params.push(ExprNode::parse(stream)?);
 					}
 				}
 				stream.expect_next(&Token::BracketClose);
-				return Ok(UnaryExpr::Call(pos, Box::new(ident), params));
+				return Ok(Box::new(FunctionCallNode::new(pos, ident, params)));
 			} else {
-				return Ok(UnaryExpr::Variable(pos, Box::new(ident)));
+				return Ok(Box::new(VariableNode::new(pos, ident)));
 			}
 		} else if stream.ends_literal() {
-			return Ok(UnaryExpr::Literal(pos, Box::new(stream.next_literal()?)));
+			return Ok(Box::new(LiteralNode::new(pos, stream.next_literal()?)));
 		} else if stream.ends(&Token::New) {
 			stream.expect_next(&Token::New);
-			let base_type = BaseType::parse(stream)?;
+			let base_type = BaseTypeNode::parse(stream)?;
 			let mut dimensions = vec![];
-			while IndexPart::guess_can_parse(stream) {
-				dimensions.push(IndexPart::parse(stream)?);
+			while IndexPartNode::guess_can_parse(stream) {
+				dimensions.push(IndexPartNode::parse(stream)?);
 			}
-			return Ok(UnaryExpr::New(pos, Box::new(base_type), dimensions));
+			return Ok(Box::new(NewExprNode::new(pos, base_type, dimensions)));
 		} else {
 			panic!("Expected 'new', '(', identifier or literal, got {:?} at position {}", stream.peek(), stream.pos());
 		}
 	}
 }
 
-impl_parse!{ BaseType -> Int(Token#Int) }
+impl_parse!{ BaseTypeNode -> IntTypeNode(Token#Int) }

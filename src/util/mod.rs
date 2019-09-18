@@ -1,3 +1,5 @@
+pub mod push_iter;
+
 use std::ops::{ Div };
 
 fn approx_eq(lhs: &[f64], rhs: &[f64], delta: f64) -> bool {
