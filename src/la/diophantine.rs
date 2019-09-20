@@ -1,10 +1,7 @@
 use super::super::util::find_min;
-use super::indexed::{ Indexed, IndexedMut };
 use super::vector::Vector;
 use super::matrix::{ Matrix, MatRef, MatRefMut };
 use std::mem::swap;
-use std::ops::{ Index, IndexMut, MulAssign, AddAssign };
-use std::vec::Vec;
 
 type Item = i32;
 type Mat<'a> = MatRefMut<'a, Item>;
@@ -30,7 +27,7 @@ fn gcd(a: i32, b: i32) -> i32 {
     return s * a + t * b;
 }
 
-fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<Vector<Item>> {
+pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<Vector<Item>> {
     let mut smith_A = A.clone();
     let mut iL = Matrix::<Item>::identity(A.rows());
     let mut iR = Matrix::<Item>::identity(A.cols());

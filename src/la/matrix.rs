@@ -86,7 +86,6 @@ impl<T> Matrix<T> {
 	}
 	
 	fn assert_row_in_range(&self, row_index: usize) {
-		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows, "Expected row index {} to be smaller than the row count {}", row_index, self.rows);
 	}
 	
@@ -213,12 +212,10 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
 impl<'a, T> MatRef<'a, T> {
 	
 	fn assert_row_in_range(&self, row_index: usize) {
-		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
 	}
 
 	fn assert_col_in_range(&self, col_index: usize) {
-		assert!(col_index >= 0, "Expected column index {} to be greater than 0", col_index);
 		assert!(col_index < self.cols(), "Expected column index {} to be smaller than the column count {}", col_index, self.cols());
 	}
 	
@@ -298,12 +295,10 @@ impl<'a, 'b, 'c, T> Mul<&'b MatRef<'c, T>> for &MatRef<'a, T>
 impl<'a, T> MatRefMut<'a, T> {
 	
 	fn assert_row_in_range(&self, row_index: usize) {
-		assert!(row_index >= 0, "Expected row index {} to be greater than 0", row_index);
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
 	}
 
 	fn assert_col_in_range(&self, col_index: usize) {
-		assert!(col_index >= 0, "Expected column index {} to be greater than 0", col_index);
 		assert!(col_index < self.cols(), "Expected column index {} to be smaller than the column count {}", col_index, self.cols());
 	}
 

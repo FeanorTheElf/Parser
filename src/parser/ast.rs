@@ -14,30 +14,30 @@ pub trait Node : Debug + Any {
 
 #[derive(Debug)]
 pub struct FunctionNode {
-	pub annotation: Annotation,
+	annotation: Annotation,
 	pub ident: Identifier,
 	pub params: AstVec<ParameterNode>,
-	pub result: Box<TypeNode>,
-	pub stmts: Box<StmtsNode>
+	pub result: Box<dyn TypeNode>,
+	pub body: Box<StmtsNode>
 }
 
 impl FunctionNode {
-	pub fn new(annotation: Annotation, ident: Identifier, params: AstVec<ParameterNode>, result: Box<TypeNode>, stmts: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, ident: Identifier, params: AstVec<ParameterNode>, result: Box<dyn TypeNode>, body: Box<StmtsNode>) -> Self {
 		FunctionNode {
-			annotation, ident, params, result, stmts
+			annotation, ident, params, result, body
 		}
 	}
 }
 
 #[derive(Debug)]
 pub struct ParameterNode {
-	pub annotation: Annotation,
+	annotation: Annotation,
 	pub ident: Identifier,
-	pub param_type: Box<TypeNode>
+	pub param_type: Box<dyn TypeNode>
 }
 
 impl ParameterNode {
-	pub fn new(annotation: Annotation, ident: Identifier, param_type: Box<TypeNode>) -> Self {
+	pub fn new(annotation: Annotation, ident: Identifier, param_type: Box<dyn TypeNode>) -> Self {
 		ParameterNode {
 			annotation, ident, param_type
 		}
@@ -46,12 +46,12 @@ impl ParameterNode {
 
 #[derive(Debug)]
 pub struct StmtsNode {
-	pub annotation: Annotation,
-	pub stmts: AstVec<StmtNode>
+	annotation: Annotation,
+	pub stmts: AstVec<dyn StmtNode>
 }
 
 impl StmtsNode {
-	pub fn new(annotation: Annotation, stmts: AstVec<StmtNode>) -> Self {
+	pub fn new(annotation: Annotation, stmts: AstVec<dyn StmtNode>) -> Self {
 		StmtsNode {
 			annotation, stmts
 		}
@@ -59,11 +59,11 @@ impl StmtsNode {
 }
 
 pub trait StmtNode : Node {
-	fn get_type<'a>(&'a self) -> StmtType<'a>;
+	fn get_kind<'a>(&'a self) -> StmtKind<'a>;
 }
 
-pub enum StmtType<'a> {
-	Declaration(&'a DeclarationNode), 
+pub enum StmtKind<'a> {
+	Declaration(&'a VariableDeclarationNode), 
 	Assignment(&'a AssignmentNode), 
 	Expr(&'a ExprStmtNode), 
 	If(&'a IfNode), 
@@ -73,32 +73,32 @@ pub enum StmtType<'a> {
 }
 
 #[derive(Debug)]
-pub struct DeclarationNode {
+pub struct VariableDeclarationNode {
 	annotation: Annotation,
-	variable_type: Box<TypeNode>,
-	ident: Identifier,
-	expr: Option<Box<ExprNode>>
+	pub variable_type: Box<dyn TypeNode>,
+	pub ident: Identifier,
+	pub expr: Box<ExprNode>
 }
 
-impl DeclarationNode {
-	pub fn new(annotation: Annotation, variable_type: Box<TypeNode>, ident: Identifier, expr: Option<Box<ExprNode>>) -> Self {
-		DeclarationNode {
+impl VariableDeclarationNode {
+	pub fn new(annotation: Annotation, ident: Identifier, variable_type: Box<dyn TypeNode>, expr: Box<ExprNode>) -> Self {
+		VariableDeclarationNode {
 			annotation, variable_type, ident, expr
 		}
 	}
 }
 
-impl StmtNode for DeclarationNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::Declaration(&self)
+impl StmtNode for VariableDeclarationNode {
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::Declaration(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct AssignmentNode {
 	annotation: Annotation,
-	assignee: Box<ExprNode>,
-	expr: Box<ExprNode>
+	pub assignee: Box<ExprNode>,
+	pub expr: Box<ExprNode>
 }
 
 impl AssignmentNode {
@@ -110,15 +110,15 @@ impl AssignmentNode {
 }
 
 impl StmtNode for AssignmentNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::Assignment(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::Assignment(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct ExprStmtNode {
 	annotation: Annotation,
-	expr: Box<ExprNode>
+	pub expr: Box<ExprNode>
 }
 
 impl ExprStmtNode {
@@ -130,16 +130,16 @@ impl ExprStmtNode {
 }
 
 impl StmtNode for ExprStmtNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::Expr(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::Expr(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct IfNode {
 	annotation: Annotation,
-	condition: Box<ExprNode>,
-	block: Box<StmtsNode>
+	pub condition: Box<ExprNode>,
+	pub block: Box<StmtsNode>
 }
 
 impl IfNode {
@@ -151,16 +151,16 @@ impl IfNode {
 }
 
 impl StmtNode for IfNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::If(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::If(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct WhileNode {
 	annotation: Annotation,
-	condition: Box<ExprNode>,
-	block: Box<StmtsNode>
+	pub condition: Box<ExprNode>,
+	pub block: Box<StmtsNode>
 }
 
 impl WhileNode {
@@ -172,15 +172,15 @@ impl WhileNode {
 }
 
 impl StmtNode for WhileNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::While(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::While(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct BlockNode {
 	annotation: Annotation,
-	block: Box<StmtsNode>
+	pub block: Box<StmtsNode>
 }
 
 impl BlockNode {
@@ -192,15 +192,15 @@ impl BlockNode {
 }
 
 impl StmtNode for BlockNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::Block(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::Block(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct ReturnNode {
 	annotation: Annotation,
-	expr: Box<ExprNode>
+	pub expr: Box<ExprNode>
 }
 
 impl ReturnNode {
@@ -212,37 +212,45 @@ impl ReturnNode {
 }
 
 impl StmtNode for ReturnNode {
-	fn get_type<'a>(&'a self) -> StmtType<'a> {
-		StmtType::Return(&self)
+	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
+		StmtKind::Return(&self)
 	}
 }
 
 pub trait TypeNode : Node {
-	fn get_type<'a>(&'a self) -> TypeType<'a>;
+	fn get_kind<'a>(&'a self) -> TypeKind<'a>;
 }
 
-pub enum TypeType<'a> {
+pub enum TypeKind<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
 }
 
 #[derive(Debug)]
 pub struct ArrTypeNode {
 	annotation: Annotation,
-	base_type: Box<BaseTypeNode>,
-	dims: u8
+	pub base_type: Box<dyn BaseTypeNode>,
+	pub dims: u8
 }
 
 impl ArrTypeNode {
-	pub fn new(annotation: Annotation, base_type: Box<BaseTypeNode>, dims: u8) -> Self {
+	pub fn new(annotation: Annotation, base_type: Box<dyn BaseTypeNode>, dims: u8) -> Self {
 		ArrTypeNode {
 			annotation, base_type, dims
 		}
 	}
+
+	pub fn get_base_type(&self) -> &dyn BaseTypeNode {
+		&*self.base_type
+	}
+
+	pub fn get_dims(&self) -> u32 {
+		self.dims as u32
+	}
 }
 
 impl TypeNode for ArrTypeNode {
-	fn get_type<'a>(&'a self) -> TypeType<'a> {
-		TypeType::Array(&self)
+	fn get_kind<'a>(&'a self) -> TypeKind<'a> {
+		TypeKind::Array(&self)
 	}
 }
 
@@ -260,8 +268,8 @@ impl VoidTypeNode {
 }
 
 impl TypeNode for VoidTypeNode {
-	fn get_type<'a>(&'a self) -> TypeType<'a> {
-		TypeType::Void(&self)
+	fn get_kind<'a>(&'a self) -> TypeKind<'a> {
+		TypeKind::Void(&self)
 	}
 }
 
@@ -270,8 +278,8 @@ pub type ExprNode = ExprNodeLvlOr;
 #[derive(Debug)]
 pub struct ExprNodeLvlOr {
 	annotation: Annotation,
-	head: Box<ExprNodeLvlAnd>,
-	tail: AstVec<OrPartNode>
+	pub head: Box<ExprNodeLvlAnd>,
+	pub tail: AstVec<OrPartNode>
 }
 
 impl ExprNodeLvlOr {
@@ -285,7 +293,7 @@ impl ExprNodeLvlOr {
 #[derive(Debug)]
 pub struct OrPartNode {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAnd>
+	pub expr: Box<ExprNodeLvlAnd>
 }
 
 impl OrPartNode {
@@ -299,8 +307,8 @@ impl OrPartNode {
 #[derive(Debug)]
 pub struct ExprNodeLvlAnd {
 	annotation: Annotation,
-	head: Box<ExprNodeLvlCmp>,
-	tail: AstVec<AndPartNode>
+	pub head: Box<ExprNodeLvlCmp>,
+	pub tail: AstVec<AndPartNode>
 }
 
 impl ExprNodeLvlAnd {
@@ -314,7 +322,7 @@ impl ExprNodeLvlAnd {
 #[derive(Debug)]
 pub struct AndPartNode {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlCmp>
+	pub expr: Box<ExprNodeLvlCmp>
 }
 
 impl AndPartNode {
@@ -328,12 +336,12 @@ impl AndPartNode {
 #[derive(Debug)]
 pub struct ExprNodeLvlCmp {
 	annotation: Annotation, 
-	head: Box<ExprNodeLvlAdd>,
-	tail: AstVec<CmpPartNode>
+	pub head: Box<ExprNodeLvlAdd>,
+	pub tail: AstVec<dyn CmpPartNode>
 }
 
 impl ExprNodeLvlCmp {
-	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlAdd>, tail: AstVec<CmpPartNode>) -> Self {
+	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlAdd>, tail: AstVec<dyn CmpPartNode>) -> Self {
 		ExprNodeLvlCmp {
 			annotation, head, tail
 		}
@@ -341,11 +349,11 @@ impl ExprNodeLvlCmp {
 }
 
 pub trait CmpPartNode : Node {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a>;
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlAdd;
 }
 
-pub enum CmpPartType<'a> {
+pub enum CmpPartKind<'a> {
 	Eq(&'a CmpPartNodeEq), 
 	Neq(&'a CmpPartNodeNeq), 
 	Leq(&'a CmpPartNodeLeq), 
@@ -357,7 +365,7 @@ pub enum CmpPartType<'a> {
 #[derive(Debug)]
 pub struct CmpPartNodeEq {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeEq {
@@ -369,8 +377,8 @@ impl CmpPartNodeEq {
 }
 
 impl CmpPartNode for CmpPartNodeEq {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Eq(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Eq(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -381,7 +389,7 @@ impl CmpPartNode for CmpPartNodeEq {
 #[derive(Debug)]
 pub struct CmpPartNodeNeq {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeNeq {
@@ -393,8 +401,8 @@ impl CmpPartNodeNeq {
 }
 
 impl CmpPartNode for CmpPartNodeNeq {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Neq(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Neq(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -405,7 +413,7 @@ impl CmpPartNode for CmpPartNodeNeq {
 #[derive(Debug)]
 pub struct CmpPartNodeLeq {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeLeq {
@@ -417,8 +425,8 @@ impl CmpPartNodeLeq {
 }
 
 impl CmpPartNode for CmpPartNodeLeq {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Leq(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Leq(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -429,7 +437,7 @@ impl CmpPartNode for CmpPartNodeLeq {
 #[derive(Debug)]
 pub struct CmpPartNodeGeq {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeGeq {
@@ -441,8 +449,8 @@ impl CmpPartNodeGeq {
 }
 
 impl CmpPartNode for CmpPartNodeGeq {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Geq(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Geq(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -453,7 +461,7 @@ impl CmpPartNode for CmpPartNodeGeq {
 #[derive(Debug)]
 pub struct CmpPartNodeLs {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeLs {
@@ -465,8 +473,8 @@ impl CmpPartNodeLs {
 }
 
 impl CmpPartNode for CmpPartNodeLs {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Ls(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Ls(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -477,7 +485,7 @@ impl CmpPartNode for CmpPartNodeLs {
 #[derive(Debug)]
 pub struct CmpPartNodeGt {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlAdd>
+	pub expr: Box<ExprNodeLvlAdd>
 }
 
 impl CmpPartNodeGt {
@@ -489,8 +497,8 @@ impl CmpPartNodeGt {
 }
 
 impl CmpPartNode for CmpPartNodeGt {
-	fn get_type<'a>(&'a self) -> CmpPartType<'a> {
-		CmpPartType::Gt(&self)
+	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
+		CmpPartKind::Gt(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlAdd {
@@ -501,12 +509,12 @@ impl CmpPartNode for CmpPartNodeGt {
 #[derive(Debug)]
 pub struct ExprNodeLvlAdd {
 	annotation: Annotation,
-	head: Box<ExprNodeLvlMult>,
-	tail: AstVec<SumPartNode>
+	pub head: Box<ExprNodeLvlMult>,
+	pub tail: AstVec<dyn SumPartNode>
 }
 
 impl ExprNodeLvlAdd {
-	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlMult>, tail: AstVec<SumPartNode>) -> Self {
+	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlMult>, tail: AstVec<dyn SumPartNode>) -> Self {
 		ExprNodeLvlAdd {
 			annotation, head, tail
 		}
@@ -514,18 +522,18 @@ impl ExprNodeLvlAdd {
 }
 
 pub trait SumPartNode : Node {
-	fn get_type<'a>(&'a self) -> SumPartType<'a>;
+	fn get_kind<'a>(&'a self) -> SumPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlMult;
 }
 
-pub enum SumPartType<'a> {
+pub enum SumPartKind<'a> {
 	Add(&'a SumPartNodeAdd), Subtract(&'a SumPartNodeSub)
 }
 
 #[derive(Debug)]
 pub struct SumPartNodeAdd {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlMult>
+	pub expr: Box<ExprNodeLvlMult>
 }
 
 impl SumPartNodeAdd {
@@ -537,8 +545,8 @@ impl SumPartNodeAdd {
 }
 
 impl SumPartNode for SumPartNodeAdd {
-	fn get_type<'a>(&'a self) -> SumPartType<'a> {
-		SumPartType::Add(&self)
+	fn get_kind<'a>(&'a self) -> SumPartKind<'a> {
+		SumPartKind::Add(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlMult {
@@ -549,7 +557,7 @@ impl SumPartNode for SumPartNodeAdd {
 #[derive(Debug)]
 pub struct SumPartNodeSub {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlMult>
+	pub expr: Box<ExprNodeLvlMult>
 }
 
 impl SumPartNodeSub {
@@ -561,8 +569,8 @@ impl SumPartNodeSub {
 }
 
 impl SumPartNode for SumPartNodeSub {
-	fn get_type<'a>(&'a self) -> SumPartType<'a> {
-		SumPartType::Subtract(&self)
+	fn get_kind<'a>(&'a self) -> SumPartKind<'a> {
+		SumPartKind::Subtract(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlMult {
@@ -573,12 +581,12 @@ impl SumPartNode for SumPartNodeSub {
 #[derive(Debug)]
 pub struct ExprNodeLvlMult {
 	annotation: Annotation,
-	head: Box<ExprNodeLvlIndex>,
-	tail: AstVec<ProductPartNode>
+	pub head: Box<ExprNodeLvlIndex>,
+	pub tail: AstVec<dyn ProductPartNode>
 }
 
 impl ExprNodeLvlMult {
-	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlIndex>, tail: AstVec<ProductPartNode>) -> Self {
+	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlIndex>, tail: AstVec<dyn ProductPartNode>) -> Self {
 		ExprNodeLvlMult {
 			annotation, head, tail
 		}
@@ -586,18 +594,18 @@ impl ExprNodeLvlMult {
 }
 
 pub trait ProductPartNode : Node {
-	fn get_type<'a>(&'a self) -> ProductPartType<'a>;
+	fn get_kind<'a>(&'a self) -> ProductPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlIndex;
 }
 
-pub enum ProductPartType<'a> {
+pub enum ProductPartKind<'a> {
 	Mult(&'a ProductPartNodeMult), Divide(&'a ProductPartNodeDivide)
 }
 
 #[derive(Debug)]
 pub struct ProductPartNodeMult {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlIndex>
+	pub expr: Box<ExprNodeLvlIndex>
 }
 
 impl ProductPartNodeMult {
@@ -609,8 +617,8 @@ impl ProductPartNodeMult {
 }
 
 impl ProductPartNode for ProductPartNodeMult {
-	fn get_type<'a>(&'a self) -> ProductPartType<'a> {
-		ProductPartType::Mult(&self)
+	fn get_kind<'a>(&'a self) -> ProductPartKind<'a> {
+		ProductPartKind::Mult(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlIndex {
@@ -621,7 +629,7 @@ impl ProductPartNode for ProductPartNodeMult {
 #[derive(Debug)]
 pub struct ProductPartNodeDivide {
 	annotation: Annotation,
-	expr: Box<ExprNodeLvlIndex>
+	pub expr: Box<ExprNodeLvlIndex>
 }
 
 impl ProductPartNodeDivide {
@@ -633,8 +641,8 @@ impl ProductPartNodeDivide {
 }
 
 impl ProductPartNode for ProductPartNodeDivide {
-	fn get_type<'a>(&'a self) -> ProductPartType<'a> {
-		ProductPartType::Divide(&self)
+	fn get_kind<'a>(&'a self) -> ProductPartKind<'a> {
+		ProductPartKind::Divide(&self)
 	}
 
 	fn get_expr(&self) -> &ExprNodeLvlIndex {
@@ -645,12 +653,12 @@ impl ProductPartNode for ProductPartNodeDivide {
 #[derive(Debug)]
 pub struct ExprNodeLvlIndex {
 	annotation: Annotation,
-	head: Box<UnaryExprNode>,
-	tail: AstVec<IndexPartNode>
+	pub head: Box<dyn UnaryExprNode>,
+	pub tail: AstVec<IndexPartNode>
 }
 
 impl ExprNodeLvlIndex {
-	pub fn new(annotation: Annotation, head: Box<UnaryExprNode>, tail: AstVec<IndexPartNode>) -> Self {
+	pub fn new(annotation: Annotation, head: Box<dyn UnaryExprNode>, tail: AstVec<IndexPartNode>) -> Self {
 		ExprNodeLvlIndex {
 			annotation, head, tail
 		}
@@ -660,7 +668,7 @@ impl ExprNodeLvlIndex {
 #[derive(Debug)]
 pub struct IndexPartNode {
 	annotation: Annotation,
-	expr: Box<ExprNode>
+	pub expr: Box<ExprNode>
 }
 
 impl IndexPartNode {
@@ -672,10 +680,10 @@ impl IndexPartNode {
 }
 
 pub trait UnaryExprNode : Node {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a>;
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a>;
 }
 
-pub enum UnaryExprType<'a> {
+pub enum UnaryExprKind<'a> {
 	BracketExpr(&'a BracketExprNode), 
 	Literal(&'a LiteralNode), 
 	Variable(&'a VariableNode), 
@@ -686,7 +694,7 @@ pub enum UnaryExprType<'a> {
 #[derive(Debug)]
 pub struct BracketExprNode {
 	annotation: Annotation,
-	expr: Box<ExprNode>
+	pub expr: Box<ExprNode>
 }
 
 impl BracketExprNode {
@@ -698,15 +706,15 @@ impl BracketExprNode {
 }
 
 impl UnaryExprNode for BracketExprNode {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a> {
-		UnaryExprType::BracketExpr(&self)
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
+		UnaryExprKind::BracketExpr(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct LiteralNode {
 	annotation: Annotation,
-	literal: Literal
+	pub literal: Literal
 }
 
 impl LiteralNode {
@@ -718,15 +726,15 @@ impl LiteralNode {
 }
 
 impl UnaryExprNode for LiteralNode {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a> {
-		UnaryExprType::Literal(&self)
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
+		UnaryExprKind::Literal(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct VariableNode {
 	annotation: Annotation,
-	identifier: Identifier
+	pub identifier: Identifier
 }
 
 impl VariableNode {
@@ -738,16 +746,16 @@ impl VariableNode {
 }
 
 impl UnaryExprNode for VariableNode {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a> {
-		UnaryExprType::Variable(&self)
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
+		UnaryExprKind::Variable(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct FunctionCallNode {
 	annotation: Annotation,
-	function: Identifier,
-	params: AstVec<ExprNode>
+	pub function: Identifier,
+	pub params: AstVec<ExprNode>
 }
 
 impl FunctionCallNode {
@@ -759,20 +767,20 @@ impl FunctionCallNode {
 }
 
 impl UnaryExprNode for FunctionCallNode {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a> {
-		UnaryExprType::FunctionCall(&self)
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
+		UnaryExprKind::FunctionCall(&self)
 	}
 }
 
 #[derive(Debug)]
 pub struct NewExprNode {
 	annotation: Annotation,
-	base_type: Box<BaseTypeNode>,
-	dimensions: AstVec<IndexPartNode>
+	pub base_type: Box<dyn BaseTypeNode>,
+	pub dimensions: AstVec<IndexPartNode>
 }
 
 impl NewExprNode {
-	pub fn new(annotation: Annotation, base_type: Box<BaseTypeNode>, dimensions: AstVec<IndexPartNode>) -> Self {
+	pub fn new(annotation: Annotation, base_type: Box<dyn BaseTypeNode>, dimensions: AstVec<IndexPartNode>) -> Self {
 		NewExprNode {
 			annotation, base_type, dimensions
 		}
@@ -780,16 +788,16 @@ impl NewExprNode {
 }
 
 impl UnaryExprNode for NewExprNode {
-	fn get_type<'a>(&'a self) -> UnaryExprType<'a> {
-		UnaryExprType::NewExpr(&self)
+	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
+		UnaryExprKind::NewExpr(&self)
 	}
 }
 
 pub trait BaseTypeNode : Node {
-	fn get_type(&self) -> BaseTypeType;
+	fn get_kind(&self) -> BaseTypeKind;
 }
 
-pub enum BaseTypeType {
+pub enum BaseTypeKind {
 	Int
 }
 
@@ -807,8 +815,8 @@ impl IntTypeNode {
 }
 
 impl BaseTypeNode for IntTypeNode {
-	fn get_type(&self) -> BaseTypeType {
-		BaseTypeType::Int
+	fn get_kind(&self) -> BaseTypeKind {
+		BaseTypeKind::Int
 	}
 }
 
@@ -829,7 +837,7 @@ macro_rules! impl_node {
 impl_node!(FunctionNode);
 impl_node!(ParameterNode);
 impl_node!(StmtsNode);
-impl_node!(DeclarationNode);
+impl_node!(VariableDeclarationNode);
 impl_node!(AssignmentNode);
 impl_node!(ExprStmtNode);
 impl_node!(IfNode);

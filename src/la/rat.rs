@@ -1,3 +1,5 @@
+#![allow(non_camel_case_types)]
+
 use std::ops::{ Add, Mul, AddAssign, MulAssign, Div, DivAssign, Sub, SubAssign };
 use std::convert::From;
 use std::fmt::{ Debug, Display, Formatter };

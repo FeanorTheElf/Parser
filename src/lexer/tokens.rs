@@ -1,15 +1,21 @@
 use super::position::TextPosition;
 use super::error::CompileError;
 
+use std::fmt::{ Display, Formatter, Error };
 use std::vec::Vec;
 use std::string::String;
-use std::fmt::Debug;
 
 #[derive(Debug)]
 #[derive(PartialEq)]
 #[derive(Eq)]
 pub struct Identifier {
 	pub name: String,
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{}", self.name)
+    }
 }
 
 #[derive(Debug)]

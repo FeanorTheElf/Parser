@@ -1,5 +1,7 @@
 use super::position::TextPosition;
 
+use std::fmt::{ Display, Formatter, Error };
+
 #[derive(Debug)]
 pub struct CompileError {
     pos: TextPosition,
@@ -12,5 +14,11 @@ impl CompileError {
             pos: pos,
             msg: msg
         }
+    }
+}
+
+impl Display for CompileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "Error at {}: {}", self.pos, self.msg)
     }
 }

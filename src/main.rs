@@ -1,11 +1,11 @@
-#![allow(warnings)]
 #![feature(fn_traits)]
+#![allow(unused)]
 
 #[macro_use]
 mod util;
 mod lexer;
 mod parser;
-//mod language;
+mod language;
 mod la;
 
 use lexer::tokens::*;

@@ -1,98 +1,107 @@
 use super::super::parser::ast::*;
 use super::super::lexer::tokens::Identifier;
 use super::super::lexer::error::CompileError;
-use super::obj_type::Type;
 
+use std::iter::FromIterator;
 use std::fmt::Debug;
+use std::any::Any;
 use std::collections::HashMap;
 
 pub struct GlobalScope();
 
-pub const GLOBAL: GlobalScope = GlobalScope();
+pub static GLOBAL: GlobalScope = GlobalScope();
 
-pub trait ScopeNode: Debug {
-    fn dynamic_cast_global(&self) -> Option<&GlobalScope> {
-        None
-    }
+pub trait Scope: Debug + Any {}
 
-    fn dynamic_cast_node(&self) -> Option<&dyn Node> {
-        None
-    }
+pub trait SymbolDefinition: Node {
+    fn get_identifier(&self) -> &Identifier;
+    fn get_kind<'a>(&'a self) -> SymbolDefinitionKind<'a>;
 }
 
-pub trait DeclarationNode: Node + Debug {}
-
-#[derive(Debug)]
-pub struct ScopeData<'a> {
-    parent_scope: &'a dyn ScopeNode,
-    declarations: Vec<&'a dyn DeclarationNode>
+pub enum SymbolDefinitionKind<'a> {
+    LocalVar(&'a VariableDeclarationNode),
+    Function(&'a FunctionNode),
+    Parameter(&'a ParameterNode)
 }
 
 #[derive(Debug)]
-pub struct ScopeTable<'a>(HashMap<* const ScopeNode, ScopeData<'a>>);
+pub struct ScopeInfo<'a> {
+    parent_scope: &'a dyn Scope,
+    symbol_definitions: Vec<&'a dyn SymbolDefinition>
+}
+
+impl<'a> ScopeInfo<'a> {
+    pub fn get_definition_of(&self, identifier: &Identifier) -> Option<&'a dyn SymbolDefinition> {
+        self.symbol_definitions.iter().find(|def| def.get_identifier() == identifier).map(|def| *def)
+    } 
+
+    pub fn get_parent_scope(&self) -> &'a dyn Scope {
+        self.parent_scope
+    }
+}
+
+#[derive(Debug)]
+pub struct ScopeTable<'a>(HashMap<* const dyn Scope, ScopeInfo<'a>>);
 
 impl<'a> ScopeTable<'a> {
     pub fn new() -> Self {
         let mut table = HashMap::new();
-        table.insert(&GLOBAL as * const ScopeNode, ScopeData { parent_scope: &GLOBAL, declarations: vec![] });
+        table.insert(&GLOBAL as * const dyn Scope, ScopeInfo { parent_scope: &GLOBAL, symbol_definitions: vec![] });
         return ScopeTable(table);
     }
+
+    pub fn get<'b>(&'b self, scope: &dyn Scope) -> &'b ScopeInfo<'a> {
+        self.0.get(&(scope as * const dyn Scope)).unwrap()
+    }
+
+    pub fn get_mut<'b>(&'b mut self, scope: &dyn Scope) -> &'b mut ScopeInfo<'a> {
+        self.0.get_mut(&(scope as * const dyn Scope)).unwrap()
+    }
+
+    fn insert(&mut self, scope: &dyn Scope, data: ScopeInfo<'a>) {
+        let old_value = self.0.insert(scope as * const dyn Scope, data);
+        assert!(old_value.is_none());
+    }
 }
 
-pub fn fill_sope_info_func<'a>(node: &'a Function, table: &mut ScopeTable<'a>) {
-    table.0.insert(node as * const ScopeNode, ScopeData { parent_scope: &GLOBAL, declarations: vec![] });
-    table.0.get_mut(&(&GLOBAL as * const ScopeNode)).unwrap().declarations.push(node);
-    match node {
-        Function::Function(ref _annotation, ref _ident, ref _params, ref _type, ref stmts) => {
-            fill_scope_info_stmts(stmts, table, node)
+pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTable<'a>) {
+    table.insert(node, ScopeInfo { 
+        parent_scope: &GLOBAL, 
+        symbol_definitions: Vec::from_iter(node.params.iter().map(|param| &**param as &'a dyn SymbolDefinition)) 
+    });
+    table.get_mut(&GLOBAL).symbol_definitions.push(node);
+    annotate_scope_info_stmts(&*node.body, table, node)
+}
+
+fn annotate_scope_info_stmts<'a>(node: &'a StmtsNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) {
+    table.insert(node, ScopeInfo { parent_scope: node, symbol_definitions: vec![] });
+    for stmt in &node.stmts {
+        annotate_scope_info_stmt(&**stmt, table, node);
+    }
+}
+
+fn annotate_scope_info_stmt<'a>(node: &'a dyn StmtNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) {
+    match node.get_kind() {
+        StmtKind::Assignment(_stmt) => { },
+        StmtKind::Block(stmt) => {
+            annotate_scope_info_stmts(&*stmt.block, table, parent_scope);
+        },
+        StmtKind::Declaration(stmt) => {
+            table.get_mut(parent_scope).symbol_definitions.push(stmt);
+        },
+        StmtKind::Expr(_stmt) => { },
+        StmtKind::If(stmt) => {
+            annotate_scope_info_stmts(&*stmt.block, table, parent_scope);
+        },
+        StmtKind::Return(stmt) => { },
+        StmtKind::While(stmt) => {
+            annotate_scope_info_stmts(&*stmt.block, table, parent_scope);
         }
     }
 }
 
-fn fill_scope_info_stmts<'a>(node: &'a Stmts, table: &mut ScopeTable<'a>, parent_scope: &'a ScopeNode) {
-    table.0.insert(node as * const ScopeNode, ScopeData { parent_scope: node, declarations: vec![] });
-    match node {
-        Stmts::Stmts(ref _annotation, ref stmts) => {
-            for stmt in stmts {
-            }
-        }
-    }
-}
-
-fn fill_scope_info_stmt<'a>(node: &'a Stmt, table: &mut ScopeTable<'a>, parent_scope: &'a ScopeNode) {
-    match node {
-        Stmt::Assignment(ref _annotation, ref _assignee, ref _expr) => { 
-            unimplemented!();
-            //let parent_scope_ptr: * const ScopeNode = parent_scope as * const (dyn ScopeNode + 'static);
-            //table.0.get_mut(&parent_scope_ptr).unwrap().declarations.push(node);
-        },
-        Stmt::Block(ref _annotation, ref stmts) => {
-            fill_scope_info_stmts(stmts, table, parent_scope);
-        },
-        Stmt::Declaration(ref _annotation, ref _type, ref _ident, ref _expr) => { },
-        Stmt::Expr(ref _annotation, ref _expr) => { },
-        Stmt::If(ref _annotation, ref _cond, ref stmts) => {
-            fill_scope_info_stmts(stmts, table, parent_scope);
-        },
-        Stmt::Return(ref _annotation, ref _expr) => { },
-        Stmt::While(ref _annotation, ref _expr, ref stmts) => {
-            fill_scope_info_stmts(stmts, table, parent_scope);
-        }
-    }
-}
-
-macro_rules! derive_scope_node {
-    ($name:ident) => {
-        impl ScopeNode for $name {
-            fn dynamic_cast_node(&self) -> Option<&dyn Node> {
-                Some(self)
-            }
-        }
-    };
-}
-
-derive_scope_node!(Function);
-derive_scope_node!(Stmts);
+impl Scope for FunctionNode {}
+impl Scope for StmtsNode {}
 
 impl Debug for GlobalScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,15 +109,32 @@ impl Debug for GlobalScope {
     }
 }
 
-impl ScopeNode for GlobalScope {
-    fn dynamic_cast_global(&self) -> Option<&GlobalScope> {
-        Some(self)
+impl Scope for GlobalScope {}
+
+impl SymbolDefinition for FunctionNode {
+    fn get_identifier(&self) -> &Identifier {
+        &self.ident
     }
 
-    fn dynamic_cast_node(&self) -> Option<&dyn Node> {
-        None
+    fn get_kind<'a>(&'a self) -> SymbolDefinitionKind<'a> {
+        SymbolDefinitionKind::Function(&self)
     }
 }
+impl SymbolDefinition for VariableDeclarationNode {
+    fn get_identifier(&self) -> &Identifier {
+        &self.ident
+    }
 
-impl DeclarationNode for Function {}
-impl DeclarationNode for Stmt {}
+    fn get_kind<'a>(&'a self) -> SymbolDefinitionKind<'a> {
+        SymbolDefinitionKind::LocalVar(&self)
+    }
+}
+impl SymbolDefinition for ParameterNode {
+    fn get_identifier(&self) -> &Identifier {
+        &self.ident
+    }
+
+    fn get_kind<'a>(&'a self) -> SymbolDefinitionKind<'a> {
+        SymbolDefinitionKind::Parameter(&self)
+    }
+}
