@@ -12,10 +12,15 @@ use lexer::tokens::*;
 use parser::parser_gen::Parse;
 use lexer::lexer::lex;
 use parser::ast::*;
-//use language::scope::{ ScopeTable, fill_sope_info_func };
+use language::scope::{ ScopeTable, annotate_sope_info_func };
+use language::symbol::{ SymbolTable, annotate_symbols_function };
 
 fn main() {
 	let mut stream = lex("fn test(a: int[], b: int[],): int { let length: int = len(a); return a[0] + b[0] + length; }".to_owned());
-	let function = FunctionNode::parse(&mut stream);
-	println!("{:?}", function);
+	let function = FunctionNode::parse(&mut stream).unwrap();
+	let mut scopes = ScopeTable::new();
+	annotate_sope_info_func(&function, &mut scopes).unwrap();
+	let mut symbols = SymbolTable::new();
+	annotate_symbols_function(&function, &scopes, &mut symbols).unwrap();
+	println!("{:?}", symbols.get(&function.ident).symbol_type);
 }

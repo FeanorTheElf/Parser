@@ -2,10 +2,12 @@ use super::super::lexer::error::CompileError;
 use super::super::parser::ast::*;
 use super::scope::{ SymbolDefinition, SymbolDefinitionKind };
 
+#[derive(Debug)]
 pub enum PrimitiveType {
     Int
 }
 
+#[derive(Debug)]
 pub enum Type {
     Primitive(PrimitiveType),
     Array(PrimitiveType, u32),
