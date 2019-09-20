@@ -1,10 +1,12 @@
 use super::super::parser::ast::*;
+use super::super::parser::ast_visitor::Visitable;
 use super::super::lexer::tokens::Identifier;
 use super::super::lexer::error::CompileError;
 use super::super::util::ref_eq::{ Ref, RefEq, ref_eq };
 use super::scope::{ ScopeTable, ScopeInfo, Scope, SymbolDefinition, GLOBAL, SymbolDefinitionKind };
 use super::obj_type::Type;
 
+use std::any::{ Any, TypeId };
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -75,7 +77,12 @@ pub fn annotate_symbols_function<'a>(node: &'a FunctionNode, scopes: &ScopeTable
     for param in &node.params {
         symbols.add_definition(&**param, node, scopes);
     }
-    annotate_symbols_stmts(&*node.body, scopes, symbols)?;
+    match node.implementation.get_kind() {
+        FunctionImplementationKind::Implemented(implementation) => {
+            annotate_symbols_stmts(&*implementation.stmts, scopes, symbols)?;
+        },
+        FunctionImplementationKind::Native(native) => { }
+    }
     return Ok(());
 }
 
@@ -118,8 +125,12 @@ fn annotate_symbols_stmt<'a>(node: &'a dyn StmtNode, parent_scopes: &'a dyn Scop
 }
 
 fn annotate_symbols_expr<'a>(node: &'a ExprNode, parent_scope: &'a dyn Scope, scopes: &ScopeTable<'a>, symbols: &mut SymbolTable<'a>) -> Result<(), CompileError> {
-    
-    return Ok(());
+    node.iterate(&mut |unary_expr| {
+        if let Some(variable_node) = Any::downcast_ref::<VariableNode>(unary_expr.dynamic()) {
+            symbols.add_use(variable_node, parent_scope, scopes)?;
+        }
+        return Ok(());
+    })
 }
 
 impl SymbolUse for VariableNode {

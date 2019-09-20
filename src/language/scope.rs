@@ -81,7 +81,12 @@ pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTabl
         table.get_mut(node).add_definition(&**param);
     }
     table.get_mut(&GLOBAL).add_definition(node)?;
-    annotate_scope_info_stmts(&*node.body, table, node)?;
+    match node.implementation.get_kind() {
+        FunctionImplementationKind::Implemented(implementation) => {
+            annotate_scope_info_stmts(&*implementation.stmts, table, node)?;
+        },
+        FunctionImplementationKind::Native(native) => { }
+    }
     return Ok(());
 }
 

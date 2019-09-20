@@ -10,6 +10,7 @@ type Annotation = TextPosition;
 pub trait Node : Debug + Any {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
+	fn dynamic(&self) -> &(dyn Any + 'static);
 }
 
 #[derive(Debug)]
@@ -18,14 +19,61 @@ pub struct FunctionNode {
 	pub ident: Identifier,
 	pub params: AstVec<ParameterNode>,
 	pub result: Box<dyn TypeNode>,
-	pub body: Box<StmtsNode>
+	pub implementation: Box<dyn FunctionImplementationNode>
 }
 
 impl FunctionNode {
-	pub fn new(annotation: Annotation, ident: Identifier, params: AstVec<ParameterNode>, result: Box<dyn TypeNode>, body: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, ident: Identifier, params: AstVec<ParameterNode>, result: Box<dyn TypeNode>, implementation: Box<dyn FunctionImplementationNode>) -> Self {
 		FunctionNode {
-			annotation, ident, params, result, body
+			annotation, ident, params, result, implementation
 		}
+	}
+}
+
+pub trait FunctionImplementationNode : Node {
+	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a>;
+}
+
+pub enum FunctionImplementationKind<'a> {
+	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
+}
+
+#[derive(Debug)]
+pub struct NativeFunctionNode {
+	annotation: Annotation
+}
+
+impl NativeFunctionNode {
+	pub fn new(annotation: Annotation) -> Self {
+		NativeFunctionNode {
+			annotation
+		}
+	}
+}
+
+impl FunctionImplementationNode for NativeFunctionNode {
+	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a> {
+		FunctionImplementationKind::Native(&self)
+	}
+}
+
+#[derive(Debug)]
+pub struct ImplementedFunctionNode {
+	annotation: Annotation,
+	pub stmts: Box<StmtsNode>
+}
+
+impl ImplementedFunctionNode {
+	pub fn new(annotation: Annotation, stmts: Box<StmtsNode>) -> Self {
+		ImplementedFunctionNode {
+			annotation, stmts
+		}
+	}
+}
+
+impl FunctionImplementationNode for ImplementedFunctionNode {
+	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a> {
+		FunctionImplementationKind::Implemented(&self)
 	}
 }
 
@@ -830,11 +878,17 @@ macro_rules! impl_node {
 			fn get_annotation_mut(&mut self) -> &mut Annotation {
 				&mut self.annotation
 			}
+
+			fn dynamic(&self) -> &(dyn Any + 'static) {
+				self
+			}
 		}
 	};
 }
 
 impl_node!(FunctionNode);
+impl_node!(NativeFunctionNode);
+impl_node!(ImplementedFunctionNode);
 impl_node!(ParameterNode);
 impl_node!(StmtsNode);
 impl_node!(VariableDeclarationNode);

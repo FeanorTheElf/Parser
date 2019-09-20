@@ -3,14 +3,14 @@ use super::super::lexer::error::CompileError;
 
 type VisitorReturnType = Result<(), CompileError>;
 
-pub trait Visitor<T: ?Sized> {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&T) -> VisitorReturnType;
+pub trait Visitable<T: ?Sized> {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a T) -> VisitorReturnType, T: 'a;
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlOr {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlOr {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         self.head.iterate(f)?;
         for part in &self.tail {
@@ -20,9 +20,9 @@ impl Visitor<dyn UnaryExprNode> for ExprNodeLvlOr {
     }
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlAnd {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlAnd {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         self.head.iterate(f)?;
         for part in &self.tail {
@@ -32,9 +32,9 @@ impl Visitor<dyn UnaryExprNode> for ExprNodeLvlAnd {
     }
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlCmp {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlCmp {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         self.head.iterate(f)?;
         for part in &self.tail {
@@ -44,9 +44,9 @@ impl Visitor<dyn UnaryExprNode> for ExprNodeLvlCmp {
     }
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlAdd {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlAdd {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         self.head.iterate(f)?;
         for part in &self.tail {
@@ -56,9 +56,9 @@ impl Visitor<dyn UnaryExprNode> for ExprNodeLvlAdd {
     }
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlMult {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlMult {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         self.head.iterate(f)?;
         for part in &self.tail {
@@ -68,9 +68,9 @@ impl Visitor<dyn UnaryExprNode> for ExprNodeLvlMult {
     }
 }
 
-impl Visitor<dyn UnaryExprNode> for ExprNodeLvlIndex {
-    fn iterate<F>(&self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&dyn UnaryExprNode) -> VisitorReturnType 
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlIndex {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
         f(&*self.head)?;
         for part in &self.tail {

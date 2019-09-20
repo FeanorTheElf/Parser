@@ -70,6 +70,15 @@ macro_rules! rule_alt_parser {
 			els
 		}, rule_alt_parser!($stream; $($tail)*)).flatten()
     };
+	($stream:ident; [ $name:ident ] $($tail:tt)*) => {
+        ({
+			if $name::guess_can_parse($stream) {
+				Some($name::parse($stream)?)
+			} else {
+				None
+			}
+		}, rule_alt_parser!($stream; $($tail)*)).flatten()
+    };
 	($stream:ident; Token#$token:ident $($tail:tt)*) => {
         {($stream).expect_next(&Token::$token)?; rule_alt_parser!($stream; $($tail)*)}
     };

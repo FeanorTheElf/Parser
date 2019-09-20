@@ -47,6 +47,9 @@ fn lex_keyword(string: &str) -> Option<Token> {
 		"new" => Some(Token::New),
 		"let" => Some(Token::Let),
 		"void" => Some(Token::Void),
+		"read" => Some(Token::Read),
+		"write" => Some(Token::Write),
+		"native" => Some(Token::Native),
 		_ => None
 	}
 }

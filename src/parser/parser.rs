@@ -6,7 +6,9 @@ use super::parser_gen::{ Parse, Flatten };
 
 use std::vec::Vec;
 
-impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose) }
+impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
+impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
+                                             | ImplementedFunctionNode(Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose)}
 impl_parse!{ ParameterNode => ParameterNode(identifier Token#Colon TypeNode Token#Comma) }
 impl_parse!{ StmtsNode => StmtsNode({StmtNode}) }
 
