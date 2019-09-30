@@ -5,9 +5,7 @@ use std::fmt::{ Display, Formatter, Error };
 use std::vec::Vec;
 use std::string::String;
 
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[derive(Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier {
 	pub name: String,
 }
@@ -18,9 +16,7 @@ impl Display for Identifier {
     }
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[derive(Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Literal {
 	pub value: i32
 }

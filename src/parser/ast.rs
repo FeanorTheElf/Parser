@@ -1,5 +1,6 @@
 use super::super::lexer::tokens::{Identifier, Literal};
 use super::super::lexer::position::TextPosition;
+use super::super::util::dyn_clone::DynClone;
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -11,6 +12,20 @@ pub trait Node : Debug + Any {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
 	fn dynamic(&self) -> &(dyn Any + 'static);
+	fn dyn_clone(&self) -> Box<dyn Node>;
+}
+
+macro_rules! impl_node_type {
+	($traittype:ident for $nodetype:ty { $($im:tt)* }) => {
+		impl $traittype for $nodetype {
+
+			fn dyn_clone(&self) -> Box<dyn $traittype> {
+				Box::new(self.clone())
+			}
+
+			$($im)*
+		}
+	};
 }
 
 #[derive(Debug)]
@@ -30,15 +45,28 @@ impl FunctionNode {
 	}
 }
 
+impl Clone for FunctionNode {
+	fn clone(&self) -> Self {
+		FunctionNode {
+			annotation: self.annotation.clone(),
+			ident: self.ident.clone(),
+			params: self.params.clone(),
+			result: self.result.dyn_clone(),
+			implementation: self.implementation.dyn_clone()
+		}
+	}
+}
+
 pub trait FunctionImplementationNode : Node {
 	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a>;
+	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
 }
 
 pub enum FunctionImplementationKind<'a> {
 	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NativeFunctionNode {
 	annotation: Annotation
 }
@@ -51,13 +79,13 @@ impl NativeFunctionNode {
 	}
 }
 
-impl FunctionImplementationNode for NativeFunctionNode {
+impl_node_type!(FunctionImplementationNode for NativeFunctionNode {
 	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a> {
 		FunctionImplementationKind::Native(&self)
 	}
-}
+});
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImplementedFunctionNode {
 	annotation: Annotation,
 	pub stmts: Box<StmtsNode>
@@ -77,7 +105,7 @@ impl FunctionImplementationNode for ImplementedFunctionNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParameterNode {
 	annotation: Annotation,
 	pub ident: Identifier,
@@ -92,7 +120,7 @@ impl ParameterNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StmtsNode {
 	annotation: Annotation,
 	pub stmts: AstVec<dyn StmtNode>
@@ -108,6 +136,7 @@ impl StmtsNode {
 
 pub trait StmtNode : Node {
 	fn get_kind<'a>(&'a self) -> StmtKind<'a>;
+	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
 
 pub enum StmtKind<'a> {
@@ -120,7 +149,7 @@ pub enum StmtKind<'a> {
 	Return(&'a ReturnNode)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableDeclarationNode {
 	annotation: Annotation,
 	pub variable_type: Box<dyn TypeNode>,
@@ -142,7 +171,7 @@ impl StmtNode for VariableDeclarationNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignmentNode {
 	annotation: Annotation,
 	pub assignee: Box<ExprNode>,
@@ -163,7 +192,7 @@ impl StmtNode for AssignmentNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprStmtNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
@@ -183,7 +212,7 @@ impl StmtNode for ExprStmtNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfNode {
 	annotation: Annotation,
 	pub condition: Box<ExprNode>,
@@ -204,7 +233,7 @@ impl StmtNode for IfNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileNode {
 	annotation: Annotation,
 	pub condition: Box<ExprNode>,
@@ -225,7 +254,7 @@ impl StmtNode for WhileNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockNode {
 	annotation: Annotation,
 	pub block: Box<StmtsNode>
@@ -245,7 +274,7 @@ impl StmtNode for BlockNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
@@ -267,13 +296,14 @@ impl StmtNode for ReturnNode {
 
 pub trait TypeNode : Node {
 	fn get_kind<'a>(&'a self) -> TypeKind<'a>;
+	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
 pub enum TypeKind<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArrTypeNode {
 	annotation: Annotation,
 	pub base_type: Box<dyn BaseTypeNode>,
@@ -302,7 +332,7 @@ impl TypeNode for ArrTypeNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VoidTypeNode {
 	annotation: Annotation
 }
@@ -323,7 +353,7 @@ impl TypeNode for VoidTypeNode {
 
 pub type ExprNode = ExprNodeLvlOr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlOr {
 	annotation: Annotation,
 	pub head: Box<ExprNodeLvlAnd>,
@@ -338,7 +368,7 @@ impl ExprNodeLvlOr {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrPartNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAnd>
@@ -352,7 +382,7 @@ impl OrPartNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlAnd {
 	annotation: Annotation,
 	pub head: Box<ExprNodeLvlCmp>,
@@ -367,7 +397,7 @@ impl ExprNodeLvlAnd {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AndPartNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlCmp>
@@ -381,7 +411,7 @@ impl AndPartNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlCmp {
 	annotation: Annotation, 
 	pub head: Box<ExprNodeLvlAdd>,
@@ -399,6 +429,7 @@ impl ExprNodeLvlCmp {
 pub trait CmpPartNode : Node {
 	fn get_kind<'a>(&'a self) -> CmpPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlAdd;
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode>;
 }
 
 pub enum CmpPartKind<'a> {
@@ -410,7 +441,7 @@ pub enum CmpPartKind<'a> {
 	Gt(&'a CmpPartNodeGt)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeEq {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -434,7 +465,7 @@ impl CmpPartNode for CmpPartNodeEq {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeNeq {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -458,7 +489,7 @@ impl CmpPartNode for CmpPartNodeNeq {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeLeq {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -482,7 +513,7 @@ impl CmpPartNode for CmpPartNodeLeq {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeGeq {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -506,7 +537,7 @@ impl CmpPartNode for CmpPartNodeGeq {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeLs {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -530,7 +561,7 @@ impl CmpPartNode for CmpPartNodeLs {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmpPartNodeGt {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
@@ -554,7 +585,7 @@ impl CmpPartNode for CmpPartNodeGt {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlAdd {
 	annotation: Annotation,
 	pub head: Box<ExprNodeLvlMult>,
@@ -572,13 +603,14 @@ impl ExprNodeLvlAdd {
 pub trait SumPartNode : Node {
 	fn get_kind<'a>(&'a self) -> SumPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlMult;
+	fn dyn_clone(&self) -> Box<dyn SumPartNode>;
 }
 
 pub enum SumPartKind<'a> {
 	Add(&'a SumPartNodeAdd), Subtract(&'a SumPartNodeSub)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SumPartNodeAdd {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlMult>
@@ -602,7 +634,7 @@ impl SumPartNode for SumPartNodeAdd {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SumPartNodeSub {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlMult>
@@ -626,7 +658,7 @@ impl SumPartNode for SumPartNodeSub {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlMult {
 	annotation: Annotation,
 	pub head: Box<ExprNodeLvlIndex>,
@@ -644,13 +676,14 @@ impl ExprNodeLvlMult {
 pub trait ProductPartNode : Node {
 	fn get_kind<'a>(&'a self) -> ProductPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlIndex;
+	fn dyn_clone(&self) -> Box<dyn SumPartNode>;
 }
 
 pub enum ProductPartKind<'a> {
 	Mult(&'a ProductPartNodeMult), Divide(&'a ProductPartNodeDivide)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProductPartNodeMult {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlIndex>
@@ -674,7 +707,7 @@ impl ProductPartNode for ProductPartNodeMult {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProductPartNodeDivide {
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlIndex>
@@ -698,7 +731,7 @@ impl ProductPartNode for ProductPartNodeDivide {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprNodeLvlIndex {
 	annotation: Annotation,
 	pub head: Box<dyn UnaryExprNode>,
@@ -713,7 +746,7 @@ impl ExprNodeLvlIndex {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IndexPartNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
@@ -729,6 +762,7 @@ impl IndexPartNode {
 
 pub trait UnaryExprNode : Node {
 	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a>;
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
 }
 
 pub enum UnaryExprKind<'a> {
@@ -739,7 +773,7 @@ pub enum UnaryExprKind<'a> {
 	NewExpr(&'a NewExprNode)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BracketExprNode {
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
@@ -759,7 +793,7 @@ impl UnaryExprNode for BracketExprNode {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralNode {
 	annotation: Annotation,
 	pub literal: Literal
@@ -777,9 +811,13 @@ impl UnaryExprNode for LiteralNode {
 	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
 		UnaryExprKind::Literal(&self)
 	}
+	
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
+		Box::new(self.clone())
+	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableNode {
 	annotation: Annotation,
 	pub identifier: Identifier
@@ -797,9 +835,13 @@ impl UnaryExprNode for VariableNode {
 	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
 		UnaryExprKind::Variable(&self)
 	}
+	
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
+		Box::new(self.clone())
+	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionCallNode {
 	annotation: Annotation,
 	pub function: Identifier,
@@ -818,9 +860,13 @@ impl UnaryExprNode for FunctionCallNode {
 	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
 		UnaryExprKind::FunctionCall(&self)
 	}
+
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
+		Box::new(self.clone())
+	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NewExprNode {
 	annotation: Annotation,
 	pub base_type: Box<dyn BaseTypeNode>,
@@ -839,17 +885,22 @@ impl UnaryExprNode for NewExprNode {
 	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
 		UnaryExprKind::NewExpr(&self)
 	}
+
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
+		Box::new(self.clone())
+	}
 }
 
 pub trait BaseTypeNode : Node {
 	fn get_kind(&self) -> BaseTypeKind;
+	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
 pub enum BaseTypeKind {
 	Int
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntTypeNode {
 	annotation: Annotation
 }
@@ -866,6 +917,10 @@ impl BaseTypeNode for IntTypeNode {
 	fn get_kind(&self) -> BaseTypeKind {
 		BaseTypeKind::Int
 	}
+
+	fn dyn_clone(&self) -> Box<dyn BaseTypeNode> {
+		Box::new(self.clone())
+	}
 }
 
 macro_rules! impl_node {
@@ -881,6 +936,10 @@ macro_rules! impl_node {
 
 			fn dynamic(&self) -> &(dyn Any + 'static) {
 				self
+			}
+
+			fn dyn_clone(&self) -> Box<dyn Node> {
+				Box::new(self.clone())
 			}
 		}
 	};
