@@ -16,7 +16,7 @@ impl Display for Identifier {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Literal {
 	pub value: i32
 }

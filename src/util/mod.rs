@@ -1,6 +1,5 @@
 pub mod push_iter;
 pub mod ref_eq;
-pub mod dyn_clone;
 
 use std::ops::{ Div };
 
