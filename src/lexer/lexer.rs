@@ -32,6 +32,7 @@ fn lex_op(string: &str) -> Option<Token> {
 		"," => Some(Token::Comma),
 		":" => Some(Token::Colon),
 		"?" => Some(Token::Wildcard),
+		"&" => Some(Token::View),
 		_ => None
 	}
 }
@@ -75,6 +76,10 @@ fn is_alphanumeric(c: char) -> bool {
 	c == '_' || c.is_ascii_alphanumeric()
 }
 
+fn is_first_char_alphanumeric(string: &String) -> Option<bool> {
+	string.chars().next().map(|first| is_alphanumeric(first))
+}
+
 pub fn lex(mut input: String) -> Stream {
 	let mut result: Vec<PosToken> = vec![];
 	let mut current = String::new();
@@ -88,18 +93,19 @@ pub fn lex(mut input: String) -> Stream {
 				separator = true;
 			}
 		} else if is_alphanumeric(c) {
-			if current.chars().next().map(|first|!is_alphanumeric(first)).unwrap_or(false) {
+			if !is_first_char_alphanumeric(&current).unwrap_or(true) {
 				separator = true;
 			}
 		} else {
-			if current.chars().next().map(|first|is_alphanumeric(first)).unwrap_or(false) {
+			if is_first_char_alphanumeric(&current).unwrap_or(false) {
 				separator = true;
-			}
-			current.push(c);
-			let new_current_operator = lex_op(&current).is_some();
-			current.pop();
-			if lex_op(&current).is_some() && !new_current_operator {
-				separator = true;
+			} else {
+				current.push(c);
+				let new_current_operator = lex_op(&current).is_some();
+				current.pop();
+				if lex_op(&current).is_some() && !new_current_operator {
+					separator = true;
+				}
 			}
 		}
 		if separator {

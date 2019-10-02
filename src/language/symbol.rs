@@ -32,42 +32,41 @@ impl<'a> SymbolTable<'a> {
         self.0.get(&RefEq::from(ident)).unwrap()
     }
 
-    fn add_definition(&mut self, definition: &'a dyn SymbolDefinition, scope: &'a dyn Scope, scopes: &ScopeTable<'a>) -> Result<(), CompileError> 
+    fn add_definition(&mut self, definition: &'a dyn SymbolDefinition, definition_scope: &'a dyn Scope, scopes: &ScopeTable<'a>) -> Result<(), CompileError> 
     {
         let ident = definition.get_identifier();
 
-        let mut current_scope = scopes.get(scope).get_parent_scope();
-        while !ref_eq(current_scope, &GLOBAL) {
-            if let Some(duplicate_def) = scopes.get(current_scope).get_definition_of(ident) {
+        let parent_scope = scopes.get(definition_scope).get_parent_scope();
+        for def in scopes.visible_symbols_iter(parent_scope) {
+            if def.get_identifier() == ident {
                 return Err(CompileError::new(definition.get_annotation().clone(), 
-                    format!("Definition of {} shadows definition found at {}", *ident, duplicate_def.get_annotation())));
+                    format!("Definition of {} shadows definition found at {}", *ident, def.get_annotation())));
             }
-            current_scope = scopes.get(current_scope).get_parent_scope();
         }
         self.0.insert(Ref::from(definition.get_identifier()), SymbolInfo {
             symbol_definition: definition,
-            scope: scope,
+            scope: definition_scope,
             symbol_type: Type::calc_from(definition)?
         });
         return Ok(());
     }
 
-    fn add_use(&mut self, symbol: &'a dyn SymbolUse, scope: &'a dyn Scope, scopes: &ScopeTable<'a>) -> Result<(), CompileError> {
-        let ident = symbol.get_identifier();
-        let mut current_scope = scope;
-        while !ref_eq(current_scope, &GLOBAL) && scopes.get(current_scope).get_definition_of(ident).is_none() {
-            current_scope = scopes.get(current_scope).get_parent_scope();
-        }
-        if let Some(definition) = scopes.get(current_scope).get_definition_of(ident) {
-            self.0.insert(Ref::from(ident), SymbolInfo {
-                symbol_definition: definition,
+    fn add_use(&mut self, symbol: &'a dyn SymbolUse, use_scope: &'a dyn Scope, scopes: &ScopeTable<'a>) -> Result<(), CompileError> {
+        let identifier = symbol.get_identifier();
+        let definition = scopes.scopes_iter(use_scope)
+            .filter_map(|(scope, scope_info)| scope_info.get_definition_of(identifier).map(|def| (scope, def)))
+            .next();
+
+        if let Some((scope, def)) = definition {
+            self.0.insert(Ref::from(identifier), SymbolInfo {
+                symbol_definition: def,
                 scope: scope,
-                symbol_type: Type::calc_from(definition)?
+                symbol_type: Type::calc_from(def)?
             });
             return Ok(());
         } else {
             return Err(CompileError::new(symbol.get_annotation().clone(),
-                format!("Could not find definition of {}", *ident)));
+                format!("Could not find definition of {}", *identifier)));
         }
     }
 }

@@ -62,7 +62,8 @@ pub enum Token {
 	OpEqual,
 	OpUnequal,
 	OpNot,
-	Wildcard
+	Wildcard,
+	View
 }
 
 #[derive(Debug)]

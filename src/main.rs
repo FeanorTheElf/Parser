@@ -7,6 +7,7 @@ mod lexer;
 mod parser;
 mod language;
 mod la;
+mod backend;
 
 use lexer::tokens::*;
 use parser::parser_gen::Parse;

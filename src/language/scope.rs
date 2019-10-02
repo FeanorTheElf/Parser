@@ -27,7 +27,7 @@ pub enum SymbolDefinitionKind<'a> {
 
 #[derive(Debug)]
 pub struct ScopeInfo<'a> {
-    parent_scope: &'a dyn Scope,
+    parent_scope: Option<&'a dyn Scope>,
     symbol_definitions: Vec<&'a dyn SymbolDefinition>
 }
 
@@ -36,7 +36,7 @@ impl<'a> ScopeInfo<'a> {
         self.symbol_definitions.iter().find(|def| def.get_identifier() == identifier).map(|def| *def)
     }
 
-    pub fn get_parent_scope(&self) -> &'a dyn Scope {
+    pub fn get_parent_scope(&self) -> Option<&'a dyn Scope> {
         self.parent_scope
     }
 
@@ -54,18 +54,55 @@ impl<'a> ScopeInfo<'a> {
 #[derive(Debug)]
 pub struct ScopeTable<'a>(HashMap<Ref<'a, dyn Scope>, ScopeInfo<'a>>);
 
+pub struct DefinedSymbolsIter<'a, 'b, 'c> {
+    scopes: &'b ScopeTable<'a>,
+    parent_scope: Option<&'c dyn Scope>,
+    current_definitions_iter: std::slice::Iter<'b, &'a dyn SymbolDefinition>
+}
+
+pub struct ScopeIter<'a, 'b> {
+    scopes: &'b ScopeTable<'a>,
+    current_scope: Option<&'a dyn Scope>,
+}
+
 impl<'a> ScopeTable<'a> {
     pub fn new() -> Self {
         let mut table = HashMap::new();
-        table.insert(Ref::from(&GLOBAL as &dyn Scope), ScopeInfo { parent_scope: &GLOBAL, symbol_definitions: vec![] });
+        table.insert(Ref::from(&GLOBAL as &dyn Scope), ScopeInfo { parent_scope: None, symbol_definitions: vec![] });
         return ScopeTable(table);
     }
 
-    pub fn get<'b, 'c>(&'b self, scope: &'c dyn Scope) -> &'b ScopeInfo<'a> {
+    pub fn get<'b>(&'b self, scope: &dyn Scope) -> &'b ScopeInfo<'a> {
         self.0.get(&RefEq::from(scope)).unwrap()
     }
 
-    pub fn get_mut<'b, 'c>(&'b mut self, scope: &'c dyn Scope) -> &'b mut ScopeInfo<'a> {
+    pub fn visible_symbols_iter<'b, 'c>(&'b self, scope: Option<&'c dyn Scope>) -> DefinedSymbolsIter<'a, 'b, 'c> 
+        where 'a: 'c
+    {
+        if let Some(scope) = scope {
+            let scope_info = self.get(scope);
+            DefinedSymbolsIter {
+                scopes: self,
+                parent_scope: scope_info.get_parent_scope(),
+                current_definitions_iter: scope_info.symbol_definitions.iter()
+            }
+        } else {
+            DefinedSymbolsIter {
+                scopes: self,
+                parent_scope: None,
+                current_definitions_iter: [].iter()
+            }
+        }
+    }
+
+    pub fn scopes_iter<'b>(&'b self, scope: &'a dyn Scope) -> ScopeIter<'a, 'b> {
+        ScopeIter {
+            scopes: self,
+            current_scope: Some(scope)
+        }
+    }
+
+    pub fn get_mut<'b>(&'b mut self, scope: & dyn Scope) -> &'b mut ScopeInfo<'a> {
         self.0.get_mut(&RefEq::from(scope)).unwrap()
     }
 
@@ -76,7 +113,7 @@ impl<'a> ScopeTable<'a> {
 }
 
 pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTable<'a>) -> Result<(), CompileError> {
-    table.insert(node, ScopeInfo { parent_scope: &GLOBAL, symbol_definitions: vec![] });
+    table.insert(node, ScopeInfo { parent_scope: Some(&GLOBAL), symbol_definitions: vec![] });
     for param in &node.params {
         table.get_mut(node).add_definition(&**param);
     }
@@ -91,7 +128,7 @@ pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTabl
 }
 
 fn annotate_scope_info_stmts<'a>(node: &'a StmtsNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) -> Result<(), CompileError> {
-    table.insert(node, ScopeInfo { parent_scope: parent_scope, symbol_definitions: vec![] });
+    table.insert(node, ScopeInfo { parent_scope: Some(parent_scope), symbol_definitions: vec![] });
     for stmt in &node.stmts {
         annotate_scope_info_stmt(&**stmt, table, node)?;
     }
@@ -149,6 +186,7 @@ impl SymbolDefinition for VariableDeclarationNode {
         SymbolDefinitionKind::LocalVar(&self)
     }
 }
+
 impl SymbolDefinition for ParameterNode {
     fn get_identifier(&self) -> &Identifier {
         &self.ident
@@ -156,5 +194,40 @@ impl SymbolDefinition for ParameterNode {
 
     fn get_kind<'a>(&'a self) -> SymbolDefinitionKind<'a> {
         SymbolDefinitionKind::Parameter(&self)
+    }
+}
+
+impl<'a, 'b, 'c> Iterator for DefinedSymbolsIter<'a, 'b, 'c> 
+    where 'a: 'c
+{
+    type Item = &'a dyn SymbolDefinition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(definition) = self.current_definitions_iter.next() {
+                return Some(*definition);
+            } else if let Some(parent_scope) = self.parent_scope {
+                let parent_scope_info = self.scopes.get(parent_scope);
+                self.parent_scope = parent_scope_info.get_parent_scope();
+                self.current_definitions_iter = parent_scope_info.symbol_definitions.iter();
+            } else {
+                return None;
+            }
+        }
+    }
+}
+
+impl<'a, 'b> Iterator for ScopeIter<'a, 'b> 
+{
+    type Item = (&'a dyn Scope, &'b ScopeInfo<'a>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(scope) = self.current_scope {
+            let scope_info = self.scopes.get(scope);
+            self.current_scope = scope_info.get_parent_scope();
+            Some((scope, scope_info))
+        } else {
+            None
+        }
     }
 }
