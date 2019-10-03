@@ -88,7 +88,8 @@ impl<'a> SymbolTable<'a> {
         for def in scopes.visible_symbols_iter(parent_scope) {
             if def.get_identifier() == ident {
                 return Err(CompileError::new(definition.get_annotation().clone(), 
-                    format!("Definition of {} shadows definition found at {}", *ident, def.get_annotation())));
+                    format!("Definition of {} shadows definition found at {}", *ident, def.get_annotation()),
+                    ErrorType::ShadowedDefinition));
             }
         }
         return Ok(());
@@ -140,7 +141,8 @@ impl<'a> SymbolTable<'a> {
             return Ok(());
         } else {
             return Err(CompileError::new(symbol.get_annotation().clone(),
-                format!("Could not find definition of {}", *identifier)));
+                format!("Could not find definition of {}", *identifier),
+                ErrorType::UndefinedSymbol));
         }
     }
 }
@@ -241,4 +243,26 @@ fn test_correct_definitions() {
         .downcast_ref::<BlockNode>().unwrap().block.stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
         .dynamic().downcast_ref::<FunctionCallNode>().unwrap();
     assert_eq!(vec![ Ref::from(&len_use.function) ], symbols.get(&len.ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
+}
+
+#[test]
+fn test_definition_not_found() {
+    let function = FunctionNode::parse(&mut lex("fn test(): void { let b: int = a; }".to_owned())).unwrap();
+
+    let mut scopes = ScopeTable::new();
+    assert!(annotate_sope_info_func(&function, &mut scopes).is_ok());
+
+    let mut symbols = SymbolTable::new();
+    assert_eq!(&TextPosition::create(0, 31), annotate_symbols_function(&function, &scopes, &mut symbols).unwrap_err().get_position());
+}
+
+#[test]
+fn test_definition_shadowed() {
+    let function = FunctionNode::parse(&mut lex("fn b(a: int,): void { let b: int = a; }".to_owned())).unwrap();
+
+    let mut scopes = ScopeTable::new();
+    assert!(annotate_sope_info_func(&function, &mut scopes).is_ok());
+
+    let mut symbols = SymbolTable::new();
+    assert_eq!(&TextPosition::create(0, 22), annotate_symbols_function(&function, &scopes, &mut symbols).unwrap_err().get_position());
 }

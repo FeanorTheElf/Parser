@@ -63,6 +63,7 @@ impl Parse for dyn TypeNode {
 	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>  {
 		let pos = stream.pos();
 		if stream.ends(&Token::Void) {
+			stream.expect_next(&Token::Void)?;
 			return Ok(Box::new(VoidTypeNode::new(pos)));
 		} else if BaseTypeNode::guess_can_parse(stream) {
 			let base_type = BaseTypeNode::parse(stream)?;
@@ -74,7 +75,7 @@ impl Parse for dyn TypeNode {
 			}
 			return Ok(Box::new(ArrTypeNode::new(pos, base_type, dimensions)));
 		} else {
-			panic!("Expected type, got {:?} at position {}", stream.peek(), stream.pos());
+			return Err(CompileError::new(stream.pos(), format!("Expected type, got {:?}", stream.peek()), ErrorType::SyntaxError));
 		}
 	}
 }
@@ -135,7 +136,7 @@ impl Parse for dyn UnaryExprNode {
 		} else if stream.ends(&Token::New) {
 			return Ok(Box::new(*NewExprNode::parse(stream)?));
 		} else {
-			panic!("Expected 'new', '(', identifier or literal, got {:?} at position {}", stream.peek(), stream.pos());
+			return Err(CompileError::new(stream.pos(), format!("Expected 'new', '(', identifier or literal, got {:?}", stream.peek()), ErrorType::SyntaxError));
 		}
 	}
 }

@@ -40,7 +40,7 @@ impl Type {
                     return Ok(var_type);
                 } else {
                     return Err(CompileError::new(definition.get_annotation().clone(),
-                        format!("Local variable cannot have type void")));
+                        format!("Local variable cannot have type void"), ErrorType::VariableVoidType));
                 }
             },
             SymbolDefinitionKind::Parameter(ref param) => {
@@ -48,7 +48,7 @@ impl Type {
                     return Ok(var_type);
                 } else {
                     return Err(CompileError::new(definition.get_annotation().clone(),
-                        format!("Parameter cannot have type void")));
+                        format!("Parameter cannot have type void"), ErrorType::VariableVoidType));
                 }
             }
         }

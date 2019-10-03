@@ -1,5 +1,5 @@
 use super::position::TextPosition;
-use super::error::CompileError;
+use super::error::{ CompileError, ErrorType };
 
 use std::fmt::{ Display, Formatter, Error };
 use std::vec::Vec;
@@ -66,6 +66,52 @@ pub enum Token {
 	View
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		match self {
+			Token::Literal(ref literal) => write!(f, "'{}'", literal.value),
+			Token::Identifier(ref identifier) => write!(f, "'{}'", identifier.name),
+			Token::If => write!(f, "'if'"),
+			Token::PFor => write!(f, "'pfor'"),
+			Token::Read => write!(f, "'read'"),
+			Token::Write => write!(f, "'write'"),
+			Token::Native => write!(f, "'native'"),
+			Token::While => write!(f, "'while'"),
+			Token::Int => write!(f, "'int'"),
+			Token::Fn => write!(f, "'fn'"),
+			Token::Return => write!(f, "'return'"),
+			Token::New => write!(f, "'new'"),
+			Token::Let => write!(f, "'let'"),
+			Token::Void => write!(f, "'void'"),
+			Token::Assign => write!(f, "'='"),
+			Token::SquareBracketOpen => write!(f, "'['"),
+			Token::SquareBracketClose => write!(f, "']'"),
+			Token::BracketOpen => write!(f, "'('"),
+			Token::BracketClose => write!(f, "')'"),
+			Token::CurlyBracketOpen => write!(f, "'{{'"),
+			Token::CurlyBracketClose => write!(f, "'}}'"),
+			Token::Semicolon => write!(f, "';'"),
+			Token::Comma => write!(f, "','"),
+			Token::Colon => write!(f, "':'"),
+			Token::OpOr => write!(f, "'||'"),
+			Token::OpAnd => write!(f, "'&&'"),
+			Token::OpAdd => write!(f, "'+'"),
+			Token::OpMult => write!(f, "'*'"),
+			Token::OpDivide => write!(f, "'/'"),
+			Token::OpSubtract => write!(f, "'-'"),
+			Token::OpLess => write!(f, "'<'"),
+			Token::OpGreater => write!(f, "'>'"),
+			Token::OpLessEq => write!(f, "'<='"),
+			Token::OpGreaterEq => write!(f, "'>='"),
+			Token::OpEqual => write!(f, "'=='"),
+			Token::OpUnequal => write!(f, "'!='"),
+			Token::OpNot => write!(f, "'!'"),
+			Token::Wildcard => write!(f, "'?'"),
+			Token::View => write!(f, "'&'")
+		}
+    }
+}
+
 #[derive(Debug)]
 pub struct PosToken {
 	token: Token,
@@ -105,7 +151,7 @@ impl Stream {
 		let pos = self.pos();
 		match self.next() {
 			Token::Literal(lit) => Ok(lit),
-			_value => Err(CompileError::new(pos, format!("Expected literal, got {:?}", _value)))
+			_value => Err(CompileError::new(pos, format!("Expected literal, got {:?}", _value), ErrorType::SyntaxError))
 		}
 	}
 
@@ -113,7 +159,7 @@ impl Stream {
 		let pos = self.pos();
 		match self.next() {
 			Token::Identifier(id) => Ok(id),
-			_value => Err(CompileError::new(pos, format!("Expected identifier, got {:?}", _value)))
+			_value => Err(CompileError::new(pos, format!("Expected identifier, got {:?}", _value), ErrorType::SyntaxError))
 		}
 	}
 
@@ -121,11 +167,11 @@ impl Stream {
 		let pos = self.pos();
 		match self.data.pop() {
 			Some(value) => if *token != value.token {
-				Err(CompileError::new(pos, format!("Expected token {:?}, but got token {:?}", token, value.token)))
+				Err(CompileError::new(pos, format!("Expected token {:?}, but got token {:?}", token, value.token), ErrorType::SyntaxError))
 			} else {
 				Ok(())
 			},
-			None => Err(CompileError::new(pos, format!("Expected token {:?}, but got end of stream", token)))
+			None => Err(CompileError::new(pos, format!("Expected token {:?}, but got end of stream", token), ErrorType::SyntaxError))
 		}
 	}
 

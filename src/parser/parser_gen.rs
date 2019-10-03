@@ -1,5 +1,5 @@
-use super::super::lexer::tokens::{Stream, Token};
-use super::super::lexer::error::CompileError;
+use super::super::lexer::tokens::{ Stream, Token };
+use super::super::lexer::error::{ CompileError, ErrorType };
 use super::Parse;
 use super::ast::AstVec;
 use std::vec::Vec;
@@ -83,7 +83,6 @@ macro_rules! rule_alt_parser {
     };
 }
 
-
 macro_rules! rule_base_alt_parser {
 	($stream:ident; $else_code:tt; $variant:ident(identifier $($tail:tt)*)) => {
         if $stream.ends_ident() {
@@ -119,15 +118,31 @@ macro_rules! rule_base_alt_parser {
     };
 }
 
+macro_rules! rule_alt_expectation_as_printable {
+	((identifier $($tail:tt)*)) => {
+        "identifier"
+    };
+	(({ $name:ident } $($tail:tt)*)) => {
+        stringify!($name)
+    };
+	((Token#$token:ident $($tail:tt)*)) => {
+        Token::$token
+    };
+    (($name:ident $($tail:tt)*)) => {
+        stringify!($name)
+    };
+}
+
 macro_rules! rule_parser {
-	($stream:ident; $result:ty; $variant:ident $alt:tt) => {
+	($stream:ident; $result:ty; $expected_string:expr; $variant:ident $alt:tt) => {
         rule_base_alt_parser!($stream; {
-			panic!("Unexpected tokens while parsing {} at position {}", stringify!($result), ($stream).pos())
+			Err(CompileError::new(($stream.pos()), 
+				format!("{} or {}, got {}", $expected_string, rule_alt_expectation_as_printable!($alt), ($stream).peek().unwrap()), ErrorType::SyntaxError))
 		}; $variant $alt)
     };
-    ($stream:ident; $result:ty; $variant:ident $alt:tt | $($tail:tt)*) => {
+    ($stream:ident; $result:ty; $expected_string:expr; $variant:ident $alt:tt | $($tail:tt)*) => {
 		rule_base_alt_parser!($stream; {
-			rule_parser!($stream; $result; $($tail)*)
+			rule_parser!($stream; $result;  format!("{}, {}", $expected_string, rule_alt_expectation_as_printable!($alt)); $($tail)*)
 		}; $variant $alt)
     };
 }
@@ -163,7 +178,7 @@ macro_rules! impl_parse {
 				rule_guess_can_parse!(stream; $($tail)*)
 			}
 			fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError> {
-				rule_parser!(stream; $result; $($tail)*)
+				rule_parser!(stream; $result; "Expected "; $($tail)*)
 			}
 		}
 	}

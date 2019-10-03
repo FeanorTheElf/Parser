@@ -41,7 +41,8 @@ impl<'a> ScopeInfo<'a> {
     fn add_definition(&mut self, def: &'a dyn SymbolDefinition) -> Result<(), CompileError> {
         if let Some(dupl_def) = self.get_definition_of(def.get_identifier()) {
             return Err(CompileError::new(def.get_annotation().clone(), 
-                format!("Duplicate definition of symbol {}, previous definition found at {}", *def.get_identifier(), dupl_def.get_annotation())));
+                format!("Duplicate definition of symbol {}, previous definition found at {}", *def.get_identifier(), dupl_def.get_annotation()),
+                ErrorType::DuplicateDefinition));
         } else {
             self.symbol_definitions.push(def);
             return Ok(());
