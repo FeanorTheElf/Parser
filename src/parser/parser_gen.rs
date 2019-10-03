@@ -1,12 +1,8 @@
 use super::super::lexer::tokens::{Stream, Token};
 use super::super::lexer::error::CompileError;
+use super::Parse;
 use super::ast::AstVec;
 use std::vec::Vec;
-
-pub trait Parse {
-	fn guess_can_parse(stream: &Stream) -> bool;
-	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>;
-}
 
 pub trait Flatten {
 	type Flattened;

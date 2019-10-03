@@ -10,8 +10,8 @@ type Annotation = TextPosition;
 pub trait Node : Debug + Any {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
-	fn dynamic(&self) -> &(dyn Any + 'static);
 	fn dyn_clone_node(&self) -> Box<dyn Node>;
+	fn dynamic(&self) -> &dyn Any;
 }
 
 #[derive(Debug)]
@@ -351,6 +351,13 @@ pub trait TypeNode : Node {
 	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
+impl PartialEq for dyn TypeNode {
+	fn eq(&self, other: &Self) -> bool {
+		self.get_kind() == other.get_kind()
+	}
+}
+
+#[derive(PartialEq)]
 pub enum TypeKind<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
 }
@@ -360,6 +367,12 @@ pub struct ArrTypeNode {
 	annotation: Annotation,
 	pub base_type: Box<dyn BaseTypeNode>,
 	pub dims: u8
+}
+
+impl PartialEq for ArrTypeNode {
+	fn eq(&self, other: &Self) -> bool {
+		*self.base_type == *other.base_type && self.dims == other.dims
+	}
 }
 
 impl ArrTypeNode {
@@ -401,6 +414,12 @@ impl TypeNode for ArrTypeNode {
 #[derive(Debug, Clone)]
 pub struct VoidTypeNode {
 	annotation: Annotation
+}
+
+impl PartialEq for VoidTypeNode {
+	fn eq(&self, other: &Self) -> bool {
+		true
+	}
 }
 
 impl VoidTypeNode {
@@ -1056,17 +1075,30 @@ impl UnaryExprNode for NewExprNode {
 }
 
 pub trait BaseTypeNode : Node {
-	fn get_kind(&self) -> BaseTypeKind;
+	fn get_kind<'a>(&'a self) -> BaseTypeKind<'a>;
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
-pub enum BaseTypeKind {
-	Int
+impl PartialEq for dyn BaseTypeNode {
+	fn eq(&self, other: &Self) -> bool {
+		self.get_kind() == other.get_kind()
+	}
+}
+
+#[derive(PartialEq)]
+pub enum BaseTypeKind<'a> {
+	Int(&'a IntTypeNode)
 }
 
 #[derive(Debug, Clone)]
 pub struct IntTypeNode {
 	annotation: Annotation
+}
+
+impl PartialEq for IntTypeNode {
+	fn eq(&self, other: &Self) -> bool {
+		true
+	}
 }
 
 impl IntTypeNode {
@@ -1079,7 +1111,7 @@ impl IntTypeNode {
 
 impl BaseTypeNode for IntTypeNode {
 	fn get_kind(&self) -> BaseTypeKind {
-		BaseTypeKind::Int
+		BaseTypeKind::Int(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode> {

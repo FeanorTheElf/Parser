@@ -1,13 +1,12 @@
-use super::super::lexer::error::CompileError;
-use super::super::parser::ast::*;
+use super::super::parser::prelude::*;
 use super::scope::{ SymbolDefinition, SymbolDefinitionKind };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PrimitiveType {
     Int
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     Primitive(PrimitiveType),
     Array(PrimitiveType, u32),

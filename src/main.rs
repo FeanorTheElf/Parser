@@ -10,7 +10,7 @@ mod la;
 mod backend;
 
 use lexer::tokens::*;
-use parser::parser_gen::Parse;
+use parser::Parse;
 use lexer::lexer::lex;
 use parser::ast::*;
 use language::scope::{ ScopeTable, annotate_sope_info_func };
@@ -23,5 +23,5 @@ fn main() {
 	annotate_sope_info_func(&function, &mut scopes).unwrap();
 	let mut symbols = SymbolTable::new();
 	annotate_symbols_function(&function, &scopes, &mut symbols).unwrap();
-	println!("{:?}", symbols.get(&function.ident).symbol_type);
+	println!("{:?}", symbols.get_type(&function.ident));
 }

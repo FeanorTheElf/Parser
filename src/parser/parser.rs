@@ -1,8 +1,11 @@
-use super::ast::*;
-use super::super::lexer::tokens::*;
-use super::super::lexer::error::CompileError;
+use super::prelude::*;
+use super::super::lexer::tokens::{ Stream, Token };
+use super::Parse;
 #[macro_use]
-use super::parser_gen::{ Parse, Flatten };
+use super::parser_gen::Flatten;
+
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
 
 use std::vec::Vec;
 
@@ -140,3 +143,34 @@ impl_parse!{ BracketExprNode => BracketExprNode(Token#BracketOpen ExprNode Token
 impl_parse!{ NewExprNode => NewExprNode(Token#New BaseTypeNode {IndexPartNode}) }
 
 impl_parse!{ dyn BaseTypeNode => IntTypeNode(Token#Int) }
+
+#[cfg(test)]
+fn create_int_arr(dims: u8) -> Box<dyn TypeNode> {
+	Box::new(ArrTypeNode::new(TextPosition::create(0, 0), Box::new(IntTypeNode::new(TextPosition::create(0, 0))), dims))
+}
+
+#[test]
+fn test_parse_simple_function() {
+	let default_pos = TextPosition::create(0, 0);
+    let ident = |name: &'static str| Identifier { name: name.to_owned() };
+    let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }".to_owned())).unwrap();
+
+	assert_eq!(ident("len"), len.ident);
+	assert_eq!(1, len.params.len());
+	assert_eq!(ident("a"), len.params[0].ident);
+	assert_eq!(&create_int_arr(1), &len.params[0].param_type);
+	assert_eq!(&create_int_arr(0), &len.result);
+
+	let body = &len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().stmts;
+	let let_stmt = &body.stmts[0].dynamic().downcast_ref::<VariableDeclarationNode>().unwrap();
+	assert_eq!(ident("b"), let_stmt.ident);
+	assert_eq!(&create_int_arr(1), &let_stmt.variable_type);
+
+	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<BlockNode>().unwrap().block.stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
+	let function_call = &return_stmt.expr.head.head.head.head.head.head.dynamic().downcast_ref::<FunctionCallNode>().unwrap();
+	assert_eq!(ident("len"), function_call.function);
+	assert_eq!(1, function_call.params.len());
+	
+	let param = &function_call.params[0].head.head.head.head.head.head.dynamic().downcast_ref::<VariableNode>().unwrap();
+	assert_eq!(ident("b"), param.identifier);
+}

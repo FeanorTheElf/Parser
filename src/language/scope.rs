@@ -1,6 +1,4 @@
-use super::super::parser::ast::*;
-use super::super::lexer::tokens::Identifier;
-use super::super::lexer::error::CompileError;
+use super::super::parser::prelude::*;
 use super::super::util::ref_eq::{ Ref, RefEq, ref_eq };
 
 use std::iter::FromIterator;
@@ -73,7 +71,11 @@ impl<'a> ScopeTable<'a> {
     }
 
     pub fn get<'b>(&'b self, scope: &dyn Scope) -> &'b ScopeInfo<'a> {
-        self.0.get(&RefEq::from(scope)).unwrap()
+        self.0.get(&RefEq::from(scope)).expect("Identifier not found in SymbolTable, did you forget to annotate the syntax tree part?")
+    }
+
+    pub fn get_mut<'b>(&'b mut self, scope: & dyn Scope) -> &'b mut ScopeInfo<'a> {
+        self.0.get_mut(&RefEq::from(scope)).expect("Identifier not found in SymbolTable, did you forget to annotate the syntax tree part?")
     }
 
     pub fn visible_symbols_iter<'b, 'c>(&'b self, scope: Option<&'c dyn Scope>) -> DefinedSymbolsIter<'a, 'b, 'c> 
@@ -100,10 +102,6 @@ impl<'a> ScopeTable<'a> {
             scopes: self,
             current_scope: Some(scope)
         }
-    }
-
-    pub fn get_mut<'b>(&'b mut self, scope: & dyn Scope) -> &'b mut ScopeInfo<'a> {
-        self.0.get_mut(&RefEq::from(scope)).unwrap()
     }
 
     fn insert(&mut self, scope: &'a dyn Scope, data: ScopeInfo<'a>) {
