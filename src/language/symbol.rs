@@ -26,12 +26,14 @@ pub enum SymbolInfo<'a> {
 pub struct SymbolDefinitionInfo<'a> {
     symbol_type: Type,
     scope: &'a dyn Scope,
-    uses: Vec<&'a dyn SymbolUse>
+    uses: Vec<&'a dyn SymbolUse>,
+    pub definition_node: &'a dyn SymbolDefinition
 }
 
 #[derive(Debug)]
 pub struct SymbolUseInfo<'a> {
     symbol_definition: &'a dyn SymbolDefinition,
+    use_node: &'a dyn SymbolUse
 }
 
 impl<'a> SymbolInfo<'a> {
@@ -62,14 +64,18 @@ impl<'a> SymbolTable<'a> {
         SymbolTable(HashMap::new())
     }
 
-    pub fn get_type(&self, ident: &Identifier) -> &Type {
-        match self.get(ident) {
-            SymbolInfo::Definition(ref definition) => &definition.symbol_type,
-            SymbolInfo::Use(ref reference) => &self.get_definition(reference).symbol_type
+    pub fn get_type(&self, identifier: &Identifier) -> &Type {
+        &self.get_identifier_definition(identifier).symbol_type
+    }
+
+    pub fn get_identifier_definition(&self, identifier: &Identifier) -> &SymbolDefinitionInfo<'a> {
+        match self.get(identifier) {
+            SymbolInfo::Definition(ref definition) => &definition,
+            SymbolInfo::Use(ref reference) => &self.get_definition(reference)
         }
     }
 
-    pub fn get_definition(&self, info: &SymbolUseInfo<'a>) -> &SymbolDefinitionInfo<'a> {
+    fn get_definition(&self, info: &SymbolUseInfo<'a>) -> &SymbolDefinitionInfo<'a> {
         self.get(info.symbol_definition.get_identifier()).expect_definition()
     }
 
@@ -102,7 +108,8 @@ impl<'a> SymbolTable<'a> {
             self.0.insert(Ref::from(definition.get_identifier()), SymbolInfo::Definition(SymbolDefinitionInfo {
                 symbol_type: Type::calc_from(definition)?,
                 scope: definition_scope,
-                uses: vec![]
+                uses: vec![],
+                definition_node: definition
             }));
         }
         return Ok(());
@@ -120,7 +127,8 @@ impl<'a> SymbolTable<'a> {
             self.0.insert(Ref::from(def.get_identifier()), SymbolInfo::Definition(SymbolDefinitionInfo {
                 symbol_type: Type::calc_from(def)?,
                 scope: def_scope,
-                uses: vec![symbol]
+                uses: vec![symbol],
+                definition_node: def
             }));
         }
         return Ok(());
@@ -136,7 +144,8 @@ impl<'a> SymbolTable<'a> {
         if let Some((def_scope, def)) = definition {
             self.add_use_to_definition(symbol, def, def_scope)?;
             self.0.insert(Ref::from(identifier), SymbolInfo::Use(SymbolUseInfo {
-                symbol_definition: def
+                symbol_definition: def,
+                use_node: symbol
             }));
             return Ok(());
         } else {
