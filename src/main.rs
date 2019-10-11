@@ -1,5 +1,9 @@
 #![feature(fn_traits)]
 #![allow(unused)]
+#![feature(test)]
+
+#[cfg(test)]
+extern crate test;
 
 #[macro_use]
 mod util;

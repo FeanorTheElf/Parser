@@ -3,64 +3,42 @@
 use std::ops::{ Add, Mul, AddAssign, MulAssign, Div, DivAssign, Sub, SubAssign };
 use std::convert::From;
 use std::fmt::{ Debug, Display, Formatter };
+use std::cell::Cell;
 
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 struct r64 {
     numerator: i64,
-    denominator: u64
-}
-
-fn perfect_abs(value: i64) -> u64 {
-    if value.is_negative() {
-        ((!value) as u64) + 1
-    } else {
-        value as u64
-    }
+    denominator: i64
 }
 
 impl r64 {
 
-    fn new(numerator: i64, denominator: u64) -> r64 {
+    fn new(numerator: i64, denominator: i64) -> r64 {
         r64 {
             numerator: numerator,
             denominator: denominator
         }
     }
 
-    fn must_reduce_for_add(s1: &r64, s2: &r64) -> bool {
-        s1.denominator.leading_zeros() + s2.denominator.leading_zeros() < 64 ||
-        // we have to make a signed multiply (lz >= 65) and an addition (lz >= 66)
-        s1.numerator.leading_zeros() + s2.denominator.leading_zeros() < 66 ||
-        s2.numerator.leading_zeros() + s1.denominator.leading_zeros() < 66
-    }
-
-    fn must_reduce_for_eq(s1: &r64, s2: &r64) -> bool {
-        // we have to make a signed multiply (lz >= 65)
-        s1.numerator.leading_zeros() + s2.denominator.leading_zeros() < 65 ||
-        s2.numerator.leading_zeros() + s1.denominator.leading_zeros() < 65
-    }
-
-    fn must_reduce_for_mult(s1: &r64, s2: &r64) -> bool {
-        s1.denominator.leading_zeros() + s2.denominator.leading_zeros() < 64 ||
-        // we have to make a signed multiply (lz >= 65)
-        s1.numerator.leading_zeros() + s2.numerator.leading_zeros() < 65
-    }
-
-    fn ggT(mut a: u64, mut b: u64) -> u64 {
+    // a < 0 => ggT(a, b) < 0
+    // a > 0 => ggT(a, b) > 0
+    // sign of b is irrelevant
+    fn ggT(mut a: i64, mut b: i64) -> i64 {
         while b != 0 {
             let c = a % b;
-            a = b;
-            b = c;
+            if c == 0 {
+                return if (a ^ b) & i64::min_value() != 0 { -b } else { b };
+            }
+            b = b % c;
+            a = c;
         }
         return a;
     }
 
-    fn reduce(&mut self) {
-        let ggT: u64 = r64::ggT(perfect_abs(self.numerator), self.denominator);
-        // TODO: if self.numerator = ggT = -min_value => overflow
-        self.numerator /= ggT as i64;
+    pub fn reduce(&mut self) {
+        let ggT: i64 = r64::ggT(self.denominator, self.numerator);
         self.denominator /= ggT;
+        self.numerator/= ggT;
     }
 }
 
@@ -71,44 +49,110 @@ impl From<i64> for r64 {
     }
 }
 
+macro_rules! assign_or_reduce_on_failure {
+    ($e:expr => $target:expr; $reduce_fst:stmt; $reduce_snd:stmt; $reduce_trd:stmt; $reduce_fth:stmt) => {
+        if let Some(value) = $e {
+            $target = value;
+        } else {
+            $reduce_fst;
+            if let Some(value) = $e {
+                $target = value;
+            } else {
+                $reduce_snd;
+                if let Some(value) = $e {
+                    $target = value;
+                } else {
+                    $reduce_trd;
+                    if let Some(value) = $e {
+                        $target = value;
+                    } else {
+                        $reduce_fth;
+                        $target = ($e).unwrap();
+                    }
+                }
+            }
+        }
+    };
+    ($e:expr => $target:expr; $reduce_fst:stmt; $reduce_snd:stmt) => {
+        if let Some(value) = $e {
+            $target = value;
+        } else {
+            $reduce_fst;
+            if let Some(value) = $e {
+                $target = value;
+            } else {
+                $reduce_snd;
+                $target = ($e).unwrap();
+            }
+        }
+    };
+    ($e:expr => $target:expr; $reduce_fst:expr) => {
+        if let Some(value) = $e {
+            $target = value;
+        } else {
+            $reduce_fst;
+            $target = ($e).unwrap();
+        }
+    };
+}
+
 impl AddAssign<r64> for r64 {
 
-    fn add_assign(&mut self, rhs: r64) {
+    fn add_assign(&mut self, mut rhs: r64) {
         // inf + inf or -inf + -inf
         if self.denominator == 0 && rhs.denominator == 0 && (self.numerator > 0 && rhs.numerator > 0 || self.numerator < 0 && rhs.numerator < 0) {
             return;
         }
-        if r64::must_reduce_for_add(self, &rhs) {
-            self.reduce();
-            assert!(!r64::must_reduce_for_add(self, &rhs), "Rational arithmetic overflow: {:?} + {:?}", self, rhs);
-        }
-        self.numerator *= (rhs.denominator as i64);
-        self.numerator += rhs.numerator * (self.denominator as i64);
-        self.denominator *= rhs.denominator
+        assign_or_reduce_on_failure!(self.numerator.checked_mul(rhs.denominator) => self.numerator; self.reduce(); rhs.reduce());
+        assign_or_reduce_on_failure!(self.denominator.checked_mul(rhs.numerator) => rhs.numerator; self.reduce(); {
+            let ggT = r64::ggT(rhs.denominator, rhs.numerator);
+            rhs.denominator /= ggT;
+            rhs.numerator /= ggT;
+            self.numerator /= ggT;
+        });
+        assign_or_reduce_on_failure!(self.numerator.checked_add(rhs.numerator) => self.numerator; {
+            let ggT = r64::ggT(self.denominator, self.numerator);
+            self.denominator /= ggT;
+            self.numerator /= ggT;
+            rhs.numerator /= ggT;
+        }; {
+            let ggT = r64::ggT(rhs.denominator, rhs.numerator);
+            rhs.denominator /= ggT;
+            rhs.numerator /= ggT;
+            self.numerator /= ggT;
+        });
+        assign_or_reduce_on_failure!(self.denominator.checked_mul(rhs.denominator) => self.denominator; self.reduce(); {
+            let ggT = r64::ggT(self.numerator, rhs.denominator);
+            self.numerator /= ggT;
+            rhs.denominator /= ggT;
+        });
     }
 }
 
 impl MulAssign<r64> for r64 {
 
-    fn mul_assign(&mut self, rhs: r64) {
-        if r64::must_reduce_for_mult(self, &rhs) {
-            self.reduce();
-            assert!(!r64::must_reduce_for_add(self, &rhs), "Rational arithmetic overflow: {:?} * {:?}", self, rhs);
-        }
-        self.numerator *= rhs.numerator;
-        self.denominator *= rhs.denominator;
+    fn mul_assign(&mut self, mut rhs: r64) {
+        assign_or_reduce_on_failure!(self.numerator.checked_mul(rhs.numerator) => self.numerator; self.reduce(); rhs.reduce());
+        assign_or_reduce_on_failure!(self.denominator.checked_mul(rhs.denominator) => self.denominator; self.reduce(); {
+            let ggT = r64::ggT(rhs.numerator, rhs.denominator);
+            rhs.denominator /= ggT;
+            self.numerator /= ggT;
+        });
+    }
+}
+
+impl DivAssign<r64> for r64 {
+
+    fn div_assign(&mut self, mut rhs: r64) {
+        self.mul_assign(r64::new(rhs.denominator, rhs.numerator));
     }
 }
 
 impl PartialEq for r64 {
     fn eq(&self, rhs: &r64) -> bool {
-        if r64::must_reduce_for_eq(self, rhs) {
-            let mut reduced = *self;
-            reduced.reduce();
-            return *rhs == reduced;
-        } else {
-            return (self.denominator as i64) * rhs.numerator == (rhs.denominator as i64) * self.numerator;
-        }
+        let mut this = *self;
+        this.reduce();
+        return rhs.numerator % self.numerator == 0 && (rhs.numerator / self.numerator) * self.denominator == rhs.denominator;
     }
 }
 
@@ -140,6 +184,10 @@ fn test_ggT() {
 
     assert_eq!(1, r64::ggT(13, 300));
     assert_eq!(1, r64::ggT(300, 13));
+
+    assert_eq!(-3, r64::ggT(-15, 6));
+    assert_eq!(3, r64::ggT(6, -15));
+    assert_eq!(-3, r64::ggT(-6, -15));
 }
 
 #[test]
@@ -149,4 +197,47 @@ fn test_add_assign() {
 
     test += test;
     assert_eq!(r64::from(2), test);
+}
+
+#[test]
+fn test_add_assign_overflow() {
+    let mut a = r64::new(1 << 60, 81);
+    let mut b = r64::new(1 << 60, 1 << 55);
+    a += b;
+    assert_eq!(r64::new((1 << 5) * 81 + (1 << 60), 81), a);
+    
+    a = r64::new((1 << 62) / 50 /* divisible by 3 */, 81);
+    b = r64::new((1 << 62) / 81, 50);
+    a += b;
+    assert_eq!(r64::new(((1 << 62) / 150) * 50 + ((1 << 62) / 81) * 27, 27 * 50), a);
+}
+
+#[bench]
+fn benchmark_combined_add_mult_eq(bencher: &mut test::Bencher) {
+    let numerator_a = (1 << 62) / 50 /* divisible by 3 */;
+    let numerator_b = (1 << 62) / 81;
+    let result_numerator = 44211 * 69540552025927 + 1350;
+    let not_optimized: i64 = (std::time::Instant::now().elapsed().as_secs() / 3600) as i64;
+    bencher.iter(|| {
+        let mut a = r64::new(numerator_a + not_optimized, 81);
+        let b = r64::new(numerator_b + not_optimized, 50);
+        a += b;
+        let c = r64::new(1 + not_optimized, 44211);
+        a *= c;
+        assert_eq!(r64::new(69540552025927 + not_optimized, 1350), a);
+        if (b == a) {
+            a /= r64::from(100);
+        } else {
+            a /= c;
+        }
+        let mut d = r64::new(32 + not_optimized, 1024);
+        d *= d;
+        d *= d;
+        d *= d;
+        d *= c;
+        if r64::new(1 + not_optimized, (1 << 40) * 44211) == d {
+            a += r64::from(1);
+        }
+        assert_eq!(r64::new(result_numerator, 1350), a);
+    });
 }
