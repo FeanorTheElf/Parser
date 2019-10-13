@@ -54,19 +54,19 @@ macro_rules! assign_or_reduce_on_failure {
         if let Some(value) = $e {
             $target = value;
         } else {
-            $reduce_fst;
+            $reduce_fst
             if let Some(value) = $e {
                 $target = value;
             } else {
-                $reduce_snd;
+                $reduce_snd
                 if let Some(value) = $e {
                     $target = value;
                 } else {
-                    $reduce_trd;
+                    $reduce_trd
                     if let Some(value) = $e {
                         $target = value;
                     } else {
-                        $reduce_fth;
+                        $reduce_fth
                         $target = ($e).unwrap();
                     }
                 }
@@ -77,11 +77,11 @@ macro_rules! assign_or_reduce_on_failure {
         if let Some(value) = $e {
             $target = value;
         } else {
-            $reduce_fst;
+            $reduce_fst
             if let Some(value) = $e {
                 $target = value;
             } else {
-                $reduce_snd;
+                $reduce_snd
                 $target = ($e).unwrap();
             }
         }
@@ -90,7 +90,7 @@ macro_rules! assign_or_reduce_on_failure {
         if let Some(value) = $e {
             $target = value;
         } else {
-            $reduce_fst;
+            $reduce_fst
             $target = ($e).unwrap();
         }
     };
