@@ -30,8 +30,8 @@ pub struct r64 {
     denominator: i64
 }
 
-pub const NaN: r64 = r64 { numerator: 0, denominator: 0 };
-pub const Inf: r64 = r64 { numerator: 1, denominator: 0 };
+pub const NAN: r64 = r64 { numerator: 0, denominator: 0 };
+pub const INFINITY: r64 = r64 { numerator: 1, denominator: 0 };
 
 impl r64 {
 
@@ -72,7 +72,7 @@ impl r64 {
         }
     }
 
-    pub fn isNaN(&self) -> bool {
+    pub fn is_nan(&self) -> bool {
         self.denominator == 0 && self.numerator == 0
     }
 }
@@ -201,20 +201,26 @@ impl Neg for r64 {
 
 impl PartialEq for r64 {
     fn eq(&self, rhs: &r64) -> bool {
-        let mut this = *self;
-        this.reduce();
-        return if self.numerator == 0 {
-            rhs.numerator == 0 && self.denominator != 0 && rhs.denominator != 0
-        } else if self.denominator == 0{
-            (self.numerator > 0) == (rhs.numerator > 0)
+        if self.denominator == 0 || rhs.denominator == 0 {
+            self.numerator != 0 && rhs.numerator != 0 && (self.numerator > 0) == (rhs.numerator > 0) && self.denominator == rhs.denominator
         } else {
-            rhs.numerator % self.numerator == 0 && 
-                (rhs.numerator / self.numerator).checked_mul(self.denominator).map(|val| val == rhs.denominator).unwrap_or(false)
-        };
+            self.numerator as i128 * rhs.denominator as i128 == self.denominator as i128 * rhs.numerator as i128
+        }
     }
 }
 
-impl Eq for r64 { }
+impl PartialOrd for r64 {
+    fn partial_cmp(&self, rhs: &r64) -> Option<Ordering> {
+        if self.is_nan() || rhs.is_nan() {
+            return None;
+        } else if self.denominator == 0 && rhs.denominator == 0 {
+            return Some(self.numerator.cmp(&rhs.numerator));
+        } else {
+            let ord = (self.numerator as i128 * rhs.denominator as i128).cmp(&(self.denominator as i128 * rhs.numerator as i128));
+            return Some(if (self.denominator < 0) ^ (rhs.denominator < 0) { ord.reverse() } else { ord });
+        }
+    }
+}
 
 impl Add<&Self> for r64 {
     type Output = r64;
@@ -398,31 +404,53 @@ fn test_real_overflow() {
 
 #[test]
 fn test_cmp_NaN_Inf() {
-    assert_eq!(Inf, r64::from(1) / r64::from(0));
-    assert_eq!(-Inf, r64::from(-2) / r64::from(0));
-    assert_eq!(Inf, Inf);
-    assert_eq!(-Inf, -Inf);
-    assert_ne!(Inf, -Inf);
-    assert_ne!(-Inf, Inf);
-    assert_ne!(r64::from(0), Inf);
-    assert_ne!(r64::from(1), Inf);
-    assert_ne!(r64::from(0), -Inf);
-    assert_ne!(r64::from(-1), -Inf);
-    assert_ne!(NaN, NaN);
-    assert_ne!(Inf, NaN);
-    assert_ne!(NaN, -Inf);
+    assert_eq!(INFINITY, r64::from(1) / r64::from(0));
+    assert_eq!(-INFINITY, r64::from(-2) / r64::from(0));
+    assert_eq!(INFINITY, INFINITY);
+    assert_eq!(-INFINITY, -INFINITY);
+    assert_ne!(INFINITY, -INFINITY);
+    assert_ne!(-INFINITY, INFINITY);
+    assert_ne!(r64::from(0), INFINITY);
+    assert_ne!(r64::from(1), INFINITY);
+    assert_ne!(r64::from(0), -INFINITY);
+    assert_ne!(r64::from(-1), -INFINITY);
+    assert_ne!(NAN, NAN);
+    assert_ne!(INFINITY, NAN);
+    assert_ne!(NAN, -INFINITY);
     assert_eq!(r64::from(0), r64::from(0));
     assert_ne!(r64::from(0), r64::from(1));
 }
 
 #[test]
 fn test_calculate_NaN_Inf() {
-    assert_eq!(Inf, Inf + Inf);
-    assert!((Inf - Inf).isNaN());
-    assert_eq!(-Inf, r64::from(1) - Inf);
-    assert_eq!(-Inf, -Inf - Inf);
-    assert_eq!(Inf, r64::from(-100) * -Inf);
-    assert_eq!(-Inf, r64::from(-3) * Inf);
-    assert!((Inf * r64::from(0)).isNaN());
-    assert!((-Inf * r64::from(0)).isNaN());
+    assert_eq!(INFINITY, INFINITY + INFINITY);
+    assert!((INFINITY - INFINITY).is_nan());
+    assert_eq!(-INFINITY, r64::from(1) - INFINITY);
+    assert_eq!(-INFINITY, -INFINITY - INFINITY);
+    assert_eq!(INFINITY, r64::from(-100) * -INFINITY);
+    assert_eq!(-INFINITY, r64::from(-3) * INFINITY);
+    assert!((INFINITY * r64::from(0)).is_nan());
+    assert!((-INFINITY * r64::from(0)).is_nan());
+}
+
+#[test]
+fn test_ord_NaN_Inf() {
+    assert!(-INFINITY < INFINITY);
+    assert!(r64::from(10) < INFINITY);
+    assert!(r64::from(0) < INFINITY);
+    assert!(r64::from(-10) < INFINITY);
+    assert!(r64::from(10) > -INFINITY);
+    assert!(r64::from(0) > -INFINITY);
+    assert!(r64::from(-10) > -INFINITY);
+    assert!(!(r64::from(0) < NAN));
+    assert!(!(r64::from(0) == NAN));
+    assert!(!(r64::from(0) > NAN));
+}
+
+#[test]
+fn test_ord() {
+    assert!(r64::from(-1) < r64::from(0));
+    assert!(r64::from(1) > r64::from(0));
+    assert!(r64::new(1, 2) < r64::from(1));
+    assert!(r64::new(1, -2) < r64::new(-1, 3));
 }
