@@ -6,14 +6,14 @@ use std::fmt::{ Debug, Display, Formatter };
 use std::cell::Cell;
 
 #[derive(Clone, Copy)]
-struct r64 {
+pub struct r64 {
     numerator: i64,
     denominator: i64
 }
 
 impl r64 {
 
-    fn new(numerator: i64, denominator: i64) -> r64 {
+    pub fn new(numerator: i64, denominator: i64) -> r64 {
         r64 {
             numerator: numerator,
             denominator: denominator
