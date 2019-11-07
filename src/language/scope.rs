@@ -126,7 +126,7 @@ pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTabl
     return Ok(());
 }
 
-fn annotate_scope_info_stmts<'a>(node: &'a StmtsNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) -> Result<(), CompileError> {
+fn annotate_scope_info_stmts<'a>(node: &'a BlockNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) -> Result<(), CompileError> {
     table.insert(node, ScopeInfo { parent_scope: Some(parent_scope), symbol_definitions: vec![] });
     for stmt in &node.stmts {
         annotate_scope_info_stmt(&**stmt, table, node)?;
@@ -156,7 +156,7 @@ fn annotate_scope_info_stmt<'a>(node: &'a dyn StmtNode, table: &mut ScopeTable<'
 }
 
 impl Scope for FunctionNode {}
-impl Scope for StmtsNode {}
+impl Scope for BlockNode {}
 
 impl Debug for GlobalScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

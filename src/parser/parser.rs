@@ -11,9 +11,9 @@ use std::vec::Vec;
 
 impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
 impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
-                                             | ImplementedFunctionNode(StmtsNode)}
+                                             | ImplementedFunctionNode(BlockNode)}
 impl_parse!{ ParameterNode => ParameterNode(identifier Token#Colon TypeNode Token#Comma) }
-impl_parse!{ StmtsNode => StmtsNode(Token#CurlyBracketOpen {StmtNode} Token#CurlyBracketClose) }
+impl_parse!{ BlockNode => BlockNode(Token#CurlyBracketOpen {StmtNode} Token#CurlyBracketClose) }
 
 impl Parse for dyn StmtNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
@@ -26,8 +26,8 @@ impl Parse for dyn StmtNode {
 			return Ok(Box::new(*IfNode::parse(stream)?));
 		} else if stream.ends(&Token::While) {
 			return Ok(Box::new(*WhileNode::parse(stream)?));
-		} else if StmtsNode::guess_can_parse(stream) {
-			return Ok(StmtsNode::parse(stream)?);
+		} else if BlockNode::guess_can_parse(stream) {
+			return Ok(BlockNode::parse(stream)?);
 		} else if stream.ends(&Token::Return) {
 			return Ok(Box::new(*ReturnNode::parse(stream)?));
 		} else if stream.ends(&Token::Let) {
@@ -49,8 +49,8 @@ impl Parse for dyn StmtNode {
 	}
 }
 
-impl_parse!{ IfNode => IfNode(Token#If ExprNode StmtsNode) }
-impl_parse!{ WhileNode => WhileNode(Token#If ExprNode StmtsNode) }
+impl_parse!{ IfNode => IfNode(Token#If ExprNode BlockNode) }
+impl_parse!{ WhileNode => WhileNode(Token#If ExprNode BlockNode) }
 impl_parse!{ ReturnNode => ReturnNode(Token#Return ExprNode Token#Semicolon) }
 impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign ExprNode Token#Semicolon) }
 
@@ -166,7 +166,7 @@ fn test_parse_simple_function() {
 	assert_eq!(ident("b"), let_stmt.ident);
 	assert_eq!(&create_int_arr(1), &let_stmt.variable_type);
 
-	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<StmtsNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
+	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<BlockNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
 	let function_call = &return_stmt.expr.head.head.head.head.head.head.dynamic().downcast_ref::<FunctionCallNode>().unwrap();
 	assert_eq!(ident("len"), function_call.function);
 	assert_eq!(1, function_call.params.len());

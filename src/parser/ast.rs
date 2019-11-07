@@ -168,11 +168,11 @@ impl_partial_eq!(NativeFunctionNode; );
 #[derive(Debug, Clone)]
 pub struct ImplementedFunctionNode {
 	annotation: Annotation,
-	pub body: Box<StmtsNode>
+	pub body: Box<BlockNode>
 }
 
 impl ImplementedFunctionNode {
-	pub fn new(annotation: Annotation, body: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, body: Box<BlockNode>) -> Self {
 		ImplementedFunctionNode {
 			annotation, body
 		}
@@ -211,24 +211,24 @@ impl Clone for ParameterNode {
 }
 
 #[derive(Debug)]
-pub struct StmtsNode {
+pub struct BlockNode {
 	annotation: Annotation,
 	pub stmts: AstVec<dyn StmtNode>
 }
 
-impl StmtsNode {
+impl BlockNode {
 	pub fn new(annotation: Annotation, stmts: AstVec<dyn StmtNode>) -> Self {
-		StmtsNode {
+		BlockNode {
 			annotation, stmts
 		}
 	}
 }
 
-impl_partial_eq!(StmtsNode; stmts);
+impl_partial_eq!(BlockNode; stmts);
 
-impl Clone for StmtsNode {
-	fn clone(&self) -> StmtsNode {
-		StmtsNode {
+impl Clone for BlockNode {
+	fn clone(&self) -> BlockNode {
+		BlockNode {
 			annotation: self.annotation.clone(),
 			stmts: self.stmts.iter().map(|el| (**el).dyn_clone()).collect()
 		}
@@ -249,7 +249,7 @@ pub enum ConcreteStmtRef<'a> {
 	Expr(&'a ExprStmtNode), 
 	If(&'a IfNode), 
 	While(&'a WhileNode), 
-	Block(&'a StmtsNode), 
+	Block(&'a BlockNode), 
 	Return(&'a ReturnNode)
 }
 
@@ -261,13 +261,13 @@ pub enum ConcreteStmt {
 	Expr(Box<ExprStmtNode>), 
 	If(Box<IfNode>), 
 	While(Box<WhileNode>), 
-	Block(Box<StmtsNode>), 
+	Block(Box<BlockNode>), 
 	Return(Box<ReturnNode>)
 }
 
 impl_into_generalized!(ConcreteStmt; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
 
-impl_concrete_node!(StmtNode for StmtsNode; ConcreteStmtRef; ConcreteStmt; Block);
+impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmt; Block);
 
 #[derive(Debug)]
 pub struct VariableDeclarationNode {
@@ -341,11 +341,11 @@ impl_partial_eq!(ExprStmtNode; expr);
 pub struct IfNode {
 	annotation: Annotation,
 	pub condition: Box<ExprNode>,
-	pub block: Box<StmtsNode>
+	pub block: Box<BlockNode>
 }
 
 impl IfNode {
-	pub fn new(annotation: Annotation, condition: Box<ExprNode>, block: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, condition: Box<ExprNode>, block: Box<BlockNode>) -> Self {
 		IfNode {
 			annotation, condition, block
 		}
@@ -360,11 +360,11 @@ impl_partial_eq!(IfNode; condition, block);
 pub struct WhileNode {
 	annotation: Annotation,
 	pub condition: Box<ExprNode>,
-	pub block: Box<StmtsNode>
+	pub block: Box<BlockNode>
 }
 
 impl WhileNode {
-	pub fn new(annotation: Annotation, condition: Box<ExprNode>, block: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, condition: Box<ExprNode>, block: Box<BlockNode>) -> Self {
 		WhileNode {
 			annotation, condition, block
 		}
@@ -1199,7 +1199,7 @@ impl_node!(FunctionNode);
 impl_node!(NativeFunctionNode);
 impl_node!(ImplementedFunctionNode);
 impl_node!(ParameterNode);
-impl_node!(StmtsNode);
+impl_node!(BlockNode);
 impl_node!(VariableDeclarationNode);
 impl_node!(AssignmentNode);
 impl_node!(ExprStmtNode);

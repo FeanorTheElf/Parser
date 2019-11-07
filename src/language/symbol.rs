@@ -170,7 +170,7 @@ pub fn annotate_symbols_function<'a>(node: &'a FunctionNode, scopes: &ScopeTable
     return Ok(());
 }
 
-fn annotate_symbols_stmts<'a>(node: &'a StmtsNode, scopes: &ScopeTable<'a>, symbols: &mut SymbolTable<'a>) -> Result<(), CompileError> {
+fn annotate_symbols_stmts<'a>(node: &'a BlockNode, scopes: &ScopeTable<'a>, symbols: &mut SymbolTable<'a>) -> Result<(), CompileError> {
     for stmt in &node.stmts {
         annotate_symbols_stmt(&**stmt, node, scopes, symbols)?;
     }
@@ -249,7 +249,7 @@ fn test_correct_definitions() {
         symbols.get(&len.params[0].ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
 
     let len_use: &FunctionCallNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body.stmts[1].dynamic()
-        .downcast_ref::<StmtsNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
+        .downcast_ref::<BlockNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
         .dynamic().downcast_ref::<FunctionCallNode>().unwrap();
     assert_eq!(vec![ Ref::from(&len_use.function) ], symbols.get(&len.ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
 }

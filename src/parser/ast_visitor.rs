@@ -36,7 +36,7 @@ impl Visitable<dyn UnaryExprNode> for ImplementedFunctionNode {
     }
 }
 
-impl Visitable<dyn UnaryExprNode> for StmtsNode {
+impl Visitable<dyn UnaryExprNode> for BlockNode {
     fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
         where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
@@ -232,7 +232,7 @@ impl Transformable<dyn StmtNode> for Box<NativeFunctionNode> {
     }
 }
 
-impl Transformable<dyn StmtNode> for Box<StmtsNode> {
+impl Transformable<dyn StmtNode> for Box<BlockNode> {
     fn transform<F>(mut self, f: &mut F) -> Result<Self, CompileError>
         where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
     {
@@ -263,7 +263,7 @@ fn rek_transform(stmt: Box<dyn StmtNode>) -> Result<Box<dyn StmtNode>, CompileEr
     let global_function_call_stmt = Box::new(ExprStmtNode::new(TextPosition::create(0, 0), global_function_call));
 
     let stmts = vec![base, global_function_call_stmt.clone()];
-    let result: Box<dyn StmtNode> = Box::new(StmtsNode::new(TextPosition::create(0, 0), stmts));
+    let result: Box<dyn StmtNode> = Box::new(BlockNode::new(TextPosition::create(0, 0), stmts));
     return Ok(result);
 }
 
