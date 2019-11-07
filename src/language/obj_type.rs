@@ -15,15 +15,15 @@ pub enum Type {
 
 impl Type {
     pub fn from(t: &dyn TypeNode) -> Option<Type> {
-        match t.get_kind() {
-            TypeKind::Array(ref arr) => {
+        match t.get_concrete() {
+            ConcreteTypeRef::Array(ref arr) => {
                 if arr.get_dims() == 0 {
                     Some(Type::Primitive(PrimitiveType::Int))
                 } else {
                     Some(Type::Array(PrimitiveType::Int, arr.get_dims()))
                 }
             },
-            TypeKind::Void(ref void) => {
+            ConcreteTypeRef::Void(ref void) => {
                 None
             }
         }

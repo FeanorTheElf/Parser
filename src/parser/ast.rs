@@ -8,6 +8,40 @@ use std::any::Any;
 pub type AstVec<T> = Vec<Box<T>>;
 type Annotation = TextPosition;
 
+pub trait DynEq {
+	fn dyn_eq(&self, rhs: &dyn Any) -> bool;
+}
+
+impl<T: Any + PartialEq> DynEq for T {
+	fn dyn_eq(&self, rhs: &dyn Any) -> bool {
+		if let Some(rhs_as_t) = rhs.downcast_ref::<T>() {
+			self == rhs_as_t
+		} else {
+			false
+		}
+	}
+}
+
+macro_rules! impl_concrete_node {
+	($supnode:ident for $subnode:ident; $concreteref:ident; $concrete:ident; $variant:ident) => {
+				
+		impl $supnode for $subnode {
+			fn get_concrete<'a>(&'a self) -> $concreteref<'a> {
+				$concreteref::$variant(&self)
+			}
+
+			fn into_concrete(self: Box<Self>) -> $concrete {
+				$concrete::$variant(self)
+			}
+
+			fn dyn_clone(&self) -> Box<dyn $supnode> {
+				Box::new(self.clone())
+			}
+		}
+
+	}
+}
+
 pub trait Node : Debug + Any {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
@@ -71,19 +105,7 @@ impl NativeFunctionNode {
 	}
 }
 
-impl FunctionImplementationNode for NativeFunctionNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a> {
-		ConcreteFunctionImplementationRef::Native(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation {
-		ConcreteFunctionImplementation::Native(self)
-	}
-	
-	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(FunctionImplementationNode for NativeFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Native);
 
 #[derive(Debug, Clone)]
 pub struct ImplementedFunctionNode {
@@ -99,19 +121,7 @@ impl ImplementedFunctionNode {
 	}
 }
 
-impl FunctionImplementationNode for ImplementedFunctionNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a> {
-		ConcreteFunctionImplementationRef::Implemented(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation {
-		ConcreteFunctionImplementation::Implemented(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(FunctionImplementationNode for ImplementedFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Implemented);
 
 #[derive(Debug)]
 pub struct ParameterNode {
@@ -214,19 +224,7 @@ impl Clone for VariableDeclarationNode {
 	}
 }
 
-impl StmtNode for VariableDeclarationNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::Declaration(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::Declaration(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for VariableDeclarationNode; ConcreteStmtRef; ConcreteStmt; Declaration);
 
 #[derive(Debug, Clone)]
 pub struct AssignmentNode {
@@ -243,19 +241,7 @@ impl AssignmentNode {
 	}
 }
 
-impl StmtNode for AssignmentNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::Assignment(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::Assignment(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for AssignmentNode; ConcreteStmtRef; ConcreteStmt; Assignment);
 
 #[derive(Debug, Clone)]
 pub struct ExprStmtNode {
@@ -271,19 +257,7 @@ impl ExprStmtNode {
 	}
 }
 
-impl StmtNode for ExprStmtNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::Expr(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::Expr(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for ExprStmtNode; ConcreteStmtRef; ConcreteStmt; Expr);
 
 #[derive(Debug, Clone)]
 pub struct IfNode {
@@ -329,19 +303,7 @@ impl WhileNode {
 	}
 }
 
-impl StmtNode for WhileNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::While(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::While(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmt; While);
 
 #[derive(Debug, Clone)]
 pub struct BlockNode {
@@ -357,19 +319,7 @@ impl BlockNode {
 	}
 }
 
-impl StmtNode for BlockNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::Block(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::Block(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmt; Block);
 
 #[derive(Debug, Clone)]
 pub struct ReturnNode {
@@ -385,34 +335,27 @@ impl ReturnNode {
 	}
 }
 
-impl StmtNode for ReturnNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::Return(&self)
-	}
-
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::Return(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(StmtNode for ReturnNode; ConcreteStmtRef; ConcreteStmt; Return);
 
 pub trait TypeNode : Node {
-	fn get_kind<'a>(&'a self) -> TypeKind<'a>;
+	fn get_concrete<'a>(&'a self) -> ConcreteTypeRef<'a>;
+	fn into_concrete(self: Box<Self>) -> ConcreteType;
 	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
 impl PartialEq for dyn TypeNode {
 	fn eq(&self, other: &Self) -> bool {
-		self.get_kind() == other.get_kind()
+		self.get_concrete() == other.get_concrete()
 	}
 }
 
 #[derive(PartialEq)]
-pub enum TypeKind<'a> {
+pub enum ConcreteTypeRef<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
+}
+
+pub enum ConcreteType {
+	Array(Box<ArrTypeNode>), Void(Box<VoidTypeNode>)
 }
 
 #[derive(Debug)]
@@ -454,15 +397,7 @@ impl Clone for ArrTypeNode {
 	}
 }
 
-impl TypeNode for ArrTypeNode {
-	fn get_kind<'a>(&'a self) -> TypeKind<'a> {
-		TypeKind::Array(&self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn TypeNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(TypeNode for ArrTypeNode; ConcreteTypeRef; ConcreteType; Array);
 
 #[derive(Debug, Clone)]
 pub struct VoidTypeNode {
@@ -483,15 +418,7 @@ impl VoidTypeNode {
 	}
 }
 
-impl TypeNode for VoidTypeNode {
-	fn get_kind<'a>(&'a self) -> TypeKind<'a> {
-		TypeKind::Void(&self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn TypeNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(TypeNode for VoidTypeNode; ConcreteTypeRef; ConcreteType; Void);
 
 pub type ExprNode = ExprNodeLvlOr;
 
@@ -983,16 +910,25 @@ impl IndexPartNode {
 }
 
 pub trait UnaryExprNode : Node {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a>;
+	fn get_concrete<'a>(&'a self) -> ConcreteUnaryExprRef<'a>;
+	fn into_concrete(self: Box<Self>) -> ConcreteUnaryExpr;
 	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
 }
 
-pub enum UnaryExprKind<'a> {
+pub enum ConcreteUnaryExprRef<'a> {
 	BracketExpr(&'a BracketExprNode), 
 	Literal(&'a LiteralNode), 
 	Variable(&'a VariableNode), 
 	FunctionCall(&'a FunctionCallNode), 
 	NewExpr(&'a NewExprNode)
+}
+
+pub enum ConcreteUnaryExpr {
+	BracketExpr(Box<BracketExprNode>), 
+	Literal(Box<LiteralNode>), 
+	Variable(Box<VariableNode>), 
+	FunctionCall(Box<FunctionCallNode>), 
+	NewExpr(Box<NewExprNode>)
 }
 
 #[derive(Debug, Clone)]
@@ -1009,15 +945,7 @@ impl BracketExprNode {
 	}
 }
 
-impl UnaryExprNode for BracketExprNode {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
-		UnaryExprKind::BracketExpr(&self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(UnaryExprNode for BracketExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; BracketExpr);
 
 #[derive(Debug, Clone)]
 pub struct LiteralNode {
@@ -1033,15 +961,7 @@ impl LiteralNode {
 	}
 }
 
-impl UnaryExprNode for LiteralNode {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
-		UnaryExprKind::Literal(&self)
-	}
-	
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(UnaryExprNode for LiteralNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Literal);
 
 #[derive(Debug, Clone)]
 pub struct VariableNode {
@@ -1057,15 +977,7 @@ impl VariableNode {
 	}
 }
 
-impl UnaryExprNode for VariableNode {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
-		UnaryExprKind::Variable(&self)
-	}
-	
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(UnaryExprNode for VariableNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Variable);
 
 #[derive(Debug, Clone)]
 pub struct FunctionCallNode {
@@ -1082,15 +994,7 @@ impl FunctionCallNode {
 	}
 }
 
-impl UnaryExprNode for FunctionCallNode {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
-		UnaryExprKind::FunctionCall(&self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(UnaryExprNode for FunctionCallNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; FunctionCall);
 
 #[derive(Debug)]
 pub struct NewExprNode {
@@ -1117,30 +1021,27 @@ impl Clone for NewExprNode {
 	}
 }
 
-impl UnaryExprNode for NewExprNode {
-	fn get_kind<'a>(&'a self) -> UnaryExprKind<'a> {
-		UnaryExprKind::NewExpr(&self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; NewExpr);
 
 pub trait BaseTypeNode : Node {
-	fn get_kind<'a>(&'a self) -> BaseTypeKind<'a>;
+	fn get_concrete<'a>(&'a self) -> ConcreteBaseTypeRef<'a>;
+	fn into_concrete(self: Box<Self>) -> ConcreteBaseType;
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
 impl PartialEq for dyn BaseTypeNode {
 	fn eq(&self, other: &Self) -> bool {
-		self.get_kind() == other.get_kind()
+		self.get_concrete() == other.get_concrete()
 	}
 }
 
 #[derive(PartialEq)]
-pub enum BaseTypeKind<'a> {
+pub enum ConcreteBaseTypeRef<'a> {
 	Int(&'a IntTypeNode)
+}
+
+pub enum ConcreteBaseType {
+	Int(Box<IntTypeNode>)
 }
 
 #[derive(Debug, Clone)]
@@ -1162,15 +1063,7 @@ impl IntTypeNode {
 	}
 }
 
-impl BaseTypeNode for IntTypeNode {
-	fn get_kind(&self) -> BaseTypeKind {
-		BaseTypeKind::Int(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn BaseTypeNode> {
-		Box::new(self.clone())
-	}
-}
+impl_concrete_node!(BaseTypeNode for IntTypeNode; ConcreteBaseTypeRef; ConcreteBaseType; Int);
 
 macro_rules! impl_node {
 	($nodetype:ty) => {
