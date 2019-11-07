@@ -162,7 +162,7 @@ fn test_parse_simple_function() {
 	assert_eq!(&create_int_arr(1), &len.params[0].param_type);
 	assert_eq!(&create_int_arr(0), &len.result);
 
-	let body = &len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().stmts;
+	let body = &len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body;
 	let let_stmt = &body.stmts[0].dynamic().downcast_ref::<VariableDeclarationNode>().unwrap();
 	assert_eq!(ident("b"), let_stmt.ident);
 	assert_eq!(&create_int_arr(1), &let_stmt.variable_type);

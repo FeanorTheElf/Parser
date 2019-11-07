@@ -8,6 +8,25 @@ pub trait Visitable<T: ?Sized> {
         where F: FnMut(&'a T) -> VisitorReturnType, T: 'a;
 }
 
+impl Visitable<dyn UnaryExprNode> for FunctionNode {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
+    {
+        match self.implementation.get_concrete() {
+            ConcreteFunctionImplementationRef::Implemented(ref implementation) => implementation.iterate(f),
+            ConcreteFunctionImplementationRef::Native(ref native) => Ok(())
+        }
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ImplementedFunctionNode {
+    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
+        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
+    {
+        self.body.iterate(f)
+    }
+}
+
 impl Visitable<dyn UnaryExprNode> for StmtsNode {
     fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
         where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
@@ -23,14 +42,14 @@ impl Visitable<dyn UnaryExprNode> for dyn StmtNode {
     fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
         where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
     {
-        match self.get_kind() {
-            StmtKind::Declaration(declaration) => declaration.iterate(f), 
-            StmtKind::Assignment(assignment) => assignment.iterate(f), 
-            StmtKind::Expr(expr) => expr.iterate(f), 
-            StmtKind::If(if_node) => if_node.iterate(f), 
-            StmtKind::While(while_node) => while_node.iterate(f), 
-            StmtKind::Block(block) => block.iterate(f), 
-            StmtKind::Return(return_node) => return_node.iterate(f)
+        match self.get_concrete() {
+            ConcreteStmtRef::Declaration(declaration) => declaration.iterate(f), 
+            ConcreteStmtRef::Assignment(assignment) => assignment.iterate(f), 
+            ConcreteStmtRef::Expr(expr) => expr.iterate(f), 
+            ConcreteStmtRef::If(if_node) => if_node.iterate(f), 
+            ConcreteStmtRef::While(while_node) => while_node.iterate(f), 
+            ConcreteStmtRef::Block(block) => block.iterate(f), 
+            ConcreteStmtRef::Return(return_node) => return_node.iterate(f)
         }
     }
 }
@@ -165,3 +184,68 @@ impl Visitable<dyn UnaryExprNode> for ExprNodeLvlIndex {
         return Ok(());
     }
 }
+
+type TransformResultType<T> = Result<Box<T>, CompileError>;
+
+pub trait Transformable<T>
+    where T: ?Sized, Self: Sized
+{
+    fn transform<F>(self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<T>) -> TransformResultType<T>;
+}
+
+impl Transformable<dyn StmtNode> for Box<FunctionNode> {
+    fn transform<F>(mut self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        self.implementation = self.implementation.transform(f)?;
+        return Ok(self);
+    }
+}
+
+impl Transformable<dyn StmtNode> for Box<dyn FunctionImplementationNode> {
+    fn transform<F>(self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        match self.into_concrete() {
+            ConcreteFunctionImplementation::Implemented(implementation) => Ok(implementation.transform(f)?),
+            ConcreteFunctionImplementation::Native(native) => Ok(native.transform(f)?)
+        }
+    }
+}
+
+impl Transformable<dyn StmtNode> for Box<ImplementedFunctionNode> {
+    fn transform<F>(mut self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        self.body = self.body.transform(f)?;
+        return Ok(self);
+    }
+}
+
+impl Transformable<dyn StmtNode> for Box<NativeFunctionNode> {
+    fn transform<F>(self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        Ok(self)
+    }
+}
+
+impl Transformable<dyn StmtNode> for Box<StmtsNode> {
+    fn transform<F>(mut self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        let stmts: Result<AstVec<dyn StmtNode>, CompileError> = self.stmts.drain(..).map(|stmt|stmt.transform(f)).collect();
+        self.stmts = stmts?;
+        return Ok(self);
+    }
+}
+
+impl Transformable<dyn StmtNode> for Box<dyn StmtNode> {
+    fn transform<F>(self, f: &mut F) -> Result<Self, CompileError>
+        where F: FnMut(Box<dyn StmtNode>) -> TransformResultType<dyn StmtNode> 
+    {
+        f(self)
+    }
+}
+

@@ -117,11 +117,11 @@ pub fn annotate_sope_info_func<'a>(node: &'a FunctionNode, table: &mut ScopeTabl
         table.get_mut(node).add_definition(&**param);
     }
     table.get_mut(&GLOBAL).add_definition(node)?;
-    match node.implementation.get_kind() {
-        FunctionImplementationKind::Implemented(implementation) => {
-            annotate_scope_info_stmts(&*implementation.stmts, table, node)?;
+    match node.implementation.get_concrete() {
+        ConcreteFunctionImplementationRef::Implemented(implementation) => {
+            annotate_scope_info_stmts(&*implementation.body, table, node)?;
         },
-        FunctionImplementationKind::Native(native) => { }
+        ConcreteFunctionImplementationRef::Native(native) => { }
     }
     return Ok(());
 }
@@ -135,20 +135,20 @@ fn annotate_scope_info_stmts<'a>(node: &'a StmtsNode, table: &mut ScopeTable<'a>
 }
 
 fn annotate_scope_info_stmt<'a>(node: &'a dyn StmtNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) -> Result<(), CompileError> {
-    match node.get_kind() {
-        StmtKind::Assignment(_stmt) => { },
-        StmtKind::Block(stmt) => {
+    match node.get_concrete() {
+        ConcreteStmtRef::Assignment(_stmt) => { },
+        ConcreteStmtRef::Block(stmt) => {
             annotate_scope_info_stmts(&*stmt.block, table, parent_scope)?;
         },
-        StmtKind::Declaration(stmt) => {
+        ConcreteStmtRef::Declaration(stmt) => {
             table.get_mut(parent_scope).add_definition(stmt);
         },
-        StmtKind::Expr(_stmt) => { },
-        StmtKind::If(stmt) => {
+        ConcreteStmtRef::Expr(_stmt) => { },
+        ConcreteStmtRef::If(stmt) => {
             annotate_scope_info_stmts(&*stmt.block, table, parent_scope)?;
         },
-        StmtKind::Return(stmt) => { },
-        StmtKind::While(stmt) => {
+        ConcreteStmtRef::Return(stmt) => { },
+        ConcreteStmtRef::While(stmt) => {
             annotate_scope_info_stmts(&*stmt.block, table, parent_scope)?;
         }
     }

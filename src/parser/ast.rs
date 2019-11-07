@@ -1,5 +1,6 @@
 use super::super::lexer::tokens::{Identifier, Literal};
 use super::super::lexer::position::TextPosition;
+use super::super::lexer::error::CompileError;
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -44,12 +45,17 @@ impl Clone for FunctionNode {
 }
 
 pub trait FunctionImplementationNode : Node {
-	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a>;
+	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a>;
+	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation;
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
 }
 
-pub enum FunctionImplementationKind<'a> {
+pub enum ConcreteFunctionImplementationRef<'a> {
 	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
+}
+
+pub enum ConcreteFunctionImplementation {
+	Implemented(Box<ImplementedFunctionNode>), Native(Box<NativeFunctionNode>)
 }
 
 #[derive(Debug, Clone)]
@@ -66,8 +72,12 @@ impl NativeFunctionNode {
 }
 
 impl FunctionImplementationNode for NativeFunctionNode {
-	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a> {
-		FunctionImplementationKind::Native(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a> {
+		ConcreteFunctionImplementationRef::Native(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation {
+		ConcreteFunctionImplementation::Native(self)
 	}
 	
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode> {
@@ -78,20 +88,24 @@ impl FunctionImplementationNode for NativeFunctionNode {
 #[derive(Debug, Clone)]
 pub struct ImplementedFunctionNode {
 	annotation: Annotation,
-	pub stmts: Box<StmtsNode>
+	pub body: Box<StmtsNode>
 }
 
 impl ImplementedFunctionNode {
-	pub fn new(annotation: Annotation, stmts: Box<StmtsNode>) -> Self {
+	pub fn new(annotation: Annotation, body: Box<StmtsNode>) -> Self {
 		ImplementedFunctionNode {
-			annotation, stmts
+			annotation, body
 		}
 	}
 }
 
 impl FunctionImplementationNode for ImplementedFunctionNode {
-	fn get_kind<'a>(&'a self) -> FunctionImplementationKind<'a> {
-		FunctionImplementationKind::Implemented(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a> {
+		ConcreteFunctionImplementationRef::Implemented(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation {
+		ConcreteFunctionImplementation::Implemented(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode> {
@@ -148,11 +162,12 @@ impl Clone for StmtsNode {
 }
 
 pub trait StmtNode : Node {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a>;
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a>;
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt;
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
 
-pub enum StmtKind<'a> {
+pub enum ConcreteStmtRef<'a> {
 	Declaration(&'a VariableDeclarationNode), 
 	Assignment(&'a AssignmentNode), 
 	Expr(&'a ExprStmtNode), 
@@ -160,6 +175,16 @@ pub enum StmtKind<'a> {
 	While(&'a WhileNode), 
 	Block(&'a BlockNode), 
 	Return(&'a ReturnNode)
+}
+
+pub enum ConcreteStmt {
+	Declaration(Box<VariableDeclarationNode>), 
+	Assignment(Box<AssignmentNode>), 
+	Expr(Box<ExprStmtNode>), 
+	If(Box<IfNode>), 
+	While(Box<WhileNode>), 
+	Block(Box<BlockNode>), 
+	Return(Box<ReturnNode>)
 }
 
 #[derive(Debug)]
@@ -190,8 +215,12 @@ impl Clone for VariableDeclarationNode {
 }
 
 impl StmtNode for VariableDeclarationNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::Declaration(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::Declaration(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::Declaration(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -215,8 +244,12 @@ impl AssignmentNode {
 }
 
 impl StmtNode for AssignmentNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::Assignment(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::Assignment(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::Assignment(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -239,8 +272,12 @@ impl ExprStmtNode {
 }
 
 impl StmtNode for ExprStmtNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::Expr(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::Expr(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::Expr(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -264,8 +301,12 @@ impl IfNode {
 }
 
 impl StmtNode for IfNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::If(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::If(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::If(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -289,8 +330,12 @@ impl WhileNode {
 }
 
 impl StmtNode for WhileNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::While(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::While(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::While(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -313,8 +358,12 @@ impl BlockNode {
 }
 
 impl StmtNode for BlockNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::Block(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::Block(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::Block(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {
@@ -337,8 +386,12 @@ impl ReturnNode {
 }
 
 impl StmtNode for ReturnNode {
-	fn get_kind<'a>(&'a self) -> StmtKind<'a> {
-		StmtKind::Return(&self)
+	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
+		ConcreteStmtRef::Return(&self)
+	}
+
+	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
+		ConcreteStmt::Return(self)
 	}
 
 	fn dyn_clone(&self) -> Box<dyn StmtNode> {

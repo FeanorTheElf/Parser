@@ -161,11 +161,11 @@ pub fn annotate_symbols_function<'a>(node: &'a FunctionNode, scopes: &ScopeTable
     for param in &node.params {
         symbols.add_symbol_definition(&**param, node, scopes);
     }
-    match node.implementation.get_kind() {
-        FunctionImplementationKind::Implemented(implementation) => {
-            annotate_symbols_stmts(&*implementation.stmts, scopes, symbols)?;
+    match node.implementation.get_concrete() {
+        ConcreteFunctionImplementationRef::Implemented(implementation) => {
+            annotate_symbols_stmts(&*implementation.body, scopes, symbols)?;
         },
-        FunctionImplementationKind::Native(native) => { }
+        ConcreteFunctionImplementationRef::Native(native) => { }
     }
     return Ok(());
 }
@@ -178,30 +178,30 @@ fn annotate_symbols_stmts<'a>(node: &'a StmtsNode, scopes: &ScopeTable<'a>, symb
 }
 
 fn annotate_symbols_stmt<'a>(node: &'a dyn StmtNode, parent_scopes: &'a dyn Scope, scopes: &ScopeTable<'a>, symbols: &mut SymbolTable<'a>) -> Result<(), CompileError> {
-    match node.get_kind() {
-        StmtKind::Assignment(stmt) => {
+    match node.get_concrete() {
+        ConcreteStmtRef::Assignment(stmt) => {
             annotate_symbols_expr(&*stmt.assignee, parent_scopes, scopes, symbols)?;
             annotate_symbols_expr(&*stmt.expr, parent_scopes, scopes, symbols)?;
         },
-        StmtKind::Block(stmt) => {
+        ConcreteStmtRef::Block(stmt) => {
             annotate_symbols_stmts(&*stmt.block, scopes, symbols)?;
         },
-        StmtKind::Declaration(stmt) => {
+        ConcreteStmtRef::Declaration(stmt) => {
             symbols.add_symbol_definition(stmt, parent_scopes, scopes)?;
             annotate_symbols_expr(&*stmt.expr, parent_scopes, scopes, symbols)?;
         },
-        StmtKind::Expr(stmt) => {
+        ConcreteStmtRef::Expr(stmt) => {
             annotate_symbols_expr(&*stmt.expr, parent_scopes, scopes, symbols)?;
         },
-        StmtKind::If(stmt) => {
+        ConcreteStmtRef::If(stmt) => {
             annotate_symbols_expr(&*stmt.condition, parent_scopes, scopes, symbols)?;
             annotate_symbols_stmts(&*stmt.block, scopes, symbols)?;
         },
-        StmtKind::While(stmt) => {
+        ConcreteStmtRef::While(stmt) => {
             annotate_symbols_expr(&*stmt.condition, parent_scopes, scopes, symbols)?;
             annotate_symbols_stmts(&*stmt.block, scopes, symbols)?;
         },
-        StmtKind::Return(stmt) => {
+        ConcreteStmtRef::Return(stmt) => {
             annotate_symbols_expr(&*stmt.expr, parent_scopes, scopes, symbols)?;
         }
     }
@@ -243,12 +243,12 @@ fn test_correct_definitions() {
 
     assert_eq!(&Type::Function(vec![Type::Array(PrimitiveType::Int, 1)], Some(Box::new(Type::Primitive(PrimitiveType::Int)))), symbols.get_type(&len.ident));
 
-    let a_use: &VariableNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().stmts.stmts[0].dynamic()
+    let a_use: &VariableNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body.stmts[0].dynamic()
         .downcast_ref::<VariableDeclarationNode>().unwrap().expr.head.head.head.head.head.head.dynamic().downcast_ref::<VariableNode>().unwrap();
     assert_eq!(vec![ Ref::from(&a_use.identifier) ], 
         symbols.get(&len.params[0].ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
 
-    let len_use: &FunctionCallNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().stmts.stmts[1].dynamic()
+    let len_use: &FunctionCallNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body.stmts[1].dynamic()
         .downcast_ref::<BlockNode>().unwrap().block.stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
         .dynamic().downcast_ref::<FunctionCallNode>().unwrap();
     assert_eq!(vec![ Ref::from(&len_use.function) ], symbols.get(&len.ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
