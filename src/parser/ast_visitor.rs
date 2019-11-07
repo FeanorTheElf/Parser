@@ -256,10 +256,7 @@ fn rek_transform(stmt: Box<dyn StmtNode>) -> Result<Box<dyn StmtNode>, CompileEr
         ConcreteStmt::Block(stmts) => stmts.transform(&mut rek_transform)?,
         ConcreteStmt::If(stmt) => Box::new(IfNode::new(stmt.get_annotation().clone(), stmt.condition, stmt.block.transform(&mut rek_transform)?)),
         ConcreteStmt::While(stmt) => Box::new(WhileNode::new(stmt.get_annotation().clone(), stmt.condition, stmt.block.transform(&mut rek_transform)?)),
-        ConcreteStmt::Assignment(stmt) => stmt,
-        ConcreteStmt::Declaration(stmt) => stmt,
-        ConcreteStmt::Expr(stmt) => stmt,
-        ConcreteStmt::Return(stmt) => stmt
+        x => x.into_generalized()
     };
 
     let global_function_call = ExprNode::parse(&mut lex("global()")).unwrap();

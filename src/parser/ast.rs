@@ -29,6 +29,30 @@ macro_rules! impl_concrete_node {
 	}
 }
 
+macro_rules! impl_get_generalized {
+	($type:ident; $generalized:ident; $($variant:ident),*) => {
+		impl<'a> $type<'a> {
+			pub fn get_generalized(&self) -> &'a dyn $generalized {
+				match self {
+					$($type::$variant(x) => *x),*
+				}
+			}
+		}
+	};
+}
+
+macro_rules! impl_into_generalized {
+	($type:ident; $generalized:ident; $($variant:ident),*) => {
+		impl $type {
+			pub fn into_generalized(self) -> Box<dyn $generalized> {
+				match self {
+					$($type::$variant(x) => x),*
+				}
+			}
+		}
+	};
+}
+
 macro_rules! cmp_attributes {
 	($fst:ident; $snd:ident; $attr:ident) => {
 		&(($fst).$attr) == &(($snd).$attr)
@@ -116,9 +140,13 @@ pub enum ConcreteFunctionImplementationRef<'a> {
 	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
 }
 
+impl_get_generalized!(ConcreteFunctionImplementationRef; FunctionImplementationNode; Implemented, Native);
+
 pub enum ConcreteFunctionImplementation {
 	Implemented(Box<ImplementedFunctionNode>), Native(Box<NativeFunctionNode>)
 }
+
+impl_into_generalized!(ConcreteFunctionImplementation; FunctionImplementationNode; Implemented, Native);
 
 #[derive(Debug, Clone)]
 pub struct NativeFunctionNode {
@@ -225,6 +253,8 @@ pub enum ConcreteStmtRef<'a> {
 	Return(&'a ReturnNode)
 }
 
+impl_get_generalized!(ConcreteStmtRef; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
+
 pub enum ConcreteStmt {
 	Declaration(Box<VariableDeclarationNode>), 
 	Assignment(Box<AssignmentNode>), 
@@ -234,6 +264,8 @@ pub enum ConcreteStmt {
 	Block(Box<StmtsNode>), 
 	Return(Box<ReturnNode>)
 }
+
+impl_into_generalized!(ConcreteStmt; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
 
 impl_concrete_node!(StmtNode for StmtsNode; ConcreteStmtRef; ConcreteStmt; Block);
 
@@ -373,9 +405,13 @@ pub enum ConcreteTypeRef<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
 }
 
+impl_get_generalized!(ConcreteTypeRef; TypeNode; Array, Void);
+
 pub enum ConcreteType {
 	Array(Box<ArrTypeNode>), Void(Box<VoidTypeNode>)
 }
+
+impl_into_generalized!(ConcreteType; TypeNode; Array, Void);
 
 #[derive(Debug)]
 pub struct ArrTypeNode {
@@ -542,6 +578,8 @@ pub enum CmpPartKind<'a> {
 	Ls(&'a CmpPartNodeLs), 
 	Gt(&'a CmpPartNodeGt)
 }
+
+impl_get_generalized!(CmpPartKind; CmpPartNode; Eq, Neq, Leq, Geq, Ls, Gt);
 
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeEq {
@@ -762,6 +800,8 @@ pub enum SumPartKind<'a> {
 	Add(&'a SumPartNodeAdd), Subtract(&'a SumPartNodeSub)
 }
 
+impl_get_generalized!(SumPartKind; SumPartNode; Add, Subtract);
+
 #[derive(Debug, Clone)]
 pub struct SumPartNodeAdd {
 	annotation: Annotation,
@@ -860,6 +900,8 @@ impl_partial_eq!(dyn ProductPartNode);
 pub enum ProductPartKind<'a> {
 	Mult(&'a ProductPartNodeMult), Divide(&'a ProductPartNodeDivide)
 }
+
+impl_get_generalized!(ProductPartKind; ProductPartNode; Mult, Divide);
 
 #[derive(Debug, Clone)]
 pub struct ProductPartNodeMult {
@@ -980,6 +1022,8 @@ pub enum ConcreteUnaryExprRef<'a> {
 	NewExpr(&'a NewExprNode)
 }
 
+impl_get_generalized!(ConcreteUnaryExprRef; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
+
 pub enum ConcreteUnaryExpr {
 	BracketExpr(Box<BracketExprNode>), 
 	Literal(Box<LiteralNode>), 
@@ -987,6 +1031,8 @@ pub enum ConcreteUnaryExpr {
 	FunctionCall(Box<FunctionCallNode>), 
 	NewExpr(Box<NewExprNode>)
 }
+
+impl_into_generalized!(ConcreteUnaryExpr; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
 
 #[derive(Debug, Clone)]
 pub struct BracketExprNode {
@@ -1102,9 +1148,13 @@ pub enum ConcreteBaseTypeRef<'a> {
 	Int(&'a IntTypeNode)
 }
 
+impl_get_generalized!(ConcreteBaseTypeRef; BaseTypeNode; Int);
+
 pub enum ConcreteBaseType {
 	Int(Box<IntTypeNode>)
 }
+
+impl_into_generalized!(ConcreteBaseType; BaseTypeNode; Int);
 
 #[derive(Debug, Clone)]
 pub struct IntTypeNode {
