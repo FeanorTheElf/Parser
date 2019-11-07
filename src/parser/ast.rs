@@ -1,26 +1,13 @@
 use super::super::lexer::tokens::{Identifier, Literal};
 use super::super::lexer::position::TextPosition;
 use super::super::lexer::error::CompileError;
+use super::super::util::dyn_eq::DynEq;
 
 use std::fmt::Debug;
 use std::any::Any;
 
 pub type AstVec<T> = Vec<Box<T>>;
 type Annotation = TextPosition;
-
-pub trait DynEq {
-	fn dyn_eq(&self, rhs: &dyn Any) -> bool;
-}
-
-impl<T: Any + PartialEq> DynEq for T {
-	fn dyn_eq(&self, rhs: &dyn Any) -> bool {
-		if let Some(rhs_as_t) = rhs.downcast_ref::<T>() {
-			self == rhs_as_t
-		} else {
-			false
-		}
-	}
-}
 
 macro_rules! impl_concrete_node {
 	($supnode:ident for $subnode:ident; $concreteref:ident; $concrete:ident; $variant:ident) => {
@@ -42,7 +29,44 @@ macro_rules! impl_concrete_node {
 	}
 }
 
-pub trait Node : Debug + Any {
+macro_rules! cmp_attributes {
+	($fst:ident; $snd:ident; $attr:ident) => {
+		&(($fst).$attr) == &(($snd).$attr)
+	};
+}
+
+macro_rules! impl_partial_eq {
+	($type:ident; ) => {
+		impl PartialEq<$type> for $type {
+			fn eq(&self, rhs: &$type) -> bool {
+				true
+			}
+		}
+	};
+	($type:ident; $fst_attr:ident) => {
+		impl PartialEq<$type> for $type {
+			fn eq(&self, rhs: &$type) -> bool {
+				cmp_attributes!(self; rhs; $fst_attr)
+			}
+		}
+	};
+	($type:ident; $fst_attr:ident, $($attr:ident),*) => {
+		impl PartialEq<$type> for $type {
+			fn eq(&self, rhs: &$type) -> bool {
+				cmp_attributes!(self; rhs; $fst_attr) && $(cmp_attributes!(self; rhs; $attr))&&*
+			}
+		}
+	};
+	(dyn $type:ident) => {
+		impl PartialEq<dyn $type> for dyn $type {
+			fn eq(&self, rhs: &dyn $type) -> bool {
+				(*self).dyn_eq(rhs.dynamic())
+			}
+		}
+	}
+}
+
+pub trait Node : Debug + Any + DynEq {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
 	fn dyn_clone_node(&self) -> Box<dyn Node>;
@@ -66,6 +90,8 @@ impl FunctionNode {
 	}
 }
 
+impl_partial_eq!(FunctionNode; annotation, ident, params, result, implementation);
+
 impl Clone for FunctionNode {
 	fn clone(&self) -> Self {
 		FunctionNode {
@@ -83,6 +109,8 @@ pub trait FunctionImplementationNode : Node {
 	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation;
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
 }
+
+impl_partial_eq!(dyn FunctionImplementationNode);
 
 pub enum ConcreteFunctionImplementationRef<'a> {
 	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
@@ -107,6 +135,8 @@ impl NativeFunctionNode {
 
 impl_concrete_node!(FunctionImplementationNode for NativeFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Native);
 
+impl_partial_eq!(NativeFunctionNode; );
+
 #[derive(Debug, Clone)]
 pub struct ImplementedFunctionNode {
 	annotation: Annotation,
@@ -123,6 +153,8 @@ impl ImplementedFunctionNode {
 
 impl_concrete_node!(FunctionImplementationNode for ImplementedFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Implemented);
 
+impl_partial_eq!(ImplementedFunctionNode; body);
+
 #[derive(Debug)]
 pub struct ParameterNode {
 	annotation: Annotation,
@@ -137,6 +169,8 @@ impl ParameterNode {
 		}
 	}
 }
+
+impl_partial_eq!(ParameterNode; ident, param_type);
 
 impl Clone for ParameterNode {
 	fn clone(&self) -> ParameterNode {
@@ -162,6 +196,8 @@ impl StmtsNode {
 	}
 }
 
+impl_partial_eq!(StmtsNode; stmts);
+
 impl Clone for StmtsNode {
 	fn clone(&self) -> StmtsNode {
 		StmtsNode {
@@ -176,6 +212,8 @@ pub trait StmtNode : Node {
 	fn into_concrete(self: Box<Self>) -> ConcreteStmt;
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
+
+impl_partial_eq!(dyn StmtNode);
 
 pub enum ConcreteStmtRef<'a> {
 	Declaration(&'a VariableDeclarationNode), 
@@ -226,6 +264,8 @@ impl Clone for VariableDeclarationNode {
 
 impl_concrete_node!(StmtNode for VariableDeclarationNode; ConcreteStmtRef; ConcreteStmt; Declaration);
 
+impl_partial_eq!(VariableDeclarationNode; variable_type, ident, expr);
+
 #[derive(Debug, Clone)]
 pub struct AssignmentNode {
 	annotation: Annotation,
@@ -243,6 +283,8 @@ impl AssignmentNode {
 
 impl_concrete_node!(StmtNode for AssignmentNode; ConcreteStmtRef; ConcreteStmt; Assignment);
 
+impl_partial_eq!(AssignmentNode; assignee, expr);
+
 #[derive(Debug, Clone)]
 pub struct ExprStmtNode {
 	annotation: Annotation,
@@ -259,6 +301,8 @@ impl ExprStmtNode {
 
 impl_concrete_node!(StmtNode for ExprStmtNode; ConcreteStmtRef; ConcreteStmt; Expr);
 
+impl_partial_eq!(ExprStmtNode; expr);
+
 #[derive(Debug, Clone)]
 pub struct IfNode {
 	annotation: Annotation,
@@ -274,19 +318,9 @@ impl IfNode {
 	}
 }
 
-impl StmtNode for IfNode {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a> {
-		ConcreteStmtRef::If(&self)
-	}
+impl_concrete_node!(StmtNode for IfNode; ConcreteStmtRef; ConcreteStmt; If);
 
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt {
-		ConcreteStmt::If(self)
-	}
-
-	fn dyn_clone(&self) -> Box<dyn StmtNode> {
-		Box::new(self.clone())
-	}
-}
+impl_partial_eq!(IfNode; condition, block);
 
 #[derive(Debug, Clone)]
 pub struct WhileNode {
@@ -305,6 +339,8 @@ impl WhileNode {
 
 impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmt; While);
 
+impl_partial_eq!(WhileNode; condition, block);
+
 #[derive(Debug, Clone)]
 pub struct BlockNode {
 	annotation: Annotation,
@@ -320,6 +356,8 @@ impl BlockNode {
 }
 
 impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmt; Block);
+
+impl_partial_eq!(BlockNode; block);
 
 #[derive(Debug, Clone)]
 pub struct ReturnNode {
@@ -337,19 +375,16 @@ impl ReturnNode {
 
 impl_concrete_node!(StmtNode for ReturnNode; ConcreteStmtRef; ConcreteStmt; Return);
 
+impl_partial_eq!(ReturnNode; expr);
+
 pub trait TypeNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteTypeRef<'a>;
 	fn into_concrete(self: Box<Self>) -> ConcreteType;
 	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
-impl PartialEq for dyn TypeNode {
-	fn eq(&self, other: &Self) -> bool {
-		self.get_concrete() == other.get_concrete()
-	}
-}
+impl_partial_eq!(dyn TypeNode);
 
-#[derive(PartialEq)]
 pub enum ConcreteTypeRef<'a> {
 	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
 }
@@ -363,12 +398,6 @@ pub struct ArrTypeNode {
 	annotation: Annotation,
 	pub base_type: Box<dyn BaseTypeNode>,
 	pub dims: u8
-}
-
-impl PartialEq for ArrTypeNode {
-	fn eq(&self, other: &Self) -> bool {
-		*self.base_type == *other.base_type && self.dims == other.dims
-	}
 }
 
 impl ArrTypeNode {
@@ -387,6 +416,8 @@ impl ArrTypeNode {
 	}
 }
 
+impl_partial_eq!(ArrTypeNode; base_type, dims);
+
 impl Clone for ArrTypeNode {
 	fn clone(&self) -> ArrTypeNode {
 		ArrTypeNode {
@@ -404,12 +435,6 @@ pub struct VoidTypeNode {
 	annotation: Annotation
 }
 
-impl PartialEq for VoidTypeNode {
-	fn eq(&self, other: &Self) -> bool {
-		true
-	}
-}
-
 impl VoidTypeNode {
 	pub fn new(annotation: Annotation) -> Self {
 		VoidTypeNode {
@@ -419,6 +444,8 @@ impl VoidTypeNode {
 }
 
 impl_concrete_node!(TypeNode for VoidTypeNode; ConcreteTypeRef; ConcreteType; Void);
+
+impl_partial_eq!(VoidTypeNode;);
 
 pub type ExprNode = ExprNodeLvlOr;
 
@@ -437,6 +464,8 @@ impl ExprNodeLvlOr {
 	}
 }
 
+impl_partial_eq!(ExprNodeLvlOr; head, tail);
+
 #[derive(Debug, Clone)]
 pub struct OrPartNode {
 	annotation: Annotation,
@@ -450,6 +479,8 @@ impl OrPartNode {
 		}
 	}
 }
+
+impl_partial_eq!(OrPartNode; expr);
 
 #[derive(Debug, Clone)]
 pub struct ExprNodeLvlAnd {
@@ -466,6 +497,8 @@ impl ExprNodeLvlAnd {
 	}
 }
 
+impl_partial_eq!(ExprNodeLvlAnd; head, tail);
+
 #[derive(Debug, Clone)]
 pub struct AndPartNode {
 	annotation: Annotation,
@@ -479,6 +512,8 @@ impl AndPartNode {
 		}
 	}
 }
+
+impl_partial_eq!(AndPartNode; expr);
 
 #[derive(Debug)]
 pub struct ExprNodeLvlCmp {
@@ -495,6 +530,8 @@ impl ExprNodeLvlCmp {
 	}
 }
 
+impl_partial_eq!(ExprNodeLvlCmp; head, tail);
+
 impl Clone for ExprNodeLvlCmp {
 	fn clone(&self) -> ExprNodeLvlCmp {
 		ExprNodeLvlCmp {
@@ -510,6 +547,8 @@ pub trait CmpPartNode : Node {
 	fn get_expr(&self) -> &ExprNodeLvlAdd;
 	fn dyn_clone(&self) -> Box<dyn CmpPartNode>;
 }
+
+impl_partial_eq!(dyn CmpPartNode);
 
 pub enum CmpPartKind<'a> {
 	Eq(&'a CmpPartNodeEq), 
@@ -548,6 +587,8 @@ impl CmpPartNode for CmpPartNodeEq {
 	}
 }
 
+impl_partial_eq!(CmpPartNodeEq; expr);
+
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeNeq {
 	annotation: Annotation,
@@ -575,6 +616,8 @@ impl CmpPartNode for CmpPartNodeNeq {
 		Box::new(self.clone())
 	}
 }
+
+impl_partial_eq!(CmpPartNodeNeq; expr);
 
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeLeq {
@@ -604,6 +647,8 @@ impl CmpPartNode for CmpPartNodeLeq {
 	}
 }
 
+impl_partial_eq!(CmpPartNodeLeq; expr);
+
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeGeq {
 	annotation: Annotation,
@@ -631,6 +676,8 @@ impl CmpPartNode for CmpPartNodeGeq {
 		Box::new(self.clone())
 	}
 }
+
+impl_partial_eq!(CmpPartNodeGeq; expr);
 
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeLs {
@@ -660,6 +707,8 @@ impl CmpPartNode for CmpPartNodeLs {
 	}
 }
 
+impl_partial_eq!(CmpPartNodeLs; expr);
+
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeGt {
 	annotation: Annotation,
@@ -688,6 +737,8 @@ impl CmpPartNode for CmpPartNodeGt {
 	}
 }
 
+impl_partial_eq!(CmpPartNodeGt; expr);
+
 #[derive(Debug)]
 pub struct ExprNodeLvlAdd {
 	annotation: Annotation,
@@ -702,6 +753,8 @@ impl ExprNodeLvlAdd {
 		}
 	}
 }
+
+impl_partial_eq!(ExprNodeLvlAdd; head, tail);
 
 impl Clone for ExprNodeLvlAdd {
 	fn clone(&self) -> ExprNodeLvlAdd {
@@ -718,6 +771,8 @@ pub trait SumPartNode : Node {
 	fn get_expr(&self) -> &ExprNodeLvlMult;
 	fn dyn_clone(&self) -> Box<dyn SumPartNode>;
 }
+
+impl_partial_eq!(dyn SumPartNode);
 
 pub enum SumPartKind<'a> {
 	Add(&'a SumPartNodeAdd), Subtract(&'a SumPartNodeSub)
@@ -751,6 +806,8 @@ impl SumPartNode for SumPartNodeAdd {
 	}
 }
 
+impl_partial_eq!(SumPartNodeAdd; expr);
+
 #[derive(Debug, Clone)]
 pub struct SumPartNodeSub {
 	annotation: Annotation,
@@ -779,6 +836,8 @@ impl SumPartNode for SumPartNodeSub {
 	}
 }
 
+impl_partial_eq!(SumPartNodeSub; expr);
+
 #[derive(Debug)]
 pub struct ExprNodeLvlMult {
 	annotation: Annotation,
@@ -793,6 +852,8 @@ impl ExprNodeLvlMult {
 		}
 	}
 }
+
+impl_partial_eq!(ExprNodeLvlMult; head, tail);
 
 impl Clone for ExprNodeLvlMult {
 	fn clone(&self) -> ExprNodeLvlMult {
@@ -809,6 +870,8 @@ pub trait ProductPartNode : Node {
 	fn get_expr(&self) -> &ExprNodeLvlIndex;
 	fn dyn_clone(&self) -> Box<dyn ProductPartNode>;
 }
+
+impl_partial_eq!(dyn ProductPartNode);
 
 pub enum ProductPartKind<'a> {
 	Mult(&'a ProductPartNodeMult), Divide(&'a ProductPartNodeDivide)
@@ -842,6 +905,8 @@ impl ProductPartNode for ProductPartNodeMult {
 	}
 }
 
+impl_partial_eq!(ProductPartNodeMult; expr);
+
 #[derive(Debug, Clone)]
 pub struct ProductPartNodeDivide {
 	annotation: Annotation,
@@ -870,6 +935,8 @@ impl ProductPartNode for ProductPartNodeDivide {
 	}
 }
 
+impl_partial_eq!(ProductPartNodeDivide; expr);
+
 #[derive(Debug)]
 pub struct ExprNodeLvlIndex {
 	annotation: Annotation,
@@ -884,6 +951,8 @@ impl ExprNodeLvlIndex {
 		}
 	}
 }
+
+impl_partial_eq!(ExprNodeLvlIndex; head, tail);
 
 impl Clone for ExprNodeLvlIndex {
 	fn clone(&self) -> ExprNodeLvlIndex {
@@ -909,11 +978,15 @@ impl IndexPartNode {
 	}
 }
 
+impl_partial_eq!(IndexPartNode; expr);
+
 pub trait UnaryExprNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteUnaryExprRef<'a>;
 	fn into_concrete(self: Box<Self>) -> ConcreteUnaryExpr;
 	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
 }
+
+impl_partial_eq!(dyn UnaryExprNode);
 
 pub enum ConcreteUnaryExprRef<'a> {
 	BracketExpr(&'a BracketExprNode), 
@@ -947,6 +1020,8 @@ impl BracketExprNode {
 
 impl_concrete_node!(UnaryExprNode for BracketExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; BracketExpr);
 
+impl_partial_eq!(BracketExprNode; expr);
+
 #[derive(Debug, Clone)]
 pub struct LiteralNode {
 	annotation: Annotation,
@@ -963,6 +1038,8 @@ impl LiteralNode {
 
 impl_concrete_node!(UnaryExprNode for LiteralNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Literal);
 
+impl_partial_eq!(LiteralNode; literal);
+
 #[derive(Debug, Clone)]
 pub struct VariableNode {
 	annotation: Annotation,
@@ -978,6 +1055,8 @@ impl VariableNode {
 }
 
 impl_concrete_node!(UnaryExprNode for VariableNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Variable);
+
+impl_partial_eq!(VariableNode; identifier);
 
 #[derive(Debug, Clone)]
 pub struct FunctionCallNode {
@@ -996,6 +1075,8 @@ impl FunctionCallNode {
 
 impl_concrete_node!(UnaryExprNode for FunctionCallNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; FunctionCall);
 
+impl_partial_eq!(FunctionCallNode; function, params);
+
 #[derive(Debug)]
 pub struct NewExprNode {
 	annotation: Annotation,
@@ -1011,6 +1092,10 @@ impl NewExprNode {
 	}
 }
 
+impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; NewExpr);
+
+impl_partial_eq!(NewExprNode; base_type, dimensions);
+
 impl Clone for NewExprNode {
 	fn clone(&self) -> NewExprNode {
 		NewExprNode {
@@ -1021,21 +1106,14 @@ impl Clone for NewExprNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; NewExpr);
-
 pub trait BaseTypeNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteBaseTypeRef<'a>;
 	fn into_concrete(self: Box<Self>) -> ConcreteBaseType;
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
-impl PartialEq for dyn BaseTypeNode {
-	fn eq(&self, other: &Self) -> bool {
-		self.get_concrete() == other.get_concrete()
-	}
-}
+impl_partial_eq!(dyn BaseTypeNode);
 
-#[derive(PartialEq)]
 pub enum ConcreteBaseTypeRef<'a> {
 	Int(&'a IntTypeNode)
 }
@@ -1049,12 +1127,6 @@ pub struct IntTypeNode {
 	annotation: Annotation
 }
 
-impl PartialEq for IntTypeNode {
-	fn eq(&self, other: &Self) -> bool {
-		true
-	}
-}
-
 impl IntTypeNode {
 	pub fn new(annotation: Annotation) -> Self {
 		IntTypeNode {
@@ -1064,6 +1136,8 @@ impl IntTypeNode {
 }
 
 impl_concrete_node!(BaseTypeNode for IntTypeNode; ConcreteBaseTypeRef; ConcreteBaseType; Int);
+
+impl_partial_eq!(IntTypeNode;);
 
 macro_rules! impl_node {
 	($nodetype:ty) => {
