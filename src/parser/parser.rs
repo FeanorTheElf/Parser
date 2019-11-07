@@ -11,9 +11,9 @@ use std::vec::Vec;
 
 impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
 impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
-                                             | ImplementedFunctionNode(Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose)}
+                                             | ImplementedFunctionNode(StmtsNode)}
 impl_parse!{ ParameterNode => ParameterNode(identifier Token#Colon TypeNode Token#Comma) }
-impl_parse!{ StmtsNode => StmtsNode({StmtNode}) }
+impl_parse!{ StmtsNode => StmtsNode(Token#CurlyBracketOpen {StmtNode} Token#CurlyBracketClose) }
 
 impl Parse for dyn StmtNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
@@ -26,8 +26,8 @@ impl Parse for dyn StmtNode {
 			return Ok(Box::new(*IfNode::parse(stream)?));
 		} else if stream.ends(&Token::While) {
 			return Ok(Box::new(*WhileNode::parse(stream)?));
-		} else if stream.ends(&Token::CurlyBracketOpen) {
-			return Ok(Box::new(*BlockNode::parse(stream)?));
+		} else if StmtsNode::guess_can_parse(stream) {
+			return Ok(StmtsNode::parse(stream)?);
 		} else if stream.ends(&Token::Return) {
 			return Ok(Box::new(*ReturnNode::parse(stream)?));
 		} else if stream.ends(&Token::Let) {
@@ -49,9 +49,8 @@ impl Parse for dyn StmtNode {
 	}
 }
 
-impl_parse!{ IfNode => IfNode(Token#If ExprNode Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose) }
-impl_parse!{ WhileNode => WhileNode(Token#If ExprNode Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose) }
-impl_parse!{ BlockNode => BlockNode(Token#CurlyBracketOpen StmtsNode Token#CurlyBracketClose) }
+impl_parse!{ IfNode => IfNode(Token#If ExprNode StmtsNode) }
+impl_parse!{ WhileNode => WhileNode(Token#If ExprNode StmtsNode) }
 impl_parse!{ ReturnNode => ReturnNode(Token#Return ExprNode Token#Semicolon) }
 impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign ExprNode Token#Semicolon) }
 
@@ -154,7 +153,7 @@ fn create_int_arr(dims: u8) -> Box<dyn TypeNode> {
 fn test_parse_simple_function() {
 	let default_pos = TextPosition::create(0, 0);
     let ident = |name: &'static str| Identifier { name: name.to_owned() };
-    let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }".to_owned())).unwrap();
+    let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }")).unwrap();
 
 	assert_eq!(ident("len"), len.ident);
 	assert_eq!(1, len.params.len());
@@ -167,7 +166,7 @@ fn test_parse_simple_function() {
 	assert_eq!(ident("b"), let_stmt.ident);
 	assert_eq!(&create_int_arr(1), &let_stmt.variable_type);
 
-	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<BlockNode>().unwrap().block.stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
+	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<StmtsNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
 	let function_call = &return_stmt.expr.head.head.head.head.head.head.dynamic().downcast_ref::<FunctionCallNode>().unwrap();
 	assert_eq!(ident("len"), function_call.function);
 	assert_eq!(1, function_call.params.len());

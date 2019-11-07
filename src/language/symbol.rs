@@ -183,8 +183,8 @@ fn annotate_symbols_stmt<'a>(node: &'a dyn StmtNode, parent_scopes: &'a dyn Scop
             annotate_symbols_expr(&*stmt.assignee, parent_scopes, scopes, symbols)?;
             annotate_symbols_expr(&*stmt.expr, parent_scopes, scopes, symbols)?;
         },
-        ConcreteStmtRef::Block(stmt) => {
-            annotate_symbols_stmts(&*stmt.block, scopes, symbols)?;
+        ConcreteStmtRef::Block(stmts) => {
+            annotate_symbols_stmts(stmts, scopes, symbols)?;
         },
         ConcreteStmtRef::Declaration(stmt) => {
             symbols.add_symbol_definition(stmt, parent_scopes, scopes)?;
@@ -233,7 +233,7 @@ impl SymbolUse for FunctionCallNode {
 
 #[test]
 fn test_correct_definitions() {
-    let len = FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }".to_owned())).unwrap();
+    let len = FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }")).unwrap();
 
     let mut scopes = ScopeTable::new();
     assert!(annotate_sope_info_func(&len, &mut scopes).is_ok());
@@ -249,14 +249,14 @@ fn test_correct_definitions() {
         symbols.get(&len.params[0].ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
 
     let len_use: &FunctionCallNode = len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body.stmts[1].dynamic()
-        .downcast_ref::<BlockNode>().unwrap().block.stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
+        .downcast_ref::<StmtsNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap().expr.head.head.head.head.head.head
         .dynamic().downcast_ref::<FunctionCallNode>().unwrap();
     assert_eq!(vec![ Ref::from(&len_use.function) ], symbols.get(&len.ident).expect_definition().uses.iter().map(|var| Ref::from(var.get_identifier())).collect::<Vec<Ref<Identifier>>>());
 }
 
 #[test]
 fn test_definition_not_found() {
-    let function = FunctionNode::parse(&mut lex("fn test(): void { let b: int = a; }".to_owned())).unwrap();
+    let function = FunctionNode::parse(&mut lex("fn test(): void { let b: int = a; }")).unwrap();
 
     let mut scopes = ScopeTable::new();
     assert!(annotate_sope_info_func(&function, &mut scopes).is_ok());
@@ -267,7 +267,7 @@ fn test_definition_not_found() {
 
 #[test]
 fn test_definition_shadowed() {
-    let function = FunctionNode::parse(&mut lex("fn b(a: int,): void { let b: int = a; }".to_owned())).unwrap();
+    let function = FunctionNode::parse(&mut lex("fn b(a: int,): void { let b: int = a; }")).unwrap();
 
     let mut scopes = ScopeTable::new();
     assert!(annotate_sope_info_func(&function, &mut scopes).is_ok());

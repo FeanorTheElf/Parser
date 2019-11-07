@@ -32,7 +32,7 @@ fn calc_call_graph<'a>(functions: &'a Vec<&'a FunctionNode>, symbols: &SymbolTab
 
 fn find_called_functions<'a>(implementation: &'a ImplementedFunctionNode, symbols: &SymbolTable<'a>) -> Vec<&'a FunctionNode> {
     let mut result = Vec::new();
-    implementation.stmts.iterate(&mut |unary_expr: &'a dyn UnaryExprNode| {
+    implementation.body.iterate(&mut |unary_expr: &'a dyn UnaryExprNode| {
         if let Some(function_call) = unary_expr.dynamic().downcast_ref::<FunctionCallNode>() {
             let called_function: &'a FunctionNode = symbols.get_identifier_definition(function_call.get_identifier()).definition_node
                 .dynamic().downcast_ref::<FunctionNode>().unwrap();

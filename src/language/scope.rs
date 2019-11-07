@@ -137,8 +137,8 @@ fn annotate_scope_info_stmts<'a>(node: &'a StmtsNode, table: &mut ScopeTable<'a>
 fn annotate_scope_info_stmt<'a>(node: &'a dyn StmtNode, table: &mut ScopeTable<'a>, parent_scope: &'a dyn Scope) -> Result<(), CompileError> {
     match node.get_concrete() {
         ConcreteStmtRef::Assignment(_stmt) => { },
-        ConcreteStmtRef::Block(stmt) => {
-            annotate_scope_info_stmts(&*stmt.block, table, parent_scope)?;
+        ConcreteStmtRef::Block(stmts) => {
+            annotate_scope_info_stmts(stmts, table, parent_scope)?;
         },
         ConcreteStmtRef::Declaration(stmt) => {
             table.get_mut(parent_scope).add_definition(stmt);

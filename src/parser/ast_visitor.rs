@@ -1,6 +1,15 @@
 use super::ast::*;
 use super::super::lexer::error::CompileError;
 
+#[cfg(test)]
+use super::super::parser::Parse;
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
+#[cfg(test)]
+use super::super::lexer::position::TextPosition;
+#[cfg(test)]
+use super::super::lexer::tokens::Identifier;
+
 type VisitorReturnType = Result<(), CompileError>;
 
 pub trait Visitable<T: ?Sized> {
@@ -94,14 +103,6 @@ impl Visitable<dyn UnaryExprNode> for WhileNode {
     {
         self.condition.iterate(f)?;
         return self.block.iterate(f);
-    }
-}
-
-impl Visitable<dyn UnaryExprNode> for BlockNode {
-    fn iterate<'a, F>(&'a self, f: &mut F) -> VisitorReturnType
-        where F: FnMut(&'a dyn UnaryExprNode) -> VisitorReturnType 
-    {
-        self.block.iterate(f)
     }
 }
 
@@ -249,3 +250,50 @@ impl Transformable<dyn StmtNode> for Box<dyn StmtNode> {
     }
 }
 
+#[cfg(test)]
+fn rek_transform(stmt: Box<dyn StmtNode>) -> Result<Box<dyn StmtNode>, CompileError> {
+    let base: Box<dyn StmtNode> = match stmt.into_concrete() {
+        ConcreteStmt::Block(stmts) => stmts.transform(&mut rek_transform)?,
+        ConcreteStmt::If(stmt) => Box::new(IfNode::new(stmt.get_annotation().clone(), stmt.condition, stmt.block.transform(&mut rek_transform)?)),
+        ConcreteStmt::While(stmt) => Box::new(WhileNode::new(stmt.get_annotation().clone(), stmt.condition, stmt.block.transform(&mut rek_transform)?)),
+        ConcreteStmt::Assignment(stmt) => stmt,
+        ConcreteStmt::Declaration(stmt) => stmt,
+        ConcreteStmt::Expr(stmt) => stmt,
+        ConcreteStmt::Return(stmt) => stmt
+    };
+
+    let global_function_call = ExprNode::parse(&mut lex("global()")).unwrap();
+    let global_function_call_stmt = Box::new(ExprStmtNode::new(TextPosition::create(0, 0), global_function_call));
+
+    let stmts = vec![base, global_function_call_stmt.clone()];
+    let result: Box<dyn StmtNode> = Box::new(StmtsNode::new(TextPosition::create(0, 0), stmts));
+    return Ok(result);
+}
+
+#[test]
+fn test_transform_function() {
+    let function = FunctionNode::parse(&mut lex("fn min(a: int, b: int,): int {
+        if (a < b) {
+            return a;
+        }
+        return b;
+    }")).unwrap();
+    let expected_function = *FunctionNode::parse(&mut lex("fn min(a: int, b: int,): int {
+        {
+            if (a < b) {
+                {
+                    return a;
+                    global();
+                }
+            }
+            global();
+        }
+        {
+            return b;
+            global();
+        }
+    }")).unwrap();
+
+    let transformed_function = *function.clone().transform(&mut rek_transform).unwrap();
+    assert_eq!(expected_function, transformed_function);
+}

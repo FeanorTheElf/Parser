@@ -80,12 +80,12 @@ fn is_first_char_alphanumeric(string: &String) -> Option<bool> {
 	string.chars().next().map(|first| is_alphanumeric(first))
 }
 
-pub fn lex(mut input: String) -> Stream {
+pub fn lex(input: &str) -> Stream {
 	let mut result: Vec<PosToken> = vec![];
 	let mut current = String::new();
 	let mut current_pos = TextPosition::create(0, 0);
 	let mut current_token_start_pos = current_pos.clone();
-	for c in input.drain(..) {
+	for c in input.chars() {
 		let mut separator = false;
 
 		if is_whitespace(c) {
@@ -157,12 +157,12 @@ fn test_lex() {
 		Token::OpAdd,
 		Token::OpSubtract,
 		Token::Identifier(Identifier { name: "d".to_owned() }),
-		Token::Semicolon], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;".to_owned())));
+		Token::Semicolon], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;")));
 }
 
 #[test]
 fn test_lex_position() {
-	let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}".to_owned());
+	let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());

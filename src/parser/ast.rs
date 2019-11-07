@@ -221,7 +221,7 @@ pub enum ConcreteStmtRef<'a> {
 	Expr(&'a ExprStmtNode), 
 	If(&'a IfNode), 
 	While(&'a WhileNode), 
-	Block(&'a BlockNode), 
+	Block(&'a StmtsNode), 
 	Return(&'a ReturnNode)
 }
 
@@ -231,9 +231,11 @@ pub enum ConcreteStmt {
 	Expr(Box<ExprStmtNode>), 
 	If(Box<IfNode>), 
 	While(Box<WhileNode>), 
-	Block(Box<BlockNode>), 
+	Block(Box<StmtsNode>), 
 	Return(Box<ReturnNode>)
 }
+
+impl_concrete_node!(StmtNode for StmtsNode; ConcreteStmtRef; ConcreteStmt; Block);
 
 #[derive(Debug)]
 pub struct VariableDeclarationNode {
@@ -340,24 +342,6 @@ impl WhileNode {
 impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmt; While);
 
 impl_partial_eq!(WhileNode; condition, block);
-
-#[derive(Debug, Clone)]
-pub struct BlockNode {
-	annotation: Annotation,
-	pub block: Box<StmtsNode>
-}
-
-impl BlockNode {
-	pub fn new(annotation: Annotation, block: Box<StmtsNode>) -> Self {
-		BlockNode {
-			annotation, block
-		}
-	}
-}
-
-impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmt; Block);
-
-impl_partial_eq!(BlockNode; block);
 
 #[derive(Debug, Clone)]
 pub struct ReturnNode {
@@ -1171,7 +1155,6 @@ impl_node!(AssignmentNode);
 impl_node!(ExprStmtNode);
 impl_node!(IfNode);
 impl_node!(WhileNode);
-impl_node!(BlockNode);
 impl_node!(ReturnNode);
 impl_node!(ArrTypeNode);
 impl_node!(VoidTypeNode);

@@ -21,7 +21,7 @@ use language::scope::{ ScopeTable, annotate_sope_info_func };
 use language::symbol::{ SymbolTable, annotate_symbols_function };
 
 fn main() {
-	let mut stream = lex("fn len(a: int[],): int native;".to_owned());
+	let mut stream = lex("fn len(a: int[],): int native;");
 	let function = FunctionNode::parse(&mut stream).unwrap();
 	let mut scopes = ScopeTable::new();
 	annotate_sope_info_func(&function, &mut scopes).unwrap();

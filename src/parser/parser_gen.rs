@@ -137,7 +137,7 @@ macro_rules! rule_parser {
 	($stream:ident; $result:ty; $expected_string:expr; $variant:ident $alt:tt) => {
         rule_base_alt_parser!($stream; {
 			Err(CompileError::new(($stream.pos()), 
-				format!("{} or {}, got {}", $expected_string, rule_alt_expectation_as_printable!($alt), ($stream).peek().unwrap()), ErrorType::SyntaxError))
+				format!("{} or {}, got {} while parsing {}", $expected_string, rule_alt_expectation_as_printable!($alt), ($stream).peek().unwrap(), stringify!($result)), ErrorType::SyntaxError))
 		}; $variant $alt)
     };
     ($stream:ident; $result:ty; $expected_string:expr; $variant:ident $alt:tt | $($tail:tt)*) => {
@@ -151,9 +151,9 @@ macro_rules! rule_alt_guess_can_parse {
 	($stream:ident; $variant:ident(identifier $($tail:tt)*)) => {
         ($stream).ends_ident()
     };
-	($stream:ident; $variant:ident({ $name:ident } $($tail:tt)*)) => {
-        $name::guess_can_parse($stream)
-    };
+	// This does not work, as it does not correctly recognize zero repetitions
+	//($stream:ident; $variant:ident({ $name:ident } $($tail:tt)*)) => {
+    //};
 	($stream:ident; $variant:ident(Token#$token:ident $($tail:tt)*)) => {
         ($stream).ends(&Token::$token)
     };
