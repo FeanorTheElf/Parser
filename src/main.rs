@@ -9,6 +9,7 @@ extern crate test;
 mod util;
 mod lexer;
 mod parser;
+mod transformer;
 mod language;
 mod la;
 mod backend;

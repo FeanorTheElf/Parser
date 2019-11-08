@@ -1,6 +1,7 @@
 use super::super::parser::prelude::*;
 use super::super::parser::ast_visitor::Visitable;
 use super::super::util::ref_eq::{ Ref, RefEq };
+use super::super::transformer::Transformer;
 use super::scope::{ ScopeTable, ScopeInfo, Scope, SymbolDefinition, GLOBAL, SymbolDefinitionKind };
 use super::obj_type::Type;
 
@@ -54,6 +55,8 @@ impl<'a> SymbolInfo<'a> {
 
 #[derive(Debug)]
 pub struct SymbolTable<'a>(HashMap<Ref<'a, Identifier>, SymbolInfo<'a>>);
+
+pub trait ScopeSymbolDataTransformer: for<'a> Transformer<(&'a ScopeTable<'a>, &'a SymbolTable<'a>)> {}
 
 pub trait SymbolUse : Node {
     fn get_identifier(&self) -> &Identifier;
