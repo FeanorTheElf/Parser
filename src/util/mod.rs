@@ -1,7 +1,6 @@
 pub mod push_iter;
 pub mod ref_eq;
 pub mod dyn_eq;
-pub mod typed_list;
 
 use std::ops::{ Div };
 
