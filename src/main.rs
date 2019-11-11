@@ -2,6 +2,8 @@
 #![allow(unused)]
 #![feature(test)]
 
+extern crate take_mut;
+
 #[cfg(test)]
 extern crate test;
 

@@ -97,6 +97,22 @@ pub trait Node : Debug + Any + DynEq {
 	fn dynamic(&self) -> &dyn Any;
 }
 
+type VisitorReturnType = Result<(), CompileError>;
+type VisitorFunctionType<'a, 'b, T> = dyn 'b + FnMut(&'a T) -> VisitorReturnType;
+
+pub trait Visitable<T: ?Sized> {
+    fn iterate<'a, 'b>(&'a self, f: &'b mut VisitorFunctionType<'a, 'b, T>) -> VisitorReturnType;
+}
+
+type TransformResultType = ();
+type TransformFunctionType<T> = dyn FnMut(Box<T>) -> Box<T>;
+
+pub trait Transformable<T: ?Sized>
+{
+    fn transform(&mut self, f: &mut TransformFunctionType<T>) -> TransformResultType;
+}
+
+
 #[derive(Debug)]
 pub struct FunctionNode {
 	annotation: Annotation,
@@ -128,7 +144,9 @@ impl Clone for FunctionNode {
 	}
 }
 
-pub trait FunctionImplementationNode : Node {
+pub trait FunctionImplementationNode : Node + Visitable<dyn UnaryExprNode> + 
+	Transformable<dyn StmtNode> + Transformable<dyn UnaryExprNode>  
+{
 	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a>;
 	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteFunctionImplementationMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
@@ -235,7 +253,7 @@ impl Clone for BlockNode {
 	}
 }
 
-pub trait StmtNode : Node {
+pub trait StmtNode : Node + Visitable<dyn UnaryExprNode> + Transformable<dyn UnaryExprNode> {
 	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a>;
 	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteStmtMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
@@ -562,7 +580,7 @@ impl Clone for ExprNodeLvlCmp {
 	}
 }
 
-pub trait CmpPartNode : Node {
+pub trait CmpPartNode : Node + Transformable<dyn UnaryExprNode> {
 	fn get_kind<'a>(&'a self) -> CmpPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlAdd;
 	fn dyn_clone(&self) -> Box<dyn CmpPartNode>;
@@ -788,7 +806,7 @@ impl Clone for ExprNodeLvlAdd {
 	}
 }
 
-pub trait SumPartNode : Node {
+pub trait SumPartNode : Node + Transformable<dyn UnaryExprNode> {
 	fn get_kind<'a>(&'a self) -> SumPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlMult;
 	fn dyn_clone(&self) -> Box<dyn SumPartNode>;
@@ -889,7 +907,7 @@ impl Clone for ExprNodeLvlMult {
 	}
 }
 
-pub trait ProductPartNode : Node {
+pub trait ProductPartNode : Node + Transformable<dyn UnaryExprNode> {
 	fn get_kind<'a>(&'a self) -> ProductPartKind<'a>;
 	fn get_expr(&self) -> &ExprNodeLvlIndex;
 	fn dyn_clone(&self) -> Box<dyn ProductPartNode>;
@@ -1233,3 +1251,481 @@ impl_node!(VariableNode);
 impl_node!(FunctionCallNode);
 impl_node!(NewExprNode);
 impl_node!(IntTypeNode);
+
+
+impl Visitable<dyn UnaryExprNode> for FunctionNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.implementation.iterate(f)
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for NativeFunctionNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        Ok(())
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ImplementedFunctionNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.body.iterate(f)
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for BlockNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        for stmt in self.stmts.iter() {
+            stmt.iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for VariableDeclarationNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.expr.iterate(f)
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for AssignmentNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.assignee.iterate(f)?;
+        return self.expr.iterate(f);
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprStmtNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.expr.iterate(f)
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for IfNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.condition.iterate(f)?;
+        return self.block.iterate(f);
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for WhileNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.condition.iterate(f)?;
+        return self.block.iterate(f);
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ReturnNode {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.expr.iterate(f)
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlOr {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.head.iterate(f)?;
+        for part in &self.tail {
+            part.expr.iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlAnd {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.head.iterate(f)?;
+        for part in &self.tail {
+            part.expr.iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlCmp {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.head.iterate(f)?;
+        for part in &self.tail {
+            part.get_expr().iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlAdd {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.head.iterate(f)?;
+        for part in &self.tail {
+            part.get_expr().iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlMult {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        self.head.iterate(f)?;
+        for part in &self.tail {
+            part.get_expr().iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+impl Visitable<dyn UnaryExprNode> for ExprNodeLvlIndex {
+    fn iterate<'a, 'b>(&'a self, f: &mut VisitorFunctionType<'a, 'b, dyn UnaryExprNode>) -> VisitorReturnType
+    {
+        f(&*self.head)?;
+        for part in &self.tail {
+            part.expr.iterate(f)?;
+        }
+        return Ok(());
+    }
+}
+
+
+impl Transformable<dyn StmtNode> for FunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+        self.implementation.transform(f);
+    }
+}
+
+impl Transformable<dyn StmtNode> for ImplementedFunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+        self.body.transform(f);
+    }
+}
+
+impl Transformable<dyn StmtNode> for NativeFunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+    }
+}
+
+impl Transformable<dyn StmtNode> for BlockNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+        self.stmts = self.stmts.drain(..).map(f).collect();
+    }
+}
+
+impl Transformable<dyn StmtNode> for IfNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+        self.block.transform(f)
+    }
+}
+
+impl Transformable<dyn StmtNode> for WhileNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+    {
+        self.block.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for FunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.implementation.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ImplementedFunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.body.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for NativeFunctionNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for BlockNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.stmts.iter_mut().for_each(|stmt| stmt.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for AssignmentNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.assignee.transform(f);
+        self.expr.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for VariableDeclarationNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprStmtNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for IfNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.condition.transform(f);
+		self.block.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for WhileNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.condition.transform(f);
+		self.block.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ReturnNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+		self.expr.transform(f);
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlOr {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.head.transform(f);
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for OrPartNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAnd {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.head.transform(f);
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for AndPartNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlCmp {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.head.transform(f);
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeEq {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeNeq {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeLeq {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeGeq {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeLs {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeGt {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAdd {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.head.transform(f);
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for SumPartNodeSub {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for SumPartNodeAdd {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlMult {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.head.transform(f);
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ProductPartNodeMult {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ProductPartNodeDivide {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlIndex {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        take_mut::take(&mut self.head, |expr| f(expr));
+		self.tail.iter_mut().for_each(|part| part.transform(f));
+    }
+}
+
+impl Transformable<dyn UnaryExprNode> for IndexPartNode {
+    fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
+    {
+        self.expr.transform(f)
+    }
+}
+
+#[cfg(test)]
+use super::super::parser::Parse;
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
+#[cfg(test)]
+use test::Bencher;
+
+#[cfg(test)]
+fn rek_transform(mut stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode> {
+    match stmt.get_mut_concrete() {
+        ConcreteStmtMut::Block(stmts) => stmts.transform(&mut rek_transform),
+        ConcreteStmtMut::If(stmt) => stmt.block.transform(&mut rek_transform),
+        ConcreteStmtMut::While(stmt) => stmt.block.transform(&mut rek_transform),
+        _ => ()
+    };
+
+    let global_function_call = ExprNode::parse(&mut lex("global()")).unwrap();
+    let global_function_call_stmt = Box::new(ExprStmtNode::new(TextPosition::create(0, 0), global_function_call));
+
+    let stmts = vec![stmt, global_function_call_stmt.clone()];
+    let result: Box<dyn StmtNode> = Box::new(BlockNode::new(TextPosition::create(0, 0), stmts));
+	return result;
+}
+
+#[test]
+fn test_transform_function() {
+    let function = FunctionNode::parse(&mut lex("fn min(a: int, b: int,): int {
+        if (a < b) {
+            return a;
+        }
+        return b;
+    }")).unwrap();
+    let expected_function = *FunctionNode::parse(&mut lex("fn min(a: int, b: int,): int {
+        {
+            if (a < b) {
+                {
+                    return a;
+                    global();
+                }
+            }
+            global();
+        }
+        {
+            return b;
+            global();
+        }
+    }")).unwrap();
+
+    let mut transformed_function = *function.clone();
+    transformed_function.transform(&mut rek_transform);
+    assert_eq!(expected_function, transformed_function);
+}
+
+#[bench]
+fn bench_visitor(bencher: &mut Bencher) {
+    let ast = *FunctionNode::parse(&mut lex("fn foo(a: int,): int[] {
+        let result: int[] = new int[a];
+        let index: int = identity(a);
+        while (index > 0) {
+            index = decrement(index);
+            result[index] = calculate(index);
+        }
+        index = identity(a);
+        while (index > 0) {
+            index = decrement(index);
+            result[index] = result[index] + bar(result, index)[index];
+        }
+        return postprocess(result);
+    }")).unwrap();
+    let mut elements: Vec<&FunctionCallNode> = vec![];
+    bencher.iter(|| {
+        elements.clear();
+        ast.iterate(&mut |expr: &dyn UnaryExprNode| {
+            if let Some(call) = expr.dynamic().downcast_ref::<FunctionCallNode>() {
+                elements.push(call);
+            }
+            return Ok(());
+        });
+        assert_eq!(7, elements.len());
+    })
+}

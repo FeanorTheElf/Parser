@@ -1,5 +1,4 @@
 use super::super::parser::prelude::*;
-use super::super::parser::ast_visitor::Visitable;
 use super::scope::{ ScopeTable, SymbolDefinition };
 use super::symbol::{ SymbolTable, SymbolDefinitionInfo };
 use super::super::util::ref_eq::ref_eq;
