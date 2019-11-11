@@ -1,5 +1,4 @@
 use super::super::parser::prelude::*;
-use super::super::transformer::Transformer;
 use super::super::util::ref_eq::{ Ref, RefEq, ref_eq };
 
 use std::iter::FromIterator;
@@ -53,8 +52,6 @@ impl<'a> ScopeInfo<'a> {
 
 #[derive(Debug)]
 pub struct ScopeTable<'a>(HashMap<Ref<'a, dyn Scope>, ScopeInfo<'a>>);
-
-pub trait ScopeDataTransformer: for<'a> Transformer<&'a ScopeTable<'a>> {}
 
 pub struct DefinedSymbolsIter<'a, 'b, 'c> {
     scopes: &'b ScopeTable<'a>,

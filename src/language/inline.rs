@@ -1,43 +1,26 @@
 use super::super::parser::prelude::*;
 use super::super::parser::ast_visitor::Visitable;
 use super::scope::{ ScopeTable, SymbolDefinition };
-use super::symbol::{ SymbolTable, SymbolDefinitionInfo, ScopeSymbolDataTransformer };
-use super::super::transformer::{ Program, SpecificLifetimeTransformer, PreparedTransformer };
+use super::symbol::{ SymbolTable, SymbolDefinitionInfo };
 use super::super::util::ref_eq::ref_eq;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-pub struct InlineTransformer<F>
-    where F: for<'c> FnMut(&FunctionCallNode, &SymbolDefinitionInfo<'c>) -> bool
+pub struct InlinePreparation<'b> {
+    resolved_calls: HashMap<*const FunctionCallNode, &'b RefCell<FunctionNode>>
+}
+
+pub fn prepare_inline<'a, 'c, F>(funcs: &'c Vec<RefCell<FunctionNode>>, symbols: &SymbolTable<'a>, mut should_inline: F) -> InlinePreparation<'c>
+    where F: for<'b> FnMut(&FunctionCallNode, &SymbolDefinitionInfo<'b>) -> bool
 {
-    should_inline: F
-}
-
-pub struct PreparedInlineTransformer<'a> {
-    resolved_calls: HashMap<*const FunctionCallNode, &'a RefCell<FunctionNode>>
-}
-
-impl<'a, 'b, F> SpecificLifetimeTransformer<'a, (&'b ScopeTable<'b>, &'b SymbolTable<'b>)> for InlineTransformer<F>
-    where F: for<'c> FnMut(&FunctionCallNode, &SymbolDefinitionInfo<'c>) -> bool
-{
-    type Prepared = PreparedInlineTransformer<'a>;
-
-    fn prepare(mut self, program: &'a Program, (scopes, symbols): (&'b ScopeTable<'b>, &'b SymbolTable<'b>)) -> Self::Prepared {
-        let mut resolved_calls: HashMap<*const FunctionCallNode, &dyn SymbolDefinition> = HashMap::new();
-        for function in program {
-            prepare_inline_function(&*function.borrow(), symbols, &mut self.should_inline, &mut resolved_calls);
-        }
-        return PreparedInlineTransformer {
-            resolved_calls: unimplemented!{}
-        };
+    let mut resolved_calls: HashMap<*const FunctionCallNode, &dyn SymbolDefinition> = HashMap::new();
+    for function in funcs {
+        prepare_inline_function(&*function.borrow(), symbols, &mut should_inline, &mut resolved_calls);
     }
-}
-
-impl<'a> PreparedTransformer for PreparedInlineTransformer<'a> {
-    fn transform(self, program: &Program) {
-
-    }
+    return InlinePreparation {
+        resolved_calls: unimplemented!{}
+    };
 }
 
 fn prepare_inline_function<'a, F>(func: &FunctionNode, symbols: &SymbolTable<'a>, mut should_inline: F, resolved_calls: &mut HashMap<*const FunctionCallNode, &'a dyn SymbolDefinition>)
@@ -53,4 +36,8 @@ fn prepare_inline_function<'a, F>(func: &FunctionNode, symbols: &SymbolTable<'a>
         }
         return Ok(());
     });
+}
+
+pub fn perform_inline<'b>(funcs: &Vec<RefCell<FunctionCallNode>>, data: InlinePreparation<'b>) {
+
 }
