@@ -10,15 +10,15 @@ pub type AstVec<T> = Vec<Box<T>>;
 type Annotation = TextPosition;
 
 macro_rules! impl_concrete_node {
-	($supnode:ident for $subnode:ident; $concreteref:ident; $concrete:ident; $variant:ident) => {
+	($supnode:ident for $subnode:ident; $concreteref:ident; $concretemut:ident; $variant:ident) => {
 				
 		impl $supnode for $subnode {
 			fn get_concrete<'a>(&'a self) -> $concreteref<'a> {
 				$concreteref::$variant(&self)
 			}
 
-			fn into_concrete(self: Box<Self>) -> $concrete {
-				$concrete::$variant(self)
+			fn get_mut_concrete<'a>(&'a mut self) -> $concretemut<'a> {
+				$concretemut::$variant(self)
 			}
 
 			fn dyn_clone(&self) -> Box<dyn $supnode> {
@@ -34,17 +34,17 @@ macro_rules! impl_get_generalized {
 		impl<'a> $type<'a> {
 			pub fn get_generalized(&self) -> &'a dyn $generalized {
 				match self {
-					$($type::$variant(x) => *x),*
+					$($type::$variant(ref x) => *x),*
 				}
 			}
 		}
 	};
 }
 
-macro_rules! impl_into_generalized {
+macro_rules! impl_get_mut_generalized {
 	($type:ident; $generalized:ident; $($variant:ident),*) => {
-		impl $type {
-			pub fn into_generalized(self) -> Box<dyn $generalized> {
+		impl<'a> $type<'a> {
+			pub fn get_mut_generalized(self) -> &'a mut dyn $generalized {
 				match self {
 					$($type::$variant(x) => x),*
 				}
@@ -130,7 +130,7 @@ impl Clone for FunctionNode {
 
 pub trait FunctionImplementationNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a>;
-	fn into_concrete(self: Box<Self>) -> ConcreteFunctionImplementation;
+	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteFunctionImplementationMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
 }
 
@@ -142,11 +142,11 @@ pub enum ConcreteFunctionImplementationRef<'a> {
 
 impl_get_generalized!(ConcreteFunctionImplementationRef; FunctionImplementationNode; Implemented, Native);
 
-pub enum ConcreteFunctionImplementation {
-	Implemented(Box<ImplementedFunctionNode>), Native(Box<NativeFunctionNode>)
+pub enum ConcreteFunctionImplementationMut<'a> {
+	Implemented(&'a mut ImplementedFunctionNode), Native(&'a mut NativeFunctionNode)
 }
 
-impl_into_generalized!(ConcreteFunctionImplementation; FunctionImplementationNode; Implemented, Native);
+impl_get_mut_generalized!(ConcreteFunctionImplementationMut; FunctionImplementationNode; Implemented, Native);
 
 #[derive(Debug, Clone)]
 pub struct NativeFunctionNode {
@@ -161,7 +161,7 @@ impl NativeFunctionNode {
 	}
 }
 
-impl_concrete_node!(FunctionImplementationNode for NativeFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Native);
+impl_concrete_node!(FunctionImplementationNode for NativeFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementationMut; Native);
 
 impl_partial_eq!(NativeFunctionNode; );
 
@@ -179,7 +179,7 @@ impl ImplementedFunctionNode {
 	}
 }
 
-impl_concrete_node!(FunctionImplementationNode for ImplementedFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementation; Implemented);
+impl_concrete_node!(FunctionImplementationNode for ImplementedFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementationMut; Implemented);
 
 impl_partial_eq!(ImplementedFunctionNode; body);
 
@@ -237,7 +237,7 @@ impl Clone for BlockNode {
 
 pub trait StmtNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a>;
-	fn into_concrete(self: Box<Self>) -> ConcreteStmt;
+	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteStmtMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
 
@@ -255,19 +255,19 @@ pub enum ConcreteStmtRef<'a> {
 
 impl_get_generalized!(ConcreteStmtRef; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
 
-pub enum ConcreteStmt {
-	Declaration(Box<VariableDeclarationNode>), 
-	Assignment(Box<AssignmentNode>), 
-	Expr(Box<ExprStmtNode>), 
-	If(Box<IfNode>), 
-	While(Box<WhileNode>), 
-	Block(Box<BlockNode>), 
-	Return(Box<ReturnNode>)
+pub enum ConcreteStmtMut<'a> {
+	Declaration(&'a mut VariableDeclarationNode), 
+	Assignment(&'a mut AssignmentNode), 
+	Expr(&'a mut ExprStmtNode), 
+	If(&'a mut IfNode), 
+	While(&'a mut WhileNode), 
+	Block(&'a mut BlockNode), 
+	Return(&'a mut ReturnNode)
 }
 
-impl_into_generalized!(ConcreteStmt; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
+impl_get_mut_generalized!(ConcreteStmtMut; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
 
-impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmt; Block);
+impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmtMut; Block);
 
 #[derive(Debug)]
 pub struct VariableDeclarationNode {
@@ -296,7 +296,7 @@ impl Clone for VariableDeclarationNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for VariableDeclarationNode; ConcreteStmtRef; ConcreteStmt; Declaration);
+impl_concrete_node!(StmtNode for VariableDeclarationNode; ConcreteStmtRef; ConcreteStmtMut; Declaration);
 
 impl_partial_eq!(VariableDeclarationNode; variable_type, ident, expr);
 
@@ -315,7 +315,7 @@ impl AssignmentNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for AssignmentNode; ConcreteStmtRef; ConcreteStmt; Assignment);
+impl_concrete_node!(StmtNode for AssignmentNode; ConcreteStmtRef; ConcreteStmtMut; Assignment);
 
 impl_partial_eq!(AssignmentNode; assignee, expr);
 
@@ -333,7 +333,7 @@ impl ExprStmtNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for ExprStmtNode; ConcreteStmtRef; ConcreteStmt; Expr);
+impl_concrete_node!(StmtNode for ExprStmtNode; ConcreteStmtRef; ConcreteStmtMut; Expr);
 
 impl_partial_eq!(ExprStmtNode; expr);
 
@@ -352,7 +352,7 @@ impl IfNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for IfNode; ConcreteStmtRef; ConcreteStmt; If);
+impl_concrete_node!(StmtNode for IfNode; ConcreteStmtRef; ConcreteStmtMut; If);
 
 impl_partial_eq!(IfNode; condition, block);
 
@@ -371,7 +371,7 @@ impl WhileNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmt; While);
+impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmtMut; While);
 
 impl_partial_eq!(WhileNode; condition, block);
 
@@ -389,13 +389,13 @@ impl ReturnNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for ReturnNode; ConcreteStmtRef; ConcreteStmt; Return);
+impl_concrete_node!(StmtNode for ReturnNode; ConcreteStmtRef; ConcreteStmtMut; Return);
 
 impl_partial_eq!(ReturnNode; expr);
 
 pub trait TypeNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteTypeRef<'a>;
-	fn into_concrete(self: Box<Self>) -> ConcreteType;
+	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteTypeMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
@@ -407,11 +407,11 @@ pub enum ConcreteTypeRef<'a> {
 
 impl_get_generalized!(ConcreteTypeRef; TypeNode; Array, Void);
 
-pub enum ConcreteType {
-	Array(Box<ArrTypeNode>), Void(Box<VoidTypeNode>)
+pub enum ConcreteTypeMut<'a> {
+	Array(&'a mut ArrTypeNode), Void(&'a mut VoidTypeNode)
 }
 
-impl_into_generalized!(ConcreteType; TypeNode; Array, Void);
+impl_get_mut_generalized!(ConcreteTypeMut; TypeNode; Array, Void);
 
 #[derive(Debug)]
 pub struct ArrTypeNode {
@@ -448,7 +448,7 @@ impl Clone for ArrTypeNode {
 	}
 }
 
-impl_concrete_node!(TypeNode for ArrTypeNode; ConcreteTypeRef; ConcreteType; Array);
+impl_concrete_node!(TypeNode for ArrTypeNode; ConcreteTypeRef; ConcreteTypeMut; Array);
 
 #[derive(Debug, Clone)]
 pub struct VoidTypeNode {
@@ -463,7 +463,7 @@ impl VoidTypeNode {
 	}
 }
 
-impl_concrete_node!(TypeNode for VoidTypeNode; ConcreteTypeRef; ConcreteType; Void);
+impl_concrete_node!(TypeNode for VoidTypeNode; ConcreteTypeRef; ConcreteTypeMut; Void);
 
 impl_partial_eq!(VoidTypeNode;);
 
@@ -1008,7 +1008,7 @@ impl_partial_eq!(IndexPartNode; expr);
 
 pub trait UnaryExprNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteUnaryExprRef<'a>;
-	fn into_concrete(self: Box<Self>) -> ConcreteUnaryExpr;
+	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteUnaryExprMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
 }
 
@@ -1024,15 +1024,15 @@ pub enum ConcreteUnaryExprRef<'a> {
 
 impl_get_generalized!(ConcreteUnaryExprRef; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
 
-pub enum ConcreteUnaryExpr {
-	BracketExpr(Box<BracketExprNode>), 
-	Literal(Box<LiteralNode>), 
-	Variable(Box<VariableNode>), 
-	FunctionCall(Box<FunctionCallNode>), 
-	NewExpr(Box<NewExprNode>)
+pub enum ConcreteUnaryExprMut<'a> {
+	BracketExpr(&'a mut BracketExprNode), 
+	Literal(&'a mut LiteralNode), 
+	Variable(&'a mut VariableNode), 
+	FunctionCall(&'a mut FunctionCallNode), 
+	NewExpr(&'a mut NewExprNode)
 }
 
-impl_into_generalized!(ConcreteUnaryExpr; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
+impl_get_mut_generalized!(ConcreteUnaryExprMut; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
 
 #[derive(Debug, Clone)]
 pub struct BracketExprNode {
@@ -1048,7 +1048,7 @@ impl BracketExprNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for BracketExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; BracketExpr);
+impl_concrete_node!(UnaryExprNode for BracketExprNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; BracketExpr);
 
 impl_partial_eq!(BracketExprNode; expr);
 
@@ -1066,7 +1066,7 @@ impl LiteralNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for LiteralNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Literal);
+impl_concrete_node!(UnaryExprNode for LiteralNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; Literal);
 
 impl_partial_eq!(LiteralNode; literal);
 
@@ -1084,7 +1084,7 @@ impl VariableNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for VariableNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; Variable);
+impl_concrete_node!(UnaryExprNode for VariableNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; Variable);
 
 impl_partial_eq!(VariableNode; identifier);
 
@@ -1103,7 +1103,7 @@ impl FunctionCallNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for FunctionCallNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; FunctionCall);
+impl_concrete_node!(UnaryExprNode for FunctionCallNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; FunctionCall);
 
 impl_partial_eq!(FunctionCallNode; function, params);
 
@@ -1122,7 +1122,7 @@ impl NewExprNode {
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExpr; NewExpr);
+impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; NewExpr);
 
 impl_partial_eq!(NewExprNode; base_type, dimensions);
 
@@ -1138,7 +1138,7 @@ impl Clone for NewExprNode {
 
 pub trait BaseTypeNode : Node {
 	fn get_concrete<'a>(&'a self) -> ConcreteBaseTypeRef<'a>;
-	fn into_concrete(self: Box<Self>) -> ConcreteBaseType;
+	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteBaseTypeMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
@@ -1150,11 +1150,11 @@ pub enum ConcreteBaseTypeRef<'a> {
 
 impl_get_generalized!(ConcreteBaseTypeRef; BaseTypeNode; Int);
 
-pub enum ConcreteBaseType {
-	Int(Box<IntTypeNode>)
+pub enum ConcreteBaseTypeMut<'a> {
+	Int(&'a mut IntTypeNode)
 }
 
-impl_into_generalized!(ConcreteBaseType; BaseTypeNode; Int);
+impl_get_mut_generalized!(ConcreteBaseTypeMut; BaseTypeNode; Int);
 
 #[derive(Debug, Clone)]
 pub struct IntTypeNode {
@@ -1169,7 +1169,7 @@ impl IntTypeNode {
 	}
 }
 
-impl_concrete_node!(BaseTypeNode for IntTypeNode; ConcreteBaseTypeRef; ConcreteBaseType; Int);
+impl_concrete_node!(BaseTypeNode for IntTypeNode; ConcreteBaseTypeRef; ConcreteBaseTypeMut; Int);
 
 impl_partial_eq!(IntTypeNode;);
 
