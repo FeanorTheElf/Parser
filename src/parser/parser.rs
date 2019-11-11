@@ -50,7 +50,7 @@ impl Parse for dyn StmtNode {
 }
 
 impl_parse!{ IfNode => IfNode(Token#If ExprNode BlockNode) }
-impl_parse!{ WhileNode => WhileNode(Token#If ExprNode BlockNode) }
+impl_parse!{ WhileNode => WhileNode(Token#While ExprNode BlockNode) }
 impl_parse!{ ReturnNode => ReturnNode(Token#Return ExprNode Token#Semicolon) }
 impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign ExprNode Token#Semicolon) }
 

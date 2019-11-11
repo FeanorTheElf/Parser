@@ -9,6 +9,8 @@ use super::super::lexer::lexer::lex;
 use super::super::lexer::position::TextPosition;
 #[cfg(test)]
 use super::super::lexer::tokens::Identifier;
+#[cfg(test)]
+use test::Bencher;
 
 type VisitorReturnType = Result<(), CompileError>;
 type VisitorFunctionType<'a, 'b, T> = dyn 'b + FnMut(&'a T) -> VisitorReturnType;
@@ -271,4 +273,33 @@ fn test_transform_function() {
     let mut transformed_function = *function.clone();
     transformed_function.transform(&mut rek_transform).unwrap();
     assert_eq!(expected_function, transformed_function);
+}
+
+#[bench]
+fn bench_visitor(bencher: &mut Bencher) {
+    let ast = *FunctionNode::parse(&mut lex("fn foo(a: int,): int[] {
+        let result: int[] = new int[a];
+        let index: int = identity(a);
+        while (index > 0) {
+            index = decrement(index);
+            result[index] = calculate(index);
+        }
+        index = identity(a);
+        while (index > 0) {
+            index = decrement(index);
+            result[index] = result[index] + bar(result, index)[index];
+        }
+        return postprocess(result);
+    }")).unwrap();
+    let mut elements: Vec<&FunctionCallNode> = vec![];
+    bencher.iter(|| {
+        elements.clear();
+        ast.iterate(&mut |expr: &dyn UnaryExprNode| {
+            if let Some(call) = expr.dynamic().downcast_ref::<FunctionCallNode>() {
+                elements.push(call);
+            }
+            return Ok(());
+        });
+        assert_eq!(7, elements.len());
+    })
 }
