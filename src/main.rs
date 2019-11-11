@@ -1,8 +1,6 @@
 #![feature(fn_traits)]
-#![feature(specialization)]
-#![feature(never_type)]
-#![feature(test)]
 #![allow(unused)]
+#![feature(test)]
 
 #[cfg(test)]
 extern crate test;
