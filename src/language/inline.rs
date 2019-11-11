@@ -2,7 +2,7 @@ use super::super::parser::prelude::*;
 use super::super::parser::ast_visitor::Visitable;
 use super::scope::{ ScopeTable, SymbolDefinition };
 use super::symbol::{ SymbolTable, SymbolDefinitionInfo, ScopeSymbolDataTransformer };
-use super::super::transformer::{ Program, SpecificLifetimeTransformer, Transformer, PreparedTransformer };
+use super::super::transformer::{ Program, SpecificLifetimeTransformer, PreparedTransformer };
 use super::super::util::ref_eq::ref_eq;
 
 use std::cell::RefCell;
@@ -23,20 +23,20 @@ impl<'a, 'b, F> SpecificLifetimeTransformer<'a, (&'b ScopeTable<'b>, &'b SymbolT
 {
     type Prepared = PreparedInlineTransformer<'a>;
 
-    fn prepare(mut self, program: &'a Program, (scopes, symbols): (&'b ScopeTable<'b>, &'b SymbolTable<'b>)) -> Result<Self::Prepared, CompileError> {
+    fn prepare(mut self, program: &'a Program, (scopes, symbols): (&'b ScopeTable<'b>, &'b SymbolTable<'b>)) -> Self::Prepared {
         let mut resolved_calls: HashMap<*const FunctionCallNode, &dyn SymbolDefinition> = HashMap::new();
         for function in program {
             prepare_inline_function(&*function.borrow(), symbols, &mut self.should_inline, &mut resolved_calls);
         }
-        return Ok(PreparedInlineTransformer {
+        return PreparedInlineTransformer {
             resolved_calls: unimplemented!{}
-        });
+        };
     }
 }
 
 impl<'a> PreparedTransformer for PreparedInlineTransformer<'a> {
-    fn transform(self, program: &Program) -> Result<(), CompileError> {
-        unimplemented!()
+    fn transform(self, program: &Program) {
+
     }
 }
 

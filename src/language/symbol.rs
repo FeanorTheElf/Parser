@@ -58,9 +58,6 @@ pub struct SymbolTable<'a>(HashMap<Ref<'a, Identifier>, SymbolInfo<'a>>);
 
 pub trait ScopeSymbolDataTransformer: for<'a> Transformer<(&'a ScopeTable<'a>, &'a SymbolTable<'a>)> {}
 
-impl<T> ScopeSymbolDataTransformer for T
-    where T: for<'a> Transformer<(&'a ScopeTable<'a>, &'a SymbolTable<'a>)> {}
-
 pub trait SymbolUse : Node {
     fn get_identifier(&self) -> &Identifier;
 }
