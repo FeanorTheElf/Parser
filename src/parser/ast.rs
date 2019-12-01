@@ -6,95 +6,26 @@ use super::super::util::dyn_eq::DynEq;
 use std::fmt::Debug;
 use std::any::Any;
 
+pub type Program = Vec<FunctionNode>;
 pub type AstVec<T> = Vec<Box<T>>;
 type Annotation = TextPosition;
 
-macro_rules! impl_concrete_node {
-	($supnode:ident for $subnode:ident; $concreteref:ident; $concretemut:ident; $variant:ident) => {
-				
-		impl $supnode for $subnode {
-			fn get_concrete<'a>(&'a self) -> $concreteref<'a> {
-				$concreteref::$variant(&self)
-			}
-
-			fn get_mut_concrete<'a>(&'a mut self) -> $concretemut<'a> {
-				$concretemut::$variant(self)
-			}
-
-			fn dyn_clone(&self) -> Box<dyn $supnode> {
-				Box::new(self.clone())
-			}
-		}
-
-	}
-}
-
-macro_rules! impl_get_generalized {
-	($type:ident; $generalized:ident; $($variant:ident),*) => {
-		impl<'a> $type<'a> {
-			pub fn get_generalized(&self) -> &'a dyn $generalized {
-				match self {
-					$($type::$variant(ref x) => *x),*
-				}
-			}
-		}
-	};
-}
-
-macro_rules! impl_get_mut_generalized {
-	($type:ident; $generalized:ident; $($variant:ident),*) => {
-		impl<'a> $type<'a> {
-			pub fn get_mut_generalized(self) -> &'a mut dyn $generalized {
-				match self {
-					$($type::$variant(x) => x),*
-				}
-			}
-		}
-	};
-}
-
-macro_rules! cmp_attributes {
-	($fst:ident; $snd:ident; $attr:ident) => {
-		&(($fst).$attr) == &(($snd).$attr)
-	};
-}
-
-macro_rules! impl_partial_eq {
-	($type:ident; ) => {
-		impl PartialEq<$type> for $type {
-			fn eq(&self, rhs: &$type) -> bool {
-				true
-			}
-		}
-	};
-	($type:ident; $fst_attr:ident) => {
-		impl PartialEq<$type> for $type {
-			fn eq(&self, rhs: &$type) -> bool {
-				cmp_attributes!(self; rhs; $fst_attr)
-			}
-		}
-	};
-	($type:ident; $fst_attr:ident, $($attr:ident),*) => {
-		impl PartialEq<$type> for $type {
-			fn eq(&self, rhs: &$type) -> bool {
-				cmp_attributes!(self; rhs; $fst_attr) && $(cmp_attributes!(self; rhs; $attr))&&*
-			}
-		}
-	};
-	(dyn $type:ident) => {
-		impl PartialEq<dyn $type> for dyn $type {
-			fn eq(&self, rhs: &dyn $type) -> bool {
-				(*self).dyn_eq(rhs.dynamic())
-			}
-		}
-	}
-}
-
-pub trait Node : Debug + Any + DynEq {
+pub trait Node : Debug + Any + DynEq 
+{
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
 	fn dyn_clone_node(&self) -> Box<dyn Node>;
 	fn dynamic(&self) -> &dyn Any;
+	fn dynamic_box(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub fn cast<U: ?Sized + Node, T: Node>(node: Box<U>) -> Result<Box<T>, Box<U>> 
+{
+	if node.dynamic().is::<T>() {
+		return Ok(node.dynamic_box().downcast().unwrap());
+	} else {
+		return Err(node);
+	}
 }
 
 type VisitorReturnType = Result<(), CompileError>;
@@ -109,9 +40,52 @@ type TransformFunctionType<T> = dyn FnMut(Box<T>) -> Box<T>;
 
 pub trait Transformable<T: ?Sized>
 {
+	// If the closure does not return a object (i.e. if it panics), there is
+	// an unrecoverable state, and the program will terminate
     fn transform(&mut self, f: &mut TransformFunctionType<T>) -> TransformResultType;
 }
 
+const EMPTY_SLICE: [Box<dyn StmtNode>; 0] = [];
+
+pub trait SubnodeEnumerable<T: ?Sized>
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<T>>;
+	fn enumerate(&self) -> std::slice::Iter<Box<T>>;
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<T>>;
+}
+
+macro_rules! impl_subnode {
+	($supnode:ident for $subnode:ident) => {
+				
+		impl $supnode for $subnode 
+		{
+			fn dyn_clone(&self) -> Box<dyn $supnode> 
+			{
+				Box::new(self.clone())
+			}
+		}
+
+	}
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PrimitiveType 
+{
+    Int
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Type 
+{
+    Primitive(PrimitiveType),
+    Array(PrimitiveType, u32),
+    Function(Vec<Type>, Option<Box<Type>>)
+}
+
+pub trait TypeDefinition 
+{
+    fn calc_type(&self) -> Option<Type>;
+}
 
 #[derive(Debug)]
 pub struct FunctionNode {
@@ -145,26 +119,13 @@ impl Clone for FunctionNode {
 }
 
 pub trait FunctionImplementationNode : Node + Visitable<dyn UnaryExprNode> + 
-	Transformable<dyn StmtNode> + Transformable<dyn UnaryExprNode>  
+	Transformable<dyn StmtNode> + Transformable<dyn UnaryExprNode> +
+	SubnodeEnumerable<dyn StmtNode> 
 {
-	fn get_concrete<'a>(&'a self) -> ConcreteFunctionImplementationRef<'a>;
-	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteFunctionImplementationMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn FunctionImplementationNode>;
 }
 
 impl_partial_eq!(dyn FunctionImplementationNode);
-
-pub enum ConcreteFunctionImplementationRef<'a> {
-	Implemented(&'a ImplementedFunctionNode), Native(&'a NativeFunctionNode)
-}
-
-impl_get_generalized!(ConcreteFunctionImplementationRef; FunctionImplementationNode; Implemented, Native);
-
-pub enum ConcreteFunctionImplementationMut<'a> {
-	Implemented(&'a mut ImplementedFunctionNode), Native(&'a mut NativeFunctionNode)
-}
-
-impl_get_mut_generalized!(ConcreteFunctionImplementationMut; FunctionImplementationNode; Implemented, Native);
 
 #[derive(Debug, Clone)]
 pub struct NativeFunctionNode {
@@ -179,7 +140,7 @@ impl NativeFunctionNode {
 	}
 }
 
-impl_concrete_node!(FunctionImplementationNode for NativeFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementationMut; Native);
+impl_subnode!(FunctionImplementationNode for NativeFunctionNode);
 
 impl_partial_eq!(NativeFunctionNode; );
 
@@ -197,7 +158,7 @@ impl ImplementedFunctionNode {
 	}
 }
 
-impl_concrete_node!(FunctionImplementationNode for ImplementedFunctionNode; ConcreteFunctionImplementationRef; ConcreteFunctionImplementationMut; Implemented);
+impl_subnode!(FunctionImplementationNode for ImplementedFunctionNode);
 
 impl_partial_eq!(ImplementedFunctionNode; body);
 
@@ -254,38 +215,12 @@ impl Clone for BlockNode {
 }
 
 pub trait StmtNode : Node + Visitable<dyn UnaryExprNode> + Transformable<dyn UnaryExprNode> {
-	fn get_concrete<'a>(&'a self) -> ConcreteStmtRef<'a>;
-	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteStmtMut<'a>;
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
 
 impl_partial_eq!(dyn StmtNode);
 
-pub enum ConcreteStmtRef<'a> {
-	Declaration(&'a VariableDeclarationNode), 
-	Assignment(&'a AssignmentNode), 
-	Expr(&'a ExprStmtNode), 
-	If(&'a IfNode), 
-	While(&'a WhileNode), 
-	Block(&'a BlockNode), 
-	Return(&'a ReturnNode)
-}
-
-impl_get_generalized!(ConcreteStmtRef; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
-
-pub enum ConcreteStmtMut<'a> {
-	Declaration(&'a mut VariableDeclarationNode), 
-	Assignment(&'a mut AssignmentNode), 
-	Expr(&'a mut ExprStmtNode), 
-	If(&'a mut IfNode), 
-	While(&'a mut WhileNode), 
-	Block(&'a mut BlockNode), 
-	Return(&'a mut ReturnNode)
-}
-
-impl_get_mut_generalized!(ConcreteStmtMut; StmtNode; Declaration, Assignment, Expr, If, While, Block, Return);
-
-impl_concrete_node!(StmtNode for BlockNode; ConcreteStmtRef; ConcreteStmtMut; Block);
+impl_subnode!(StmtNode for BlockNode);
 
 #[derive(Debug)]
 pub struct VariableDeclarationNode {
@@ -314,7 +249,7 @@ impl Clone for VariableDeclarationNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for VariableDeclarationNode; ConcreteStmtRef; ConcreteStmtMut; Declaration);
+impl_subnode!(StmtNode for VariableDeclarationNode);
 
 impl_partial_eq!(VariableDeclarationNode; variable_type, ident, expr);
 
@@ -333,7 +268,7 @@ impl AssignmentNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for AssignmentNode; ConcreteStmtRef; ConcreteStmtMut; Assignment);
+impl_subnode!(StmtNode for AssignmentNode);
 
 impl_partial_eq!(AssignmentNode; assignee, expr);
 
@@ -351,7 +286,7 @@ impl ExprStmtNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for ExprStmtNode; ConcreteStmtRef; ConcreteStmtMut; Expr);
+impl_subnode!(StmtNode for ExprStmtNode);
 
 impl_partial_eq!(ExprStmtNode; expr);
 
@@ -370,7 +305,7 @@ impl IfNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for IfNode; ConcreteStmtRef; ConcreteStmtMut; If);
+impl_subnode!(StmtNode for IfNode);
 
 impl_partial_eq!(IfNode; condition, block);
 
@@ -389,7 +324,7 @@ impl WhileNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for WhileNode; ConcreteStmtRef; ConcreteStmtMut; While);
+impl_subnode!(StmtNode for WhileNode);
 
 impl_partial_eq!(WhileNode; condition, block);
 
@@ -407,29 +342,15 @@ impl ReturnNode {
 	}
 }
 
-impl_concrete_node!(StmtNode for ReturnNode; ConcreteStmtRef; ConcreteStmtMut; Return);
+impl_subnode!(StmtNode for ReturnNode);
 
 impl_partial_eq!(ReturnNode; expr);
 
-pub trait TypeNode : Node {
-	fn get_concrete<'a>(&'a self) -> ConcreteTypeRef<'a>;
-	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteTypeMut<'a>;
+pub trait TypeNode : Node + TypeDefinition {
 	fn dyn_clone(&self) -> Box<dyn TypeNode>;
 }
 
 impl_partial_eq!(dyn TypeNode);
-
-pub enum ConcreteTypeRef<'a> {
-	Array(&'a ArrTypeNode), Void(&'a VoidTypeNode)
-}
-
-impl_get_generalized!(ConcreteTypeRef; TypeNode; Array, Void);
-
-pub enum ConcreteTypeMut<'a> {
-	Array(&'a mut ArrTypeNode), Void(&'a mut VoidTypeNode)
-}
-
-impl_get_mut_generalized!(ConcreteTypeMut; TypeNode; Array, Void);
 
 #[derive(Debug)]
 pub struct ArrTypeNode {
@@ -466,7 +387,7 @@ impl Clone for ArrTypeNode {
 	}
 }
 
-impl_concrete_node!(TypeNode for ArrTypeNode; ConcreteTypeRef; ConcreteTypeMut; Array);
+impl_subnode!(TypeNode for ArrTypeNode);
 
 #[derive(Debug, Clone)]
 pub struct VoidTypeNode {
@@ -481,7 +402,7 @@ impl VoidTypeNode {
 	}
 }
 
-impl_concrete_node!(TypeNode for VoidTypeNode; ConcreteTypeRef; ConcreteTypeMut; Void);
+impl_subnode!(TypeNode for VoidTypeNode);
 
 impl_partial_eq!(VoidTypeNode;);
 
@@ -580,24 +501,13 @@ impl Clone for ExprNodeLvlCmp {
 	}
 }
 
-pub trait CmpPartNode : Node + Transformable<dyn UnaryExprNode> {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a>;
+pub trait CmpPartNode : Node + Transformable<dyn UnaryExprNode> 
+{
 	fn get_expr(&self) -> &ExprNodeLvlAdd;
 	fn dyn_clone(&self) -> Box<dyn CmpPartNode>;
 }
 
 impl_partial_eq!(dyn CmpPartNode);
-
-pub enum CmpPartKind<'a> {
-	Eq(&'a CmpPartNodeEq), 
-	Neq(&'a CmpPartNodeNeq), 
-	Leq(&'a CmpPartNodeLeq), 
-	Geq(&'a CmpPartNodeGeq), 
-	Ls(&'a CmpPartNodeLs), 
-	Gt(&'a CmpPartNodeGt)
-}
-
-impl_get_generalized!(CmpPartKind; CmpPartNode; Eq, Neq, Leq, Geq, Ls, Gt);
 
 #[derive(Debug, Clone)]
 pub struct CmpPartNodeEq {
@@ -613,16 +523,15 @@ impl CmpPartNodeEq {
 	}
 }
 
-impl CmpPartNode for CmpPartNodeEq {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Eq(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeEq 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode>
+	{
 		Box::new(self.clone())
 	}
 }
@@ -643,16 +552,15 @@ impl CmpPartNodeNeq {
 	}
 }
 
-impl CmpPartNode for CmpPartNodeNeq {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Neq(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeNeq 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -673,12 +581,10 @@ impl CmpPartNodeLeq {
 	}
 }
 
-impl CmpPartNode for CmpPartNodeLeq {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Leq(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeLeq 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd 
+	{
 		&*self.expr
 	}
 
@@ -703,16 +609,15 @@ impl CmpPartNodeGeq {
 	}
 }
 
-impl CmpPartNode for CmpPartNodeGeq {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Geq(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeGeq 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -733,16 +638,15 @@ impl CmpPartNodeLs {
 	}
 }
 
-impl CmpPartNode for CmpPartNodeLs {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Ls(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeLs 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -750,29 +654,31 @@ impl CmpPartNode for CmpPartNodeLs {
 impl_partial_eq!(CmpPartNodeLs; expr);
 
 #[derive(Debug, Clone)]
-pub struct CmpPartNodeGt {
+pub struct CmpPartNodeGt 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlAdd>
 }
 
-impl CmpPartNodeGt {
-	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlAdd>) -> Self {
+impl CmpPartNodeGt
+ {
+	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlAdd>) -> Self 
+	{
 		CmpPartNodeGt {
 			annotation, expr
 		}
 	}
 }
 
-impl CmpPartNode for CmpPartNodeGt {
-	fn get_kind<'a>(&'a self) -> CmpPartKind<'a> {
-		CmpPartKind::Gt(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlAdd {
+impl CmpPartNode for CmpPartNodeGt 
+{
+	fn get_expr(&self) -> &ExprNodeLvlAdd 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
+	fn dyn_clone(&self) -> Box<dyn CmpPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -806,44 +712,41 @@ impl Clone for ExprNodeLvlAdd {
 	}
 }
 
-pub trait SumPartNode : Node + Transformable<dyn UnaryExprNode> {
-	fn get_kind<'a>(&'a self) -> SumPartKind<'a>;
+pub trait SumPartNode : Node + Transformable<dyn UnaryExprNode> 
+{
 	fn get_expr(&self) -> &ExprNodeLvlMult;
 	fn dyn_clone(&self) -> Box<dyn SumPartNode>;
 }
 
 impl_partial_eq!(dyn SumPartNode);
 
-pub enum SumPartKind<'a> {
-	Add(&'a SumPartNodeAdd), Subtract(&'a SumPartNodeSub)
-}
-
-impl_get_generalized!(SumPartKind; SumPartNode; Add, Subtract);
 
 #[derive(Debug, Clone)]
-pub struct SumPartNodeAdd {
+pub struct SumPartNodeAdd 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlMult>
 }
 
-impl SumPartNodeAdd {
-	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlMult>) -> Self {
+impl SumPartNodeAdd 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlMult>) -> Self 
+	{
 		SumPartNodeAdd {
 			annotation, expr
 		}
 	}
 }
 
-impl SumPartNode for SumPartNodeAdd {
-	fn get_kind<'a>(&'a self) -> SumPartKind<'a> {
-		SumPartKind::Add(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlMult {
+impl SumPartNode for SumPartNodeAdd 
+{
+	fn get_expr(&self) -> &ExprNodeLvlMult 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn SumPartNode> {
+	fn dyn_clone(&self) -> Box<dyn SumPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -864,16 +767,15 @@ impl SumPartNodeSub {
 	}
 }
 
-impl SumPartNode for SumPartNodeSub {
-	fn get_kind<'a>(&'a self) -> SumPartKind<'a> {
-		SumPartKind::Subtract(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlMult {
+impl SumPartNode for SumPartNodeSub 
+{
+	fn get_expr(&self) -> &ExprNodeLvlMult 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn SumPartNode> {
+	fn dyn_clone(&self) -> Box<dyn SumPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -881,14 +783,17 @@ impl SumPartNode for SumPartNodeSub {
 impl_partial_eq!(SumPartNodeSub; expr);
 
 #[derive(Debug)]
-pub struct ExprNodeLvlMult {
+pub struct ExprNodeLvlMult 
+{
 	annotation: Annotation,
 	pub head: Box<ExprNodeLvlIndex>,
 	pub tail: AstVec<dyn ProductPartNode>
 }
 
-impl ExprNodeLvlMult {
-	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlIndex>, tail: AstVec<dyn ProductPartNode>) -> Self {
+impl ExprNodeLvlMult 
+{
+	pub fn new(annotation: Annotation, head: Box<ExprNodeLvlIndex>, tail: AstVec<dyn ProductPartNode>) -> Self 
+	{
 		ExprNodeLvlMult {
 			annotation, head, tail
 		}
@@ -897,8 +802,10 @@ impl ExprNodeLvlMult {
 
 impl_partial_eq!(ExprNodeLvlMult; head, tail);
 
-impl Clone for ExprNodeLvlMult {
-	fn clone(&self) -> ExprNodeLvlMult {
+impl Clone for ExprNodeLvlMult 
+{
+	fn clone(&self) -> ExprNodeLvlMult 
+	{
 		ExprNodeLvlMult {
 			annotation: self.annotation.clone(),
 			head: self.head.clone(),
@@ -907,44 +814,40 @@ impl Clone for ExprNodeLvlMult {
 	}
 }
 
-pub trait ProductPartNode : Node + Transformable<dyn UnaryExprNode> {
-	fn get_kind<'a>(&'a self) -> ProductPartKind<'a>;
+pub trait ProductPartNode : Node + Transformable<dyn UnaryExprNode> 
+{
 	fn get_expr(&self) -> &ExprNodeLvlIndex;
 	fn dyn_clone(&self) -> Box<dyn ProductPartNode>;
 }
 
 impl_partial_eq!(dyn ProductPartNode);
 
-pub enum ProductPartKind<'a> {
-	Mult(&'a ProductPartNodeMult), Divide(&'a ProductPartNodeDivide)
-}
-
-impl_get_generalized!(ProductPartKind; ProductPartNode; Mult, Divide);
-
 #[derive(Debug, Clone)]
-pub struct ProductPartNodeMult {
+pub struct ProductPartNodeMult 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlIndex>
 }
 
-impl ProductPartNodeMult {
-	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlIndex>) -> Self {
+impl ProductPartNodeMult 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlIndex>) -> Self 
+	{
 		ProductPartNodeMult {
 			annotation, expr
 		}
 	}
 }
 
-impl ProductPartNode for ProductPartNodeMult {
-	fn get_kind<'a>(&'a self) -> ProductPartKind<'a> {
-		ProductPartKind::Mult(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlIndex {
+impl ProductPartNode for ProductPartNodeMult 
+{
+	fn get_expr(&self) -> &ExprNodeLvlIndex 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn ProductPartNode> {
+	fn dyn_clone(&self) -> Box<dyn ProductPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -952,29 +855,31 @@ impl ProductPartNode for ProductPartNodeMult {
 impl_partial_eq!(ProductPartNodeMult; expr);
 
 #[derive(Debug, Clone)]
-pub struct ProductPartNodeDivide {
+pub struct ProductPartNodeDivide 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNodeLvlIndex>
 }
 
-impl ProductPartNodeDivide {
-	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlIndex>) -> Self {
+impl ProductPartNodeDivide 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlIndex>) -> Self 
+	{
 		ProductPartNodeDivide {
 			annotation, expr
 		}
 	}
 }
 
-impl ProductPartNode for ProductPartNodeDivide {
-	fn get_kind<'a>(&'a self) -> ProductPartKind<'a> {
-		ProductPartKind::Divide(&self)
-	}
-
-	fn get_expr(&self) -> &ExprNodeLvlIndex {
+impl ProductPartNode for ProductPartNodeDivide 
+{
+	fn get_expr(&self) -> &ExprNodeLvlIndex 
+	{
 		&*self.expr
 	}
 
-	fn dyn_clone(&self) -> Box<dyn ProductPartNode> {
+	fn dyn_clone(&self) -> Box<dyn ProductPartNode> 
+	{
 		Box::new(self.clone())
 	}
 }
@@ -988,8 +893,10 @@ pub struct ExprNodeLvlIndex {
 	pub tail: AstVec<IndexPartNode>
 }
 
-impl ExprNodeLvlIndex {
-	pub fn new(annotation: Annotation, head: Box<dyn UnaryExprNode>, tail: AstVec<IndexPartNode>) -> Self {
+impl ExprNodeLvlIndex 
+{
+	pub fn new(annotation: Annotation, head: Box<dyn UnaryExprNode>, tail: AstVec<IndexPartNode>) -> Self 
+	{
 		ExprNodeLvlIndex {
 			annotation, head, tail
 		}
@@ -998,8 +905,10 @@ impl ExprNodeLvlIndex {
 
 impl_partial_eq!(ExprNodeLvlIndex; head, tail);
 
-impl Clone for ExprNodeLvlIndex {
-	fn clone(&self) -> ExprNodeLvlIndex {
+impl Clone for ExprNodeLvlIndex 
+{
+	fn clone(&self) -> ExprNodeLvlIndex 
+	{
 		ExprNodeLvlIndex {
 			annotation: self.annotation.clone(),
 			head: self.head.dyn_clone(),
@@ -1009,13 +918,16 @@ impl Clone for ExprNodeLvlIndex {
 }
 
 #[derive(Debug, Clone)]
-pub struct IndexPartNode {
+pub struct IndexPartNode 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
 }
 
-impl IndexPartNode {
-	pub fn new(annotation: Annotation, expr: Box<ExprNode>) -> Self {
+impl IndexPartNode 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNode>) -> Self 
+	{
 		IndexPartNode {
 			annotation, expr
 		}
@@ -1024,128 +936,124 @@ impl IndexPartNode {
 
 impl_partial_eq!(IndexPartNode; expr);
 
-pub trait UnaryExprNode : Node {
-	fn get_concrete<'a>(&'a self) -> ConcreteUnaryExprRef<'a>;
-	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteUnaryExprMut<'a>;
+pub trait UnaryExprNode : Node 
+{
 	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
 }
 
 impl_partial_eq!(dyn UnaryExprNode);
 
-pub enum ConcreteUnaryExprRef<'a> {
-	BracketExpr(&'a BracketExprNode), 
-	Literal(&'a LiteralNode), 
-	Variable(&'a VariableNode), 
-	FunctionCall(&'a FunctionCallNode), 
-	NewExpr(&'a NewExprNode)
-}
-
-impl_get_generalized!(ConcreteUnaryExprRef; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
-
-pub enum ConcreteUnaryExprMut<'a> {
-	BracketExpr(&'a mut BracketExprNode), 
-	Literal(&'a mut LiteralNode), 
-	Variable(&'a mut VariableNode), 
-	FunctionCall(&'a mut FunctionCallNode), 
-	NewExpr(&'a mut NewExprNode)
-}
-
-impl_get_mut_generalized!(ConcreteUnaryExprMut; UnaryExprNode; BracketExpr, Literal, Variable, FunctionCall, NewExpr);
-
 #[derive(Debug, Clone)]
-pub struct BracketExprNode {
+pub struct BracketExprNode 
+{
 	annotation: Annotation,
 	pub expr: Box<ExprNode>
 }
 
-impl BracketExprNode {
-	pub fn new(annotation: Annotation, expr: Box<ExprNode>) -> Self {
+impl BracketExprNode 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNode>) -> Self 
+	{
 		BracketExprNode {
 			annotation, expr
 		}
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for BracketExprNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; BracketExpr);
+impl_subnode!(UnaryExprNode for BracketExprNode);
 
 impl_partial_eq!(BracketExprNode; expr);
 
 #[derive(Debug, Clone)]
-pub struct LiteralNode {
+pub struct LiteralNode 
+{
 	annotation: Annotation,
 	pub literal: Literal
 }
 
-impl LiteralNode {
-	pub fn new(annotation: Annotation, literal: Literal) -> Self {
+impl LiteralNode 
+{
+	pub fn new(annotation: Annotation, literal: Literal) -> Self 
+	{
 		LiteralNode {
 			annotation, literal
 		}
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for LiteralNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; Literal);
+impl_subnode!(UnaryExprNode for LiteralNode);
 
 impl_partial_eq!(LiteralNode; literal);
 
 #[derive(Debug, Clone)]
-pub struct VariableNode {
+pub struct VariableNode 
+{
 	annotation: Annotation,
 	pub identifier: Identifier
 }
 
-impl VariableNode {
-	pub fn new(annotation: Annotation, identifier: Identifier) -> Self {
+impl VariableNode 
+{
+	pub fn new(annotation: Annotation, identifier: Identifier) -> Self 
+	{
 		VariableNode {
 			annotation, identifier
 		}
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for VariableNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; Variable);
+impl_subnode!(UnaryExprNode for VariableNode);
 
 impl_partial_eq!(VariableNode; identifier);
 
 #[derive(Debug, Clone)]
-pub struct FunctionCallNode {
+pub struct FunctionCallNode 
+{
 	annotation: Annotation,
 	pub function: Identifier,
 	pub params: AstVec<ExprNode>
 }
 
-impl FunctionCallNode {
-	pub fn new(annotation: Annotation, function: Identifier, params: AstVec<ExprNode>) -> Self {
+impl FunctionCallNode 
+{
+	pub fn new(annotation: Annotation, function: Identifier, params: AstVec<ExprNode>) -> Self 
+	{
 		FunctionCallNode {
 			annotation, function, params
 		}
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for FunctionCallNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; FunctionCall);
+impl_subnode!(UnaryExprNode for FunctionCallNode);
 
 impl_partial_eq!(FunctionCallNode; function, params);
 
 #[derive(Debug)]
-pub struct NewExprNode {
+pub struct NewExprNode 
+{
 	annotation: Annotation,
 	pub base_type: Box<dyn BaseTypeNode>,
 	pub dimensions: AstVec<IndexPartNode>
 }
 
-impl NewExprNode {
-	pub fn new(annotation: Annotation, base_type: Box<dyn BaseTypeNode>, dimensions: AstVec<IndexPartNode>) -> Self {
+impl NewExprNode 
+{
+	pub fn new(annotation: Annotation, base_type: Box<dyn BaseTypeNode>, dimensions: AstVec<IndexPartNode>) -> Self 
+	{
 		NewExprNode {
 			annotation, base_type, dimensions
 		}
 	}
 }
 
-impl_concrete_node!(UnaryExprNode for NewExprNode; ConcreteUnaryExprRef; ConcreteUnaryExprMut; NewExpr);
+impl_subnode!(UnaryExprNode for NewExprNode);
 
 impl_partial_eq!(NewExprNode; base_type, dimensions);
 
-impl Clone for NewExprNode {
-	fn clone(&self) -> NewExprNode {
+impl Clone for NewExprNode 
+{
+	fn clone(&self) -> NewExprNode 
+	{
 		NewExprNode {
 			annotation: self.annotation.clone(),
 			base_type: self.base_type.dyn_clone(),
@@ -1154,59 +1062,57 @@ impl Clone for NewExprNode {
 	}
 }
 
-pub trait BaseTypeNode : Node {
-	fn get_concrete<'a>(&'a self) -> ConcreteBaseTypeRef<'a>;
-	fn get_mut_concrete<'a>(&'a mut self) -> ConcreteBaseTypeMut<'a>;
+pub trait BaseTypeNode : Node 
+{
 	fn dyn_clone(&self) -> Box<dyn BaseTypeNode>;
 }
 
 impl_partial_eq!(dyn BaseTypeNode);
-
-pub enum ConcreteBaseTypeRef<'a> {
-	Int(&'a IntTypeNode)
-}
-
-impl_get_generalized!(ConcreteBaseTypeRef; BaseTypeNode; Int);
-
-pub enum ConcreteBaseTypeMut<'a> {
-	Int(&'a mut IntTypeNode)
-}
-
-impl_get_mut_generalized!(ConcreteBaseTypeMut; BaseTypeNode; Int);
 
 #[derive(Debug, Clone)]
 pub struct IntTypeNode {
 	annotation: Annotation
 }
 
-impl IntTypeNode {
-	pub fn new(annotation: Annotation) -> Self {
+impl IntTypeNode 
+{
+	pub fn new(annotation: Annotation) -> Self 
+	{
 		IntTypeNode {
 			annotation
 		}
 	}
 }
 
-impl_concrete_node!(BaseTypeNode for IntTypeNode; ConcreteBaseTypeRef; ConcreteBaseTypeMut; Int);
+impl_subnode!(BaseTypeNode for IntTypeNode);
 
 impl_partial_eq!(IntTypeNode;);
 
 macro_rules! impl_node {
 	($nodetype:ty) => {
 		impl Node for $nodetype {
-			fn get_annotation(&self) -> &Annotation {
+			fn get_annotation(&self) -> &Annotation
+			{
 				&self.annotation
 			}
 
-			fn get_annotation_mut(&mut self) -> &mut Annotation {
+			fn get_annotation_mut(&mut self) -> &mut Annotation 
+			{
 				&mut self.annotation
 			}
 
-			fn dynamic(&self) -> &(dyn Any + 'static) {
+			fn dynamic(&self) -> &(dyn Any + 'static) 
+			{
 				self
 			}
 
-			fn dyn_clone_node(&self) -> Box<dyn Node> {
+			fn dynamic_box(self: Box<Self>) -> Box<dyn Any + 'static>
+			{
+				self
+			}
+
+			fn dyn_clone_node(&self) -> Box<dyn Node> 
+			{
 				Box::new(self.clone())
 			}
 		}
@@ -1395,76 +1301,158 @@ impl Visitable<dyn UnaryExprNode> for ExprNodeLvlIndex {
     }
 }
 
+impl SubnodeEnumerable<dyn StmtNode> for FunctionNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		self.implementation.enumerate_mut()
+	}
 
-impl Transformable<dyn StmtNode> for FunctionNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		self.implementation.enumerate()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		self.implementation.enumerate_box()
+	}
+}
+
+impl SubnodeEnumerable<dyn StmtNode> for ImplementedFunctionNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		self.body.enumerate_mut()
+	}
+
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		self.body.enumerate()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		self.body.enumerate_box()
+	}
+}
+
+impl SubnodeEnumerable<dyn StmtNode> for NativeFunctionNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		EMPTY_SLICE.iter_mut()
+	}
+
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		EMPTY_SLICE.iter()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		vec![].into_iter()
+	}
+}
+
+impl SubnodeEnumerable<dyn StmtNode> for BlockNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		self.stmts.iter_mut()
+	}
+
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		self.stmts.iter()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		self.stmts.into_iter()
+	}
+}
+
+impl SubnodeEnumerable<dyn StmtNode> for IfNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		self.block.enumerate_mut()
+	}
+
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		self.block.enumerate()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		self.block.enumerate_box()
+	}
+}
+
+impl SubnodeEnumerable<dyn StmtNode> for WhileNode 
+{
+	fn enumerate_mut(&mut self) -> std::slice::IterMut<Box<dyn StmtNode>>
+	{
+		self.block.enumerate_mut()
+	}
+
+	fn enumerate(&self) -> std::slice::Iter<Box<dyn StmtNode>>
+	{
+		self.block.enumerate()
+	}
+
+	fn enumerate_box(self: Box<Self>) -> std::vec::IntoIter<Box<dyn StmtNode>>
+	{
+		self.block.enumerate_box()
+	}
+}
+
+impl<T> Transformable<dyn StmtNode> for T
+	where T: SubnodeEnumerable<dyn StmtNode>
+{
+    fn transform(&mut self, mut f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
     {
-        self.implementation.transform(f);
+        for stmt in self.enumerate_mut() {
+			take_mut::take(stmt, &mut f);
+		}
     }
 }
 
-impl Transformable<dyn StmtNode> for ImplementedFunctionNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
-    {
-        self.body.transform(f);
-    }
-}
-
-impl Transformable<dyn StmtNode> for NativeFunctionNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
-    {
-    }
-}
-
-impl Transformable<dyn StmtNode> for BlockNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
-    {
-        self.stmts = self.stmts.drain(..).map(f).collect();
-    }
-}
-
-impl Transformable<dyn StmtNode> for IfNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
-    {
-        self.block.transform(f)
-    }
-}
-
-impl Transformable<dyn StmtNode> for WhileNode {
-    fn transform(&mut self, f: &mut TransformFunctionType<dyn StmtNode>) -> TransformResultType
-    {
-        self.block.transform(f)
-    }
-}
-
-impl Transformable<dyn UnaryExprNode> for FunctionNode {
+impl Transformable<dyn UnaryExprNode> for FunctionNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.implementation.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ImplementedFunctionNode {
+impl Transformable<dyn UnaryExprNode> for ImplementedFunctionNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.body.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for NativeFunctionNode {
+impl Transformable<dyn UnaryExprNode> for NativeFunctionNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for BlockNode {
+impl Transformable<dyn UnaryExprNode> for BlockNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.stmts.iter_mut().for_each(|stmt| stmt.transform(f));
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for AssignmentNode {
+impl Transformable<dyn UnaryExprNode> for AssignmentNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.assignee.transform(f);
@@ -1472,21 +1460,24 @@ impl Transformable<dyn UnaryExprNode> for AssignmentNode {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for VariableDeclarationNode {
+impl Transformable<dyn UnaryExprNode> for VariableDeclarationNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f);
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprStmtNode {
+impl Transformable<dyn UnaryExprNode> for ExprStmtNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f);
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for IfNode {
+impl Transformable<dyn UnaryExprNode> for IfNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.condition.transform(f);
@@ -1494,7 +1485,8 @@ impl Transformable<dyn UnaryExprNode> for IfNode {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for WhileNode {
+impl Transformable<dyn UnaryExprNode> for WhileNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.condition.transform(f);
@@ -1502,14 +1494,16 @@ impl Transformable<dyn UnaryExprNode> for WhileNode {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ReturnNode {
+impl Transformable<dyn UnaryExprNode> for ReturnNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
 		self.expr.transform(f);
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlOr {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlOr 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.head.transform(f);
@@ -1517,14 +1511,16 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlOr {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for OrPartNode {
+impl Transformable<dyn UnaryExprNode> for OrPartNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAnd {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAnd 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.head.transform(f);
@@ -1532,14 +1528,16 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAnd {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for AndPartNode {
+impl Transformable<dyn UnaryExprNode> for AndPartNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlCmp {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlCmp 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.head.transform(f);
@@ -1547,49 +1545,56 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlCmp {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeEq {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeEq 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeNeq {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeNeq 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeLeq {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeLeq 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeGeq {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeGeq 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeLs {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeLs 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for CmpPartNodeGt {
+impl Transformable<dyn UnaryExprNode> for CmpPartNodeGt 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAdd {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAdd 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.head.transform(f);
@@ -1597,21 +1602,24 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlAdd {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for SumPartNodeSub {
+impl Transformable<dyn UnaryExprNode> for SumPartNodeSub 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for SumPartNodeAdd {
+impl Transformable<dyn UnaryExprNode> for SumPartNodeAdd 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlMult {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlMult 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.head.transform(f);
@@ -1619,21 +1627,24 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlMult {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ProductPartNodeMult {
+impl Transformable<dyn UnaryExprNode> for ProductPartNodeMult 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ProductPartNodeDivide {
+impl Transformable<dyn UnaryExprNode> for ProductPartNodeDivide 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for ExprNodeLvlIndex {
+impl Transformable<dyn UnaryExprNode> for ExprNodeLvlIndex 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         take_mut::take(&mut self.head, |expr| f(expr));
@@ -1641,10 +1652,31 @@ impl Transformable<dyn UnaryExprNode> for ExprNodeLvlIndex {
     }
 }
 
-impl Transformable<dyn UnaryExprNode> for IndexPartNode {
+impl Transformable<dyn UnaryExprNode> for IndexPartNode 
+{
     fn transform(&mut self, f: &mut TransformFunctionType<dyn UnaryExprNode>) -> TransformResultType
     {
         self.expr.transform(f)
+    }
+}
+
+impl TypeDefinition for ArrTypeNode
+{
+    fn calc_type(&self) -> Option<Type>
+    {
+        if self.get_dims() == 0 {
+            Some(Type::Primitive(PrimitiveType::Int))
+        } else {
+            Some(Type::Array(PrimitiveType::Int, self.get_dims()))
+        }
+    }
+}
+
+impl TypeDefinition for VoidTypeNode
+{
+    fn calc_type(&self) -> Option<Type>
+    {
+        None
     }
 }
 

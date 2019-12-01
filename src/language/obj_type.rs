@@ -1,56 +1,57 @@
 use super::super::parser::prelude::*;
-use super::scope::{ SymbolDefinition, SymbolDefinitionKind };
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum PrimitiveType {
-    Int
+pub trait SymbolDefinition: Node 
+{
+    fn get_ident(&self) -> &Identifier;
+    fn calc_type(&self) -> Result<Type, CompileError>;
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Type {
-    Primitive(PrimitiveType),
-    Array(PrimitiveType, u32),
-    Function(Vec<Type>, Option<Box<Type>>)
-}
+impl SymbolDefinition for ParameterNode 
+{
+    fn get_ident(&self) -> &Identifier 
+    {
+        &self.ident
+    }
 
-impl Type {
-    pub fn from(t: &dyn TypeNode) -> Option<Type> {
-        match t.get_concrete() {
-            ConcreteTypeRef::Array(ref arr) => {
-                if arr.get_dims() == 0 {
-                    Some(Type::Primitive(PrimitiveType::Int))
-                } else {
-                    Some(Type::Array(PrimitiveType::Int, arr.get_dims()))
-                }
-            },
-            ConcreteTypeRef::Void(ref void) => {
-                None
-            }
+    fn calc_type(&self) -> Result<Type, CompileError> 
+    {
+        if let Some(var_type) = self.param_type.calc_type() {
+            return Ok(var_type);
+        } else {
+            return Err(CompileError::new(self.get_annotation().clone(),
+                format!("Parameter cannot have type void"), ErrorType::VariableVoidType));
         }
     }
-    
-    pub fn calc_from(definition: &dyn SymbolDefinition) -> Result<Type, CompileError> {
-        match definition.get_kind() {
-            SymbolDefinitionKind::Function(ref function) => {
-                let param_types = Result::from(function.params.iter().map(|param| Type::calc_from(&**param)).collect())?;
-                return Ok(Type::Function(param_types, Type::from(&*function.result).map(|t| Box::new(t))));
-            },
-            SymbolDefinitionKind::LocalVar(ref var) => {
-                if let Some(var_type) = Type::from(&*var.variable_type) {
-                    return Ok(var_type);
-                } else {
-                    return Err(CompileError::new(definition.get_annotation().clone(),
-                        format!("Local variable cannot have type void"), ErrorType::VariableVoidType));
-                }
-            },
-            SymbolDefinitionKind::Parameter(ref param) => {
-                if let Some(var_type) = Type::from(&*param.param_type) {
-                    return Ok(var_type);
-                } else {
-                    return Err(CompileError::new(definition.get_annotation().clone(),
-                        format!("Parameter cannot have type void"), ErrorType::VariableVoidType));
-                }
-            }
+}
+
+impl SymbolDefinition for VariableDeclarationNode 
+{
+    fn get_ident(&self) -> &Identifier 
+    {
+        &self.ident
+    }
+
+    fn calc_type(&self) -> Result<Type, CompileError>
+    {
+        if let Some(var_type) = self.variable_type.calc_type() {
+            return Ok(var_type);
+        } else {
+            return Err(CompileError::new(self.get_annotation().clone(),
+                format!("Local variable cannot have type void"), ErrorType::VariableVoidType));
         }
+    }
+}
+
+impl SymbolDefinition for FunctionNode 
+{
+    fn get_ident(&self) -> &Identifier 
+    {
+        &self.ident
+    }
+
+    fn calc_type(&self) -> Result<Type, CompileError> 
+    {
+        let param_types = Result::from(self.params.iter().map(|param| param.calc_type()).collect())?;
+        return Ok(Type::Function(param_types, self.result.calc_type().map(|t| Box::new(t))));
     }
 }
