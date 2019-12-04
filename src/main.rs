@@ -18,7 +18,7 @@ mod backend;
 use lexer::tokens::*;
 use parser::Parse;
 use lexer::lexer::lex;
-use parser::ast::*;
+use parser::prelude::*;
 
 fn main() {
 	let mut stream = lex("fn len(a: int[],): int native;");

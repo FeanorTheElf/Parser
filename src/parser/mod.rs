@@ -8,6 +8,11 @@ pub trait Parse {
 
 #[macro_use]
 pub mod parser_gen;
+pub mod obj_type;
+#[macro_use]
 pub mod ast;
+pub mod visitor;
+pub mod ast_expr;
+pub mod ast_func;
 pub mod parser;
 pub mod prelude;

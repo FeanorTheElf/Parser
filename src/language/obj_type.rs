@@ -1,4 +1,5 @@
 use super::super::parser::prelude::*;
+use super::super::parser::obj_type::*;
 
 pub trait SymbolDefinition: Node 
 {
@@ -15,7 +16,7 @@ impl SymbolDefinition for ParameterNode
 
     fn calc_type(&self) -> Result<Type, CompileError> 
     {
-        if let Some(var_type) = self.param_type.calc_type() {
+        if let Some(var_type) = self.param_type.calc_type()? {
             return Ok(var_type);
         } else {
             return Err(CompileError::new(self.get_annotation().clone(),
@@ -33,7 +34,7 @@ impl SymbolDefinition for VariableDeclarationNode
 
     fn calc_type(&self) -> Result<Type, CompileError>
     {
-        if let Some(var_type) = self.variable_type.calc_type() {
+        if let Some(var_type) = self.variable_type.calc_type()? {
             return Ok(var_type);
         } else {
             return Err(CompileError::new(self.get_annotation().clone(),
@@ -52,6 +53,6 @@ impl SymbolDefinition for FunctionNode
     fn calc_type(&self) -> Result<Type, CompileError> 
     {
         let param_types = Result::from(self.params.iter().map(|param| param.calc_type()).collect())?;
-        return Ok(Type::Function(param_types, self.result.calc_type().map(|t| Box::new(t))));
+        return Ok(Type::Function(param_types, self.result.calc_type()?.map(|t| Box::new(t))));
     }
 }

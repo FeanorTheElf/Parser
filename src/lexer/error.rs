@@ -8,7 +8,8 @@ pub enum ErrorType {
     UndefinedSymbol,
     ShadowedDefinition,
     VariableVoidType,
-    DuplicateDefinition
+    DuplicateDefinition,
+    IllegalArrayBaseType
 }
 
 #[derive(Debug)]
