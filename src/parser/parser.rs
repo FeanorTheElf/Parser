@@ -1,13 +1,10 @@
 use super::prelude::*;
 use super::super::lexer::tokens::{ Stream, Token };
 use super::Parse;
-#[macro_use]
 use super::parser_gen::Flatten;
 
 #[cfg(test)]
 use super::super::lexer::lexer::lex;
-
-use std::vec::Vec;
 
 impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
 impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
@@ -35,12 +32,12 @@ impl Parse for dyn StmtNode {
 		} else if ExprNode::guess_can_parse(stream) {
 			let expr = ExprNode::parse(stream)?;
 			if stream.ends(&Token::Assign) {
-				stream.expect_next(&Token::Assign);
+				stream.expect_next(&Token::Assign)?;
 				let new_val = ExprNode::parse(stream)?;
-				stream.expect_next(&Token::Semicolon);
+				stream.expect_next(&Token::Semicolon)?;
 				return Ok(Box::new(AssignmentNode::new(pos, expr, new_val)));
 			} else {
-				stream.expect_next(&Token::Semicolon);
+				stream.expect_next(&Token::Semicolon)?;
 				return Ok(Box::new(ExprStmtNode::new(pos, expr)));
 			}
 		} else {
@@ -68,8 +65,8 @@ impl Parse for dyn TypeNode {
 			let base_type = BaseTypeNode::parse(stream)?;
 			let mut dimensions: u8 = 0;
 			while stream.ends(&Token::SquareBracketOpen) {
-				stream.expect_next(&Token::SquareBracketOpen);
-				stream.expect_next(&Token::SquareBracketClose);
+				stream.expect_next(&Token::SquareBracketOpen)?;
+				stream.expect_next(&Token::SquareBracketClose)?;
 				dimensions += 1;
 			}
 			return Ok(Box::new(ArrTypeNode::new(pos, base_type, dimensions)));
@@ -116,16 +113,16 @@ impl Parse for dyn UnaryExprNode {
 		} else if stream.ends_ident() {
 			let ident = stream.next_ident()?;
 			if stream.ends(&Token::BracketOpen) {
-				stream.expect_next(&Token::BracketOpen);
+				stream.expect_next(&Token::BracketOpen)?;
 				let mut params: AstVec<ExprNode> = vec![];
 				if !stream.ends(&Token::BracketClose) {
 					params.push(ExprNode::parse(stream)?);
 					while stream.ends(&Token::Comma) {
-						stream.expect_next(&Token::Comma);
+						stream.expect_next(&Token::Comma)?;
 						params.push(ExprNode::parse(stream)?);
 					}
 				}
-				stream.expect_next(&Token::BracketClose);
+				stream.expect_next(&Token::BracketClose)?;
 				return Ok(Box::new(FunctionCallNode::new(pos, ident, params)));
 			} else {
 				return Ok(Box::new(VariableNode::new(pos, ident)));
@@ -151,7 +148,6 @@ fn create_int_arr(dims: u8) -> Box<dyn TypeNode> {
 
 #[test]
 fn test_parse_simple_function() {
-	let default_pos = TextPosition::create(0, 0);
     let ident = |name: &'static str| Identifier { name: name.to_owned() };
     let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }")).unwrap();
 
@@ -173,4 +169,9 @@ fn test_parse_simple_function() {
 	
 	let param = &function_call.params[0].head.head.head.head.head.head.dynamic().downcast_ref::<VariableNode>().unwrap();
 	assert_eq!(ident("b"), param.identifier);
+}
+
+#[test]
+fn test_parse_ifelse() {
+	assert!(FunctionNode::parse(&mut lex("fn len(a: int,): void { if a < 1 {} else if a > 1 {} }")).is_err());
 }

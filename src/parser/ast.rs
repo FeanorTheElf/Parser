@@ -1,9 +1,7 @@
-use super::super::lexer::tokens::{Identifier, Literal};
 use super::super::lexer::position::TextPosition;
-use super::super::lexer::error::CompileError;
 use super::super::util::dyn_eq::DynEq;
 
-use super::visitor::{ Visitable, Transformable, Visitor, Transformer };
+use super::visitor::{ Visitable, Transformable };
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -20,22 +18,54 @@ pub trait Node : Debug + Any + DynEq + Visitable + Transformable
 	fn dynamic_box(self: Box<Self>) -> Box<dyn Any>;
 }
 
-pub fn cast<U: ?Sized + Node, T: Node>(node: Box<U>) -> Result<Box<T>, Box<U>> 
+pub trait StmtNode : Node {
+	fn dyn_clone(&self) -> Box<dyn StmtNode>;
+}
+
+impl_partial_eq!(dyn StmtNode);
+
+pub trait UnaryExprNode : Node + Visitable 
 {
-	if node.dynamic().is::<T>() {
-		return Ok(node.dynamic_box().downcast().unwrap());
-	} else {
-		return Err(node);
-	}
+	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
+}
+
+impl_partial_eq!(dyn UnaryExprNode);
+
+macro_rules! impl_transform {
+	($self:ident; $transformer:ident; ) => {
+		
+	};
+	($self:ident; $transformer:ident; ,) => {
+		
+	};
+	($self:ident; $transformer:ident; vec $child:ident, $($tail:tt)*) => {
+		{
+			($self).$child.iter_mut().for_each(|node| {
+				debug_assert_ne!(std::any::TypeId::of::<dyn StmtNode>(), node.dynamic().type_id());
+				debug_assert_ne!(std::any::TypeId::of::<dyn UnaryExprNode>(), node.dynamic().type_id());
+				node.transform($transformer)
+			});
+			impl_transform!($self; $transformer; $($tail)*);
+		}
+	};
+	($self:ident; $transformer:ident; $child:ident, $($tail:tt)*) => {
+		{
+			debug_assert_ne!(std::any::TypeId::of::<dyn StmtNode>(), ($self).$child.dynamic().type_id());
+			debug_assert_ne!(std::any::TypeId::of::<dyn UnaryExprNode>(), ($self).$child.dynamic().type_id());
+			($self).$child.transform($transformer);
+			impl_transform!($self; $transformer; $($tail)*);
+		}
+	};
 }
 
 macro_rules! impl_transformable {
 	($nodetype:ty; $($tail:tt)*) => {
-		impl Transformable for $nodetype
+		impl Transformable for $nodetype 
 		{
-			fn transform(&mut self, f: &mut dyn Transformer)
+			#[allow(unused)]
+			fn transform(&mut self, transformer: &mut dyn Transformer)
 			{
-				take_mut::take(self, |node: $nodetype| *cast::<dyn Node, $nodetype>(f.transform(Box::new(node))).unwrap());
+				impl_transform!(self; transformer; $($tail)* ,);
 			}
 		}
 	};

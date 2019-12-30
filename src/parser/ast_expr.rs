@@ -27,8 +27,8 @@ impl ExprNodeLvlOr
 	}
 }
 
-impl_transformable!(ExprNodeLvlOr; head, vec tail);
 impl_visitable!(ExprNodeLvlOr; head, vec tail);
+impl_transformable!(ExprNodeLvlOr; head, vec tail);
 impl_partial_eq!(ExprNodeLvlOr; head, tail);
 
 #[derive(Debug, Clone)]
@@ -37,8 +37,10 @@ pub struct OrPartNode {
 	pub expr: Box<ExprNodeLvlAnd>
 }
 
-impl OrPartNode {
-	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlAnd>) -> Self {
+impl OrPartNode 
+{
+	pub fn new(annotation: Annotation, expr: Box<ExprNodeLvlAnd>) -> Self 
+	{
 		OrPartNode {
 			annotation, expr
 		}
@@ -64,8 +66,8 @@ impl ExprNodeLvlAnd {
 	}
 }
 
-impl_transformable!(ExprNodeLvlAnd; head, vec tail);
 impl_visitable!(ExprNodeLvlAnd; head, vec tail);
+impl_transformable!(ExprNodeLvlAnd; head, vec tail);
 impl_partial_eq!(ExprNodeLvlAnd; head, tail);
 
 #[derive(Debug, Clone)]
@@ -82,8 +84,8 @@ impl AndPartNode {
 	}
 }
 
-impl_transformable!(AndPartNode; expr);
 impl_visitable!(AndPartNode; expr);
+impl_transformable!(AndPartNode; expr);
 impl_partial_eq!(AndPartNode; expr);
 
 #[derive(Debug)]
@@ -101,8 +103,8 @@ impl ExprNodeLvlCmp {
 	}
 }
 
-impl_transformable!(ExprNodeLvlCmp; head, vec tail);
 impl_visitable!(ExprNodeLvlCmp; head, vec tail);
+impl_transformable!(ExprNodeLvlCmp; head, vec tail);
 impl_partial_eq!(ExprNodeLvlCmp; head, tail);
 
 impl Clone for ExprNodeLvlCmp {
@@ -150,8 +152,8 @@ impl CmpPartNode for CmpPartNodeEq
 	}
 }
 
-impl_transformable!(CmpPartNodeEq; expr);
 impl_visitable!(CmpPartNodeEq; expr);
+impl_transformable!(CmpPartNodeEq; expr);
 impl_partial_eq!(CmpPartNodeEq; expr);
 
 #[derive(Debug, Clone)]
@@ -181,8 +183,8 @@ impl CmpPartNode for CmpPartNodeNeq
 	}
 }
 
-impl_transformable!(CmpPartNodeNeq; expr);
 impl_visitable!(CmpPartNodeNeq; expr);
+impl_transformable!(CmpPartNodeNeq; expr);
 impl_partial_eq!(CmpPartNodeNeq; expr);
 
 #[derive(Debug, Clone)]
@@ -210,8 +212,9 @@ impl CmpPartNode for CmpPartNodeLeq
 		Box::new(self.clone())
 	}
 }
-impl_transformable!(CmpPartNodeLeq; expr);
+
 impl_visitable!(CmpPartNodeLeq; expr);
+impl_transformable!(CmpPartNodeLeq; expr);
 impl_partial_eq!(CmpPartNodeLeq; expr);
 
 #[derive(Debug, Clone)]
@@ -241,8 +244,8 @@ impl CmpPartNode for CmpPartNodeGeq
 	}
 }
 
-impl_transformable!(CmpPartNodeGeq; expr);
 impl_visitable!(CmpPartNodeGeq; expr);
+impl_transformable!(CmpPartNodeGeq; expr);
 impl_partial_eq!(CmpPartNodeGeq; expr);
 
 #[derive(Debug, Clone)]
@@ -272,8 +275,8 @@ impl CmpPartNode for CmpPartNodeLs
 	}
 }
 
-impl_transformable!(CmpPartNodeLs; expr);
 impl_visitable!(CmpPartNodeLs; expr);
+impl_transformable!(CmpPartNodeLs; expr);
 impl_partial_eq!(CmpPartNodeLs; expr);
 
 #[derive(Debug, Clone)]
@@ -306,8 +309,8 @@ impl CmpPartNode for CmpPartNodeGt
 	}
 }
 
-impl_transformable!(CmpPartNodeGt; expr);
 impl_visitable!(CmpPartNodeGt; expr);
+impl_transformable!(CmpPartNodeGt; expr);
 impl_partial_eq!(CmpPartNodeGt; expr);
 
 #[derive(Debug)]
@@ -325,8 +328,8 @@ impl ExprNodeLvlAdd {
 	}
 }
 
-impl_transformable!(ExprNodeLvlAdd; head, vec tail);
 impl_visitable!(ExprNodeLvlAdd; head, vec tail);
+impl_transformable!(ExprNodeLvlAdd; head, vec tail);
 impl_partial_eq!(ExprNodeLvlAdd; head, tail);
 
 impl Clone for ExprNodeLvlAdd {
@@ -377,8 +380,8 @@ impl SumPartNode for SumPartNodeAdd
 	}
 }
 
-impl_transformable!(SumPartNodeAdd; expr);
 impl_visitable!(SumPartNodeAdd; expr);
+impl_transformable!(SumPartNodeAdd; expr);
 impl_partial_eq!(SumPartNodeAdd; expr);
 
 #[derive(Debug, Clone)]
@@ -408,8 +411,8 @@ impl SumPartNode for SumPartNodeSub
 	}
 }
 
-impl_transformable!(SumPartNodeSub; expr);
 impl_visitable!(SumPartNodeSub; expr);
+impl_transformable!(SumPartNodeSub; expr);
 impl_partial_eq!(SumPartNodeSub; expr);
 
 #[derive(Debug)]
@@ -430,8 +433,8 @@ impl ExprNodeLvlMult
 	}
 }
 
-impl_transformable!(ExprNodeLvlMult; head, vec tail);
 impl_visitable!(ExprNodeLvlMult; head, vec tail);
+impl_transformable!(ExprNodeLvlMult; head, vec tail);
 impl_partial_eq!(ExprNodeLvlMult; head, tail);
 
 impl Clone for ExprNodeLvlMult 
@@ -539,7 +542,15 @@ impl ExprNodeLvlIndex
 	}
 }
 
-impl_transformable!(ExprNodeLvlIndex; head, vec tail);
+impl Transformable for ExprNodeLvlIndex
+{
+	fn transform(&mut self, transformer: &mut dyn Transformer)
+	{
+		take_mut::take(&mut self.head, |node| transformer.transform_expr(node));
+		self.tail.iter_mut().for_each(|node| node.transform(transformer));
+	}
+}
+
 impl_visitable!(ExprNodeLvlIndex; head, vec tail);
 impl_partial_eq!(ExprNodeLvlIndex; head, tail);
 
@@ -575,13 +586,6 @@ impl IndexPartNode
 impl_transformable!(IndexPartNode; expr);
 impl_visitable!(IndexPartNode; expr);
 impl_partial_eq!(IndexPartNode; expr);
-
-pub trait UnaryExprNode : Node + Visitable 
-{
-	fn dyn_clone(&self) -> Box<dyn UnaryExprNode>;
-}
-
-impl_partial_eq!(dyn UnaryExprNode);
 
 #[derive(Debug, Clone)]
 pub struct BracketExprNode 
@@ -736,8 +740,8 @@ impl IntTypeNode
 
 impl_subnode!(BaseTypeNode for IntTypeNode);
 
-impl_transformable!(IntTypeNode;);
 impl_visitable!(IntTypeNode;);
+impl_transformable!(IntTypeNode;);
 impl_partial_eq!(IntTypeNode;);
 
 impl_node!(ExprNodeLvlOr);

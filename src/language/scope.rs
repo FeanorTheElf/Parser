@@ -1,9 +1,5 @@
 use super::super::parser::prelude::*;
-use super::super::util::ref_eq::{ Ref, RefEq, ref_eq };
 use super::obj_type::SymbolDefinition;
-
-use std::cell::RefCell;
-
 
 pub trait EnumerateDefinitions<'a> {
     type IntoIter: Iterator<Item = &'a dyn SymbolDefinition>;
@@ -145,7 +141,7 @@ impl ScopeStack {
     }
 
     pub fn exit(&mut self) {
-        let mut child = std::mem::replace(&mut self.scope_stack, None);
+        let child = std::mem::replace(&mut self.scope_stack, None);
         *self = *child.expect("Cannot call exit() on empty scope stack");
     }
 }

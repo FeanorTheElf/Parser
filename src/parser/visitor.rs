@@ -1,5 +1,3 @@
-use super::super::lexer::tokens::{Identifier, Literal};
-use super::super::lexer::position::TextPosition;
 use super::super::lexer::error::CompileError;
 
 use super::ast::*;
@@ -12,7 +10,8 @@ pub trait Visitor<'a>
 
 pub trait Transformer
 {
-    fn transform(&mut self, node: Box<dyn Node>) -> Box<dyn Node>;
+    fn transform_stmt(&mut self, node: Box<dyn StmtNode>) -> Box<dyn StmtNode>;
+    fn transform_expr(&mut self, node: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>;
 }
 
 pub trait Visitable 
@@ -95,74 +94,104 @@ pub const DO_NOTHING: DoNothingVisitor = DoNothingVisitor {};
 
 impl<'a> Visitor<'a> for DoNothingVisitor
 {
-    fn enter(&mut self, node: &'a dyn Node) -> Result<(), CompileError>
+    fn enter(&mut self, _node: &'a dyn Node) -> Result<(), CompileError>
     {
         Ok(())
     }
 
-    fn exit(&mut self, node: &'a dyn Node) -> Result<(), CompileError>
+    fn exit(&mut self, _node: &'a dyn Node) -> Result<(), CompileError>
     {
         Ok(())
     }
 }
 
-pub struct TypeTransformer<T, F, D>
-    where F: FnMut(Box<T>) -> Box<T>, 
-        D: for<'a> Visitor<'a>,
-        T: Node
+pub struct ExprTransformer<F>
+    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
 {
-    transform: F,
-    visitor: D,
-    phantom: std::marker::PhantomData<T>
+    f: F
 }
 
-impl<T, F, D> TypeTransformer<T, F, D>
-    where F: FnMut(Box<T>) -> Box<T>,
-        D: for<'a> Visitor<'a>,
-        T: Node
+impl<F> ExprTransformer<F>
+    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
 {
-    // Creates a new transformer that transforms objects of type T
-    // using the given function. The given visitor is given the
-    // state before the transformation and after the transformation
-    fn new(transform: F, visitor: D) -> TypeTransformer<T, F, D>
+    fn new(f: F) -> ExprTransformer<F>
     {
-        TypeTransformer {
-            transform: transform,
-            visitor: visitor,
-            phantom: std::marker::PhantomData
-        }
-    }
-
-    fn terminating(transform: F) -> TypeTransformer<T, F, DoNothingVisitor>
-    {
-        TypeTransformer {
-            transform: transform,
-            visitor: DO_NOTHING,
-            phantom: std::marker::PhantomData
+        ExprTransformer {
+            f: f
         }
     }
 }
 
-impl<T, F, D> Transformer for TypeTransformer<T, F, D>
-    where F: FnMut(Box<T>) -> Box<T>,
-        D: for<'a> Visitor<'a>,
-        T: Node
+impl<F> Transformer for ExprTransformer<F>
+    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
 {
-    fn transform(&mut self, node: Box<dyn Node>) -> Box<dyn Node>
+    fn transform_expr(&mut self, expr: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
     {
-        match cast::<dyn Node, T>(node) {
-            Ok(value) => {
-                self.visitor.enter(&*value);
-                let result = self.transform(value);
-                self.visitor.exit(&*result);
-                return result;
-            },
-            Err(mut value) => {
-                self.visitor.enter(&*value);
-                value.transform(self);
-                self.visitor.exit(&*value);
-                return value;
+        (self.f)(expr)
+    }
+
+    fn transform_stmt(&mut self, mut stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
+    {
+        stmt.transform(self);
+        stmt
+    }
+}
+
+impl<F> Transformer for F
+    where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>
+{
+    fn transform_expr(&mut self, mut expr: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
+    {
+        expr.transform(self);
+        expr
+    }
+
+    fn transform_stmt(&mut self, stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
+    {
+        (self)(stmt)
+    }
+}
+
+#[cfg(test)]
+use super::prelude::*;
+#[cfg(test)]
+use super::Parse;
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
+
+#[cfg(test)]
+fn blockify(mut stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
+{
+    stmt.transform(&mut blockify);
+    Box::new(BlockNode::new(
+        TextPosition::create(0, 0),
+        vec![ stmt ]
+    ))
+}
+
+#[test]
+fn test_transform() {
+    let mut ast = FunctionNode::parse(&mut lex("
+        fn test(a: int, b: int,): int {
+            if a < b {
+                return a;
+            } 
+            return b;
+        }
+    ")).unwrap();
+    println!("{:?}", ast);
+    ast.transform(&mut blockify);
+    assert_eq!(FunctionNode::parse(&mut lex("
+        fn test(a: int, b: int,): int {
+            {
+                if a < b {
+                    {
+                        return a;
+                    }
+                } 
             }
-        }
-    }
+            {
+                return b;
+            }
+        }")).unwrap(), ast);
 }

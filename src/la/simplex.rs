@@ -1,9 +1,7 @@
-use super::indexed::{ Indexed, IndexedMut };
-use super::vector::Vector;
+use super::indexed::*;
 use super::matrix::Matrix;
-use std::ops::{ Index, IndexMut, MulAssign, AddAssign };
+use std::ops::{ MulAssign };
 use std::vec::Vec;
-use std::collections::HashMap;
 
 type Tableau = Matrix<f64>;
 type TableauRow = [f64];
@@ -30,10 +28,6 @@ pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), Sy
 	return Ok(());
 }
 
-pub fn opt(table: &Tableau, target: &Vector<f64>) {
-
-}
-
 /*
  * Find solution of Ax=b with x >= 0
  * table: (b | A)
@@ -43,7 +37,7 @@ pub fn solve(table: &Tableau) -> Option<Vec<f64>> {
 	simplex(&mut matrix, &mut basic_vars).unwrap();
 	let solution = extract_solution(&matrix, &basic_vars);
 
-	let mut result: Vec<f64> = Vec::from(&solution[0..(table.cols() - 1)]);
+	let result: Vec<f64> = Vec::from(&solution[0..(table.cols() - 1)]);
 	if is_solution(&result, table) {
 		return Some(result);	
 	} else {
@@ -94,7 +88,7 @@ fn eliminate(table: &mut Tableau, row_index: usize, col_index: usize) {
 	for target_row_index in 0..table.rows() {
 		if target_row_index != row_index {
 			let factor = table[target_row_index][col_index];
-			let (mut target_row, mut base_row) = table.get_mut((target_row_index, row_index));
+			let (mut target_row, base_row) = table.get_mut((target_row_index, row_index));
 			target_row.add_multiple(base_row.as_const(), -factor);
 		}
 	}
@@ -170,9 +164,9 @@ fn test_simplex_no_artificials() {
 
 #[test]
 fn test_extract_solution() {
-	let mut m = Matrix::new(Box::new([-11.0, 0.0, 0.0, -4.0, -60.0, -2.0,  
-	                                  1.0,   0.0, 1.0, -1.0, 15.0,  7.0,  
-				                      5.0,   1.0, 0.0, 1.0,  10.0,  2.0]), 3);
+	let m = Matrix::new(Box::new([-11.0, 0.0, 0.0, -4.0, -60.0, -2.0,  
+	                              1.0,   0.0, 1.0, -1.0, 15.0,  7.0,  
+				                  5.0,   1.0, 0.0, 1.0,  10.0,  2.0]), 3);
 	let basic_vars: Box<[usize]> = Box::new([2, 1]);
 	let solution = extract_solution(&m, &basic_vars);
 	assert_eq!(&[5.0, 1.0, 0.0, 0.0, 0.0, 11.0], &*solution);
@@ -243,10 +237,10 @@ pub fn experiment() {
 	m.get_mut(1).mul_assign(-1.0/6.0);
 	m.get_mut(2).mul_assign(-1.0/4.0);
 
-	let (mut r2, mut r3) = m.get_mut((1, 2));
+	let (r2, mut r3) = m.get_mut((1, 2));
 	r3 -= r2;
 
-	let (mut r1, mut r3) = m.get_mut((0, 2));
+	let (r1, mut r3) = m.get_mut((0, 2));
 	r3 += r1;
 
 	m.get_mut(1).mul_assign(-3.0);

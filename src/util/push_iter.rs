@@ -1,5 +1,3 @@
-use std::cell::Cell;
-
 pub trait PIter {
     type Element;
 

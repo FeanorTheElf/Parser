@@ -1,6 +1,5 @@
 use std::cmp::{ PartialEq, Eq };
 use std::hash::{ Hash, Hasher };
-use std::ops::Deref;
 use std::borrow::Borrow;
 use std::convert::From;
 
@@ -85,10 +84,4 @@ impl<'a, T> Hash for Ref<'a, T>
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.data.hash(h);
     }
-}
-
-pub fn ref_eq<T>(fst: &T, snd: &T) -> bool 
-    where T: ?Sized
-{
-    fst as * const T as * const () == snd as * const T as * const ()
 }

@@ -1,9 +1,7 @@
 use super::indexed::{ Indexed, IndexedMut };
 use super::vector::Vector;
-use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref, Range };
-use std::cmp::{ min, max };
+use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Range };
 use std::mem::swap;
-use std::borrow::{ Borrow, BorrowMut };
 
 #[derive(Debug)]
 pub struct Matrix<T> {
@@ -522,7 +520,7 @@ impl<'a, T: 'a> RowRefMut<'a, T> {
 		}
 	}
 
-	fn range_mut(mut self, range: &Range<usize>) -> RowRefMut<'a, T> {
+	fn range_mut(self, range: &Range<usize>) -> RowRefMut<'a, T> {
 		RowRefMut {
 			data: &mut self.data[range.start..range.end]
 		}
@@ -649,7 +647,7 @@ fn test_matrix_get_rows() {
 		assert_eq!(&[7, 8, 9], snd_row.into_slice());
 	}
 	{
-		let (mut fst_row, mut snd_row) = m.get_mut((3, 2));
+		let (fst_row, snd_row) = m.get_mut((3, 2));
 		assert_eq!(&[10, 11, 12], fst_row.into_slice());
 		assert_eq!(&[7, 8, 9], snd_row.into_slice());
 	}

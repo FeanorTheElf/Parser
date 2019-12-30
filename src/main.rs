@@ -1,6 +1,6 @@
 #![feature(fn_traits)]
-#![allow(unused)]
 #![feature(test)]
+#![allow(dead_code)]
 
 extern crate take_mut;
 
@@ -15,7 +15,6 @@ mod language;
 mod la;
 mod backend;
 
-use lexer::tokens::*;
 use parser::Parse;
 use lexer::lexer::lex;
 use parser::prelude::*;
@@ -23,4 +22,5 @@ use parser::prelude::*;
 fn main() {
 	let mut stream = lex("fn len(a: int[],): int native;");
 	let function = FunctionNode::parse(&mut stream).unwrap();
+	println!("{:?}", function)
 }

@@ -1,4 +1,4 @@
-use super::super::lexer::tokens::{ Identifier, Literal };
+use super::super::lexer::tokens::{ Identifier };
 use super::super::lexer::error::{ CompileError, ErrorType };
 
 use super::ast_expr::*;
@@ -132,7 +132,18 @@ impl BlockNode {
 	}
 }
 
-impl_transformable!(BlockNode; vec stmts);
+impl Transformable for BlockNode
+{
+	fn transform(&mut self, transformer: &mut dyn Transformer)
+	{
+		for stmt in self.stmts.iter_mut() {
+			take_mut::take(stmt, |node| transformer.transform_stmt(node));
+		}
+	}
+}
+
+impl_subnode!(StmtNode for BlockNode);
+
 impl_visitable!(BlockNode; vec stmts);
 impl_partial_eq!(BlockNode; stmts);
 
@@ -144,14 +155,6 @@ impl Clone for BlockNode {
 		}
 	}
 }
-
-pub trait StmtNode : Node {
-	fn dyn_clone(&self) -> Box<dyn StmtNode>;
-}
-
-impl_partial_eq!(dyn StmtNode);
-
-impl_subnode!(StmtNode for BlockNode);
 
 #[derive(Debug)]
 pub struct VariableDeclarationNode {

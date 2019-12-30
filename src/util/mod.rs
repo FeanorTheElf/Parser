@@ -4,8 +4,6 @@ pub mod dyn_eq;
 #[macro_use]
 pub mod macros;
 
-use std::ops::{ Div };
-
 pub fn find_min<I, F>(it: I, f: &F) -> Option<I::Item>
 	where I: IntoIterator, F: Fn(&I::Item) -> i32
 {

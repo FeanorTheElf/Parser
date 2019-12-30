@@ -1,7 +1,5 @@
 use super::indexed::{ Indexed, IndexedMut };
-use std::ops::{ Index, IndexMut, Add, Mul, AddAssign, MulAssign, SubAssign, Deref, Range };
-use std::cmp::{ min, max };
-use std::borrow::{ Borrow, BorrowMut };
+use std::ops::{ Index, IndexMut };
 
 #[derive(Debug)]
 pub struct Vector<T> {

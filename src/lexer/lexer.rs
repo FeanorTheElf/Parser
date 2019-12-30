@@ -1,7 +1,6 @@
 use super::tokens::*;
 use super::position::TextPosition;
 
-use std::iter::FromIterator;
 use std::vec::Vec;
 use std::string::String;
 
@@ -131,6 +130,9 @@ pub fn lex(input: &str) -> Stream {
 	result.reverse();
 	return Stream::create(result);
 }
+
+#[cfg(test)]
+use std::iter::FromIterator;
 
 #[test]
 fn test_lex() {

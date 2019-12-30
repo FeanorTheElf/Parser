@@ -1,10 +1,9 @@
 #![allow(non_camel_case_types)]
 
 use std::ops::{ Add, Mul, AddAssign, MulAssign, Div, DivAssign, Sub, SubAssign, Neg };
-use std::cmp::{ Ord, PartialOrd, Ordering, Eq, PartialEq };
+use std::cmp::{ Ord, PartialOrd, Ordering, PartialEq };
 use std::convert::From;
 use std::fmt::{ Debug, Display, Formatter };
-use std::cell::Cell;
 
 /*
  * Overflow contract: r64 may overflow, if the naive formulas for the
@@ -178,7 +177,7 @@ impl MulAssign<r64> for r64 {
 
 impl DivAssign<r64> for r64 {
 
-    fn div_assign(&mut self, mut rhs: r64) {
+    fn div_assign(&mut self, rhs: r64) {
         self.mul_assign(r64::new(rhs.denominator, rhs.numerator));
     }
 }
@@ -377,7 +376,7 @@ fn benchmark_combined_add_mult_eq(bencher: &mut test::Bencher) {
         let c = r64::new(1 + not_optimized, 44211);
         a *= c;
         assert_eq!(r64::new(69540552025927 + not_optimized, 1350), a);
-        if (b == a) {
+        if b == a {
             a /= r64::from(100);
         } else {
             a /= c;
@@ -398,7 +397,7 @@ fn benchmark_combined_add_mult_eq(bencher: &mut test::Bencher) {
 #[should_panic]
 fn test_real_overflow() {
     let mut a = r64::new(1, 2 << 33);
-    let mut b = r64::new(1, (2 << 32) + 1);
+    let b = r64::new(1, (2 << 32) + 1);
     a += b;
 }
 

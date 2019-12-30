@@ -1,9 +1,3 @@
-use super::super::lexer::tokens::{ Stream, Token };
-use super::super::lexer::error::{ CompileError, ErrorType };
-use super::Parse;
-use super::ast::AstVec;
-use std::vec::Vec;
-
 pub trait Flatten {
 	type Flattened;
 
