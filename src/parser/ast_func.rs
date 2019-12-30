@@ -136,9 +136,11 @@ impl Transformable for BlockNode
 {
 	fn transform(&mut self, transformer: &mut dyn Transformer)
 	{
+		transformer.before(self);
 		for stmt in self.stmts.iter_mut() {
 			take_mut::take(stmt, |node| transformer.transform_stmt(node));
 		}
+		transformer.after(self);
 	}
 }
 

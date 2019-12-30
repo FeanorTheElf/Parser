@@ -546,8 +546,10 @@ impl Transformable for ExprNodeLvlIndex
 {
 	fn transform(&mut self, transformer: &mut dyn Transformer)
 	{
+		transformer.before(self);
 		take_mut::take(&mut self.head, |node| transformer.transform_expr(node));
 		self.tail.iter_mut().for_each(|node| node.transform(transformer));
+		transformer.after(self);
 	}
 }
 

@@ -65,7 +65,9 @@ macro_rules! impl_transformable {
 			#[allow(unused)]
 			fn transform(&mut self, transformer: &mut dyn Transformer)
 			{
+				transformer.before(self);
 				impl_transform!(self; transformer; $($tail)* ,);
+				transformer.after(self);
 			}
 		}
 	};

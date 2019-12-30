@@ -8,8 +8,16 @@ pub trait Visitor<'a>
     fn exit(&mut self, node: &'a dyn Node) -> Result<(), CompileError>;
 }
 
+/**
+ * For any node, the events are called in this order:
+ *  - before(current)
+ *  - transform_stmt(child) / transform_expr(child) / before(child), ..., after(child)
+ *  - after(current)
+ */
 pub trait Transformer
 {
+    fn before(&mut self, node: &dyn Node);
+    fn after(&mut self, node: &dyn Node);
     fn transform_stmt(&mut self, node: Box<dyn StmtNode>) -> Box<dyn StmtNode>;
     fn transform_expr(&mut self, node: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>;
 }
@@ -21,8 +29,6 @@ pub trait Visitable
 
 pub trait Transformable 
 {
-	// If the closure does not return a object (i.e. if it panics), there is
-	// an unrecoverable state, and the program will terminate
     fn transform(&mut self, f: &mut dyn Transformer);
 }
 
@@ -105,41 +111,19 @@ impl<'a> Visitor<'a> for DoNothingVisitor
     }
 }
 
-pub struct ExprTransformer<F>
-    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
-{
-    f: F
-}
-
-impl<F> ExprTransformer<F>
-    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
-{
-    fn new(f: F) -> ExprTransformer<F>
-    {
-        ExprTransformer {
-            f: f
-        }
-    }
-}
-
-impl<F> Transformer for ExprTransformer<F>
-    where F: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
-{
-    fn transform_expr(&mut self, expr: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
-    {
-        (self.f)(expr)
-    }
-
-    fn transform_stmt(&mut self, mut stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
-    {
-        stmt.transform(self);
-        stmt
-    }
-}
-
 impl<F> Transformer for F
     where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>
 {
+    fn before(&mut self, _node: &dyn Node)
+    {
+
+    }
+
+    fn after(&mut self, _node: &dyn Node)
+    {
+        
+    }
+
     fn transform_expr(&mut self, mut expr: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
     {
         expr.transform(self);
@@ -179,7 +163,6 @@ fn test_transform() {
             return b;
         }
     ")).unwrap();
-    println!("{:?}", ast);
     ast.transform(&mut blockify);
     assert_eq!(FunctionNode::parse(&mut lex("
         fn test(a: int, b: int,): int {

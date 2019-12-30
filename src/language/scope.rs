@@ -6,10 +6,6 @@ pub trait EnumerateDefinitions<'a> {
     fn enumerate(self) -> Self::IntoIter;
 }
 
-pub trait Scope 
-{
-}
-
 pub struct GlobalDefinitionsIter<'a> 
 {
     iter: std::slice::Iter<'a, FunctionNode>
@@ -88,19 +84,9 @@ impl<'a> EnumerateDefinitions<'a> for &'a FunctionNode
     }
 }
 
-impl Scope for FunctionNode {}
-
-impl Scope for Program {}
-
-impl Scope for BlockNode {}
-
 struct ScopeNode 
 {
     definitions: Vec<Identifier>
-}
-
-fn test(d: &Vec<i8>) {
-    d.into_iter();
 }
 
 impl ScopeNode 
@@ -144,19 +130,4 @@ impl ScopeStack {
         let child = std::mem::replace(&mut self.scope_stack, None);
         *self = *child.expect("Cannot call exit() on empty scope stack");
     }
-}
-
-type TransformResultType = ();
-type TransformFunctionType<T> = dyn FnMut(Box<T>) -> Box<T>;
-
-pub trait Transformable<T: ?Sized>
-{
-	// If the closure does not return a object (i.e. if it panics), there is
-	// an unrecoverable state, and the program will terminate
-    fn transform(&mut self, f: &mut TransformFunctionType<T>) -> TransformResultType;
-}
-
-pub trait ScopedTransform 
-{
-
 }
