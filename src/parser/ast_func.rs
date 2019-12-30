@@ -3,6 +3,7 @@ use super::super::lexer::error::{ CompileError, ErrorType };
 
 use super::ast_expr::*;
 use super::ast::*;
+use super::print::Format;
 use super::visitor::{ Transformable, Visitable, Transformer, Visitor };
 use super::obj_type::*;
 
@@ -24,6 +25,20 @@ impl FunctionNode {
 		FunctionNode {
 			annotation, ident, params, result, implementation
 		}
+	}
+}
+
+impl Format for FunctionNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{}fn {}(", line_prefix, self.ident)?;
+		for param in &self.params {
+			param.format(f, line_prefix)?;
+		}
+		write!(f, "): ")?;
+		self.result.format(f, line_prefix)?;
+		self.implementation.format(f, line_prefix)
 	}
 }
 
@@ -63,6 +78,14 @@ impl NativeFunctionNode {
 	}
 }
 
+impl Format for NativeFunctionNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, _line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "native")
+	}
+}
+
 impl_subnode!(FunctionImplementationNode for NativeFunctionNode);
 
 impl_transformable!(NativeFunctionNode; );
@@ -80,6 +103,14 @@ impl ImplementedFunctionNode {
 		ImplementedFunctionNode {
 			annotation, body
 		}
+	}
+}
+
+impl Format for ImplementedFunctionNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.body.format(f, line_prefix)
 	}
 }
 
@@ -101,6 +132,16 @@ impl ParameterNode {
 		ParameterNode {
 			annotation, ident, param_type
 		}
+	}
+}
+
+impl Format for ParameterNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{}: ", self.ident)?;
+		self.param_type.format(f, line_prefix)?;
+		write!(f, ",")
 	}
 }
 
@@ -144,6 +185,20 @@ impl Transformable for BlockNode
 	}
 }
 
+impl Format for BlockNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{{")?;
+		let new_line_prefix = line_prefix.to_owned() + "	";
+		for stmt in &self.stmts {
+			write!(f, "{}	", line_prefix)?;
+			stmt.format(f, &new_line_prefix)?;
+		}
+		write!(f, "{}}}", line_prefix)
+	}
+}
+
 impl_subnode!(StmtNode for BlockNode);
 
 impl_visitable!(BlockNode; vec stmts);
@@ -163,11 +218,11 @@ pub struct VariableDeclarationNode {
 	annotation: Annotation,
 	pub variable_type: Box<dyn TypeNode>,
 	pub ident: Identifier,
-	pub expr: Box<ExprNode>
+	pub expr: Option<Box<ExprNode>>
 }
 
 impl VariableDeclarationNode {
-	pub fn new(annotation: Annotation, ident: Identifier, variable_type: Box<dyn TypeNode>, expr: Box<ExprNode>) -> Self {
+	pub fn new(annotation: Annotation, ident: Identifier, variable_type: Box<dyn TypeNode>, expr: Option<Box<ExprNode>>) -> Self {
 		VariableDeclarationNode {
 			annotation, variable_type, ident, expr
 		}
@@ -185,10 +240,24 @@ impl Clone for VariableDeclarationNode {
 	}
 }
 
+impl Format for VariableDeclarationNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "let {}: ", self.ident)?;
+		self.variable_type.format(f, line_prefix)?;
+		if let Some(expr) = &self.expr {
+			write!(f, " = ")?;
+			expr.format(f, line_prefix)?;
+		}
+		write!(f, ";")
+	}
+}
+
 impl_subnode!(StmtNode for VariableDeclarationNode);
 
-impl_transformable!(VariableDeclarationNode; variable_type, expr);
-impl_visitable!(VariableDeclarationNode; variable_type, expr);
+impl_transformable!(VariableDeclarationNode; variable_type, opt expr);
+impl_visitable!(VariableDeclarationNode; variable_type, opt expr);
 impl_partial_eq!(VariableDeclarationNode; variable_type, ident, expr);
 
 #[derive(Debug, Clone)]
@@ -203,6 +272,17 @@ impl AssignmentNode {
 		AssignmentNode {
 			annotation, assignee, expr
 		}
+	}
+}
+
+impl Format for AssignmentNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.assignee.format(f, line_prefix)?;
+		write!(f, " = ")?;
+		self.expr.format(f, line_prefix)?;
+		write!(f, ";")
 	}
 }
 
@@ -223,6 +303,15 @@ impl ExprStmtNode {
 		ExprStmtNode {
 			annotation, expr
 		}
+	}
+}
+
+impl Format for ExprStmtNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.expr.format(f, line_prefix)?;
+		write!(f, ";")
 	}
 }
 
@@ -247,6 +336,17 @@ impl IfNode {
 	}
 }
 
+impl Format for IfNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "if ")?;
+		self.condition.format(f, line_prefix)?;
+		write!(f, " ")?;
+		self.block.format(f, line_prefix)
+	}
+}
+
 impl_subnode!(StmtNode for IfNode);
 
 impl_transformable!(IfNode; condition, block);
@@ -268,6 +368,17 @@ impl WhileNode {
 	}
 }
 
+impl Format for WhileNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "while ")?;
+		self.condition.format(f, line_prefix)?;
+		write!(f, " ")?;
+		self.block.format(f, line_prefix)
+	}
+}
+
 impl_subnode!(StmtNode for WhileNode);
 
 impl_transformable!(WhileNode; condition, block);
@@ -285,6 +396,16 @@ impl ReturnNode {
 		ReturnNode {
 			annotation, expr
 		}
+	}
+}
+
+impl Format for ReturnNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "return ")?;
+		self.expr.format(f, line_prefix)?;
+		write!(f, ";")
 	}
 }
 
@@ -323,6 +444,18 @@ impl ArrTypeNode {
 	}
 }
 
+impl Format for ArrTypeNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.base_type.format(f, line_prefix)?;
+		for _i in 0..self.dims {
+			write!(f, "[]")?;
+		}
+		Ok(())
+	}
+}
+
 impl_transformable!(ArrTypeNode; base_type);
 impl_visitable!(ArrTypeNode; base_type);
 impl_partial_eq!(ArrTypeNode; base_type, dims);
@@ -351,12 +484,33 @@ impl VoidTypeNode {
 		}
 	}
 }
+impl Format for VoidTypeNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, _line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "void")
+	}
+}
 
 impl_subnode!(TypeNode for VoidTypeNode);
 
 impl_transformable!(VoidTypeNode;);
 impl_visitable!(VoidTypeNode;);
 impl_partial_eq!(VoidTypeNode;);
+
+impl_display!(FunctionNode);
+impl_display!(NativeFunctionNode);
+impl_display!(ImplementedFunctionNode);
+impl_display!(ParameterNode);
+impl_display!(BlockNode);
+impl_display!(VariableDeclarationNode);
+impl_display!(AssignmentNode);
+impl_display!(ExprStmtNode);
+impl_display!(IfNode);
+impl_display!(WhileNode);
+impl_display!(ReturnNode);
+impl_display!(ArrTypeNode);
+impl_display!(VoidTypeNode);
 
 impl_node!(FunctionNode);
 impl_node!(NativeFunctionNode);

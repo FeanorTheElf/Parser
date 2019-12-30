@@ -59,7 +59,7 @@ fn lex_str(string: &str) -> Token {
 	.or_else(||lex_keyword(string))
 	.unwrap_or_else(||match string.parse::<i32>() {
 		Ok(value) => Token::Literal(Literal { value: value }),
-		Err(_err) => Token::Identifier(Identifier { name: string.to_string() })
+		Err(_err) => Token::Identifier(Identifier::new(string))
 	})
 }
 
@@ -137,13 +137,13 @@ use std::iter::FromIterator;
 #[test]
 fn test_lex() {
 	assert_eq!(vec![Token::Let, 
-		Token::Identifier(Identifier { name: "test".to_owned() }),
+		Token::Identifier(Identifier::new("test")),
 		Token::Colon,
 		Token::Int,
 		Token::SquareBracketOpen,
 		Token::SquareBracketClose,
 		Token::Assign,
-		Token::Identifier(Identifier { name: "a".to_owned() }),
+		Token::Identifier(Identifier::new("a")),
 		Token::SquareBracketOpen,
 		Token::Literal(Literal { value: 2 }),
 		Token::SquareBracketClose,
@@ -153,12 +153,12 @@ fn test_lex() {
 		Token::Literal(Literal { value: 1 }),
 		Token::SquareBracketClose,
 		Token::OpGreaterEq,
-		Token::Identifier(Identifier { name: "b".to_owned() }),
+		Token::Identifier(Identifier::new("b")),
 		Token::OpAnd,
-		Token::Identifier(Identifier { name: "c".to_owned() }),
+		Token::Identifier(Identifier::new("c")),
 		Token::OpAdd,
 		Token::OpSubtract,
-		Token::Identifier(Identifier { name: "d".to_owned() }),
+		Token::Identifier(Identifier::new("d")),
 		Token::Semicolon], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;")));
 }
 
@@ -168,10 +168,10 @@ fn test_lex_position() {
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());
-	assert_eq!("a".to_owned(), stream.next_ident().unwrap().name);
+	assert_eq!("a", stream.next_ident().unwrap().repr());
 	assert_eq!(6, stream.pos().column());
 	assert_eq!(Token::Assign, stream.next());
-	assert_eq!("b".to_owned(), stream.next_ident().unwrap().name);
+	assert_eq!("b", stream.next_ident().unwrap().repr());
 	assert_eq!(Token::SquareBracketOpen, stream.next());
 	assert_eq!(10, stream.pos().column());
 	for _i in 0..7 {
@@ -179,7 +179,7 @@ fn test_lex_position() {
 	}
 	assert_eq!(1, stream.pos().column());
 	assert_eq!(2, stream.pos().line());
-	assert_eq!("a".to_owned(), stream.next_ident().unwrap().name);
+	assert_eq!("a", stream.next_ident().unwrap().repr());
 	stream.next();
 	stream.next();
 	assert_eq!(5, stream.pos().column());

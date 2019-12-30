@@ -49,7 +49,7 @@ impl Parse for dyn StmtNode {
 impl_parse!{ IfNode => IfNode(Token#If ExprNode BlockNode) }
 impl_parse!{ WhileNode => WhileNode(Token#While ExprNode BlockNode) }
 impl_parse!{ ReturnNode => ReturnNode(Token#Return ExprNode Token#Semicolon) }
-impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign ExprNode Token#Semicolon) }
+impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign [ ExprNode ] Token#Semicolon) }
 
 impl Parse for dyn TypeNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
@@ -148,7 +148,7 @@ fn create_int_arr(dims: u8) -> Box<dyn TypeNode> {
 
 #[test]
 fn test_parse_simple_function() {
-    let ident = |name: &'static str| Identifier { name: name.to_owned() };
+    let ident = |name: &'static str| Identifier::new(name);
     let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }")).unwrap();
 
 	assert_eq!(ident("len"), len.ident);

@@ -1,6 +1,8 @@
 use super::super::parser::prelude::*;
 use super::obj_type::SymbolDefinition;
 
+use std::collections::HashSet;
+
 pub trait EnumerateDefinitions<'a> {
     type IntoIter: Iterator<Item = &'a dyn SymbolDefinition>;
     fn enumerate(self) -> Self::IntoIter;
@@ -84,9 +86,10 @@ impl<'a> EnumerateDefinitions<'a> for &'a FunctionNode
     }
 }
 
+#[derive(Clone)]
 struct ScopeNode 
 {
-    definitions: Vec<Identifier>
+    definitions: HashSet<Identifier>
 }
 
 impl ScopeNode 
@@ -100,13 +103,15 @@ impl ScopeNode
     }
 }
 
+#[derive(Clone)]
 pub struct ScopeStack 
 {
     scope_stack: Option<Box<ScopeStack>>,
     scope_node: ScopeNode
 }
 
-impl ScopeStack {
+impl ScopeStack 
+{
     pub fn new(global: &Program) -> ScopeStack
     {
         ScopeStack {
@@ -118,7 +123,8 @@ impl ScopeStack {
     pub fn enter<T>(&mut self, scope: &T)
         where for<'a> &'a T: EnumerateDefinitions<'a>
     {
-        let mut result: Box<ScopeStack> = Box::new(ScopeStack {
+        let mut result: Box<ScopeStack> = Box::new(ScopeStack 
+            {
             scope_stack: std::mem::replace(&mut self.scope_stack, None),
             scope_node: ScopeNode::create(scope)
         });
@@ -126,8 +132,52 @@ impl ScopeStack {
         self.scope_stack = Some(result);
     }
 
-    pub fn exit(&mut self) {
+    pub fn exit(&mut self) 
+    {
         let child = std::mem::replace(&mut self.scope_stack, None);
         *self = *child.expect("Cannot call exit() on empty scope stack");
+    }
+
+    pub fn is_global(&self) -> bool
+    {
+        self.scope_stack.is_none()
+    }
+
+    pub fn find_definition(&self, identifier: &Identifier) -> Option<&ScopeStack>
+    {
+        if self.scope_node.definitions.contains(identifier) {
+            Some(self)
+        } else {
+            self.scope_stack.as_ref().and_then(|parent| parent.find_definition(identifier))
+        }
+    }
+
+    pub fn generate_unique_identifiers(&self, count: usize) -> Vec<Identifier>
+    {
+        let mut result = Vec::with_capacity(count);
+        let mut current = 0;
+        for _i in 0..count {
+            while self.find_definition(&Identifier::auto(current)).is_some() {
+                current = current + 1;
+            }
+            result.push(Identifier::auto(current));
+            current = current + 1;
+        }
+        return result;
+    }
+
+    pub fn rename_disjunct<'a, I: Iterator<Item = &'a Identifier>>(&'a self, it: I) -> impl Iterator<Item = (&'a Identifier, Identifier)>
+    {
+        let mut current = 0;
+        it.map(move |name: &'a Identifier| {
+            if self.find_definition(name).is_some() {
+                while self.find_definition(&Identifier::auto(current)).is_some() {
+                    current = current + 1;
+                }
+                (name, Identifier::auto(current))
+            } else {
+                (name, (*name).clone())
+            }
+        })
     }
 }

@@ -2,6 +2,7 @@ use super::super::lexer::tokens::{ Identifier, Literal };
 use super::super::lexer::error::CompileError;
 
 use super::ast::*;
+use super::print::Format;
 use super::visitor::{ Visitable, Transformable, Visitor, Transformer };
 use super::obj_type::*;
 
@@ -27,6 +28,18 @@ impl ExprNodeLvlOr
 	}
 }
 
+impl Format for ExprNodeLvlOr
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
+	}
+}
+
 impl_visitable!(ExprNodeLvlOr; head, vec tail);
 impl_transformable!(ExprNodeLvlOr; head, vec tail);
 impl_partial_eq!(ExprNodeLvlOr; head, tail);
@@ -44,6 +57,15 @@ impl OrPartNode
 		OrPartNode {
 			annotation, expr
 		}
+	}
+}
+
+impl Format for OrPartNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " || ")?;
+		self.expr.format(f, line_prefix)
 	}
 }
 
@@ -66,6 +88,18 @@ impl ExprNodeLvlAnd {
 	}
 }
 
+impl Format for ExprNodeLvlAnd
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
+	}
+}
+
 impl_visitable!(ExprNodeLvlAnd; head, vec tail);
 impl_transformable!(ExprNodeLvlAnd; head, vec tail);
 impl_partial_eq!(ExprNodeLvlAnd; head, tail);
@@ -81,6 +115,15 @@ impl AndPartNode {
 		AndPartNode {
 			annotation, expr
 		}
+	}
+}
+
+impl Format for AndPartNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " && ")?;
+		self.expr.format(f, line_prefix)
 	}
 }
 
@@ -100,6 +143,18 @@ impl ExprNodeLvlCmp {
 		ExprNodeLvlCmp {
 			annotation, head, tail
 		}
+	}
+}
+
+impl Format for ExprNodeLvlCmp
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
 	}
 }
 
@@ -152,6 +207,15 @@ impl CmpPartNode for CmpPartNodeEq
 	}
 }
 
+impl Format for CmpPartNodeEq
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " == ")?;
+		self.expr.format(f, line_prefix)
+	}
+}
+
 impl_visitable!(CmpPartNodeEq; expr);
 impl_transformable!(CmpPartNodeEq; expr);
 impl_partial_eq!(CmpPartNodeEq; expr);
@@ -183,6 +247,15 @@ impl CmpPartNode for CmpPartNodeNeq
 	}
 }
 
+impl Format for CmpPartNodeNeq
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " != ")?;
+		self.get_expr().format(f, line_prefix)
+	}
+}
+
 impl_visitable!(CmpPartNodeNeq; expr);
 impl_transformable!(CmpPartNodeNeq; expr);
 impl_partial_eq!(CmpPartNodeNeq; expr);
@@ -210,6 +283,15 @@ impl CmpPartNode for CmpPartNodeLeq
 
 	fn dyn_clone(&self) -> Box<dyn CmpPartNode> {
 		Box::new(self.clone())
+	}
+}
+
+impl Format for CmpPartNodeLeq
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " <=>= ")?;
+		self.get_expr().format(f, line_prefix)
 	}
 }
 
@@ -244,6 +326,15 @@ impl CmpPartNode for CmpPartNodeGeq
 	}
 }
 
+impl Format for CmpPartNodeGeq
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " >= ")?;
+		self.get_expr().format(f, line_prefix)
+	}
+}
+
 impl_visitable!(CmpPartNodeGeq; expr);
 impl_transformable!(CmpPartNodeGeq; expr);
 impl_partial_eq!(CmpPartNodeGeq; expr);
@@ -272,6 +363,15 @@ impl CmpPartNode for CmpPartNodeLs
 	fn dyn_clone(&self) -> Box<dyn CmpPartNode> 
 	{
 		Box::new(self.clone())
+	}
+}
+
+impl Format for CmpPartNodeLs
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " < ")?;
+		self.get_expr().format(f, line_prefix)
 	}
 }
 
@@ -309,6 +409,15 @@ impl CmpPartNode for CmpPartNodeGt
 	}
 }
 
+impl Format for CmpPartNodeGt
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " > ")?;
+		self.expr.format(f, line_prefix)
+	}
+}
+
 impl_visitable!(CmpPartNodeGt; expr);
 impl_transformable!(CmpPartNodeGt; expr);
 impl_partial_eq!(CmpPartNodeGt; expr);
@@ -325,6 +434,18 @@ impl ExprNodeLvlAdd {
 		ExprNodeLvlAdd {
 			annotation, head, tail
 		}
+	}
+}
+
+impl Format for ExprNodeLvlAdd
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
 	}
 }
 
@@ -380,6 +501,15 @@ impl SumPartNode for SumPartNodeAdd
 	}
 }
 
+impl Format for SumPartNodeAdd
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " + ")?;
+		self.expr.format(f, line_prefix)
+	}
+}
+
 impl_visitable!(SumPartNodeAdd; expr);
 impl_transformable!(SumPartNodeAdd; expr);
 impl_partial_eq!(SumPartNodeAdd; expr);
@@ -411,6 +541,15 @@ impl SumPartNode for SumPartNodeSub
 	}
 }
 
+impl Format for SumPartNodeSub
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " - ")?;
+		self.expr.format(f, line_prefix)
+	}
+}
+
 impl_visitable!(SumPartNodeSub; expr);
 impl_transformable!(SumPartNodeSub; expr);
 impl_partial_eq!(SumPartNodeSub; expr);
@@ -430,6 +569,18 @@ impl ExprNodeLvlMult
 		ExprNodeLvlMult {
 			annotation, head, tail
 		}
+	}
+}
+
+impl Format for ExprNodeLvlMult
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
 	}
 }
 
@@ -487,6 +638,15 @@ impl ProductPartNode for ProductPartNodeMult
 	}
 }
 
+impl Format for ProductPartNodeMult
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " * ")?;
+		self.expr.format(f, line_prefix)
+	}
+}
+
 impl_transformable!(ProductPartNodeMult; expr);
 impl_visitable!(ProductPartNodeMult; expr);
 impl_partial_eq!(ProductPartNodeMult; expr);
@@ -518,6 +678,15 @@ impl ProductPartNode for ProductPartNodeDivide
 	fn dyn_clone(&self) -> Box<dyn ProductPartNode> 
 	{
 		Box::new(self.clone())
+	}
+}
+
+impl Format for ProductPartNodeDivide
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, " / ")?;
+		self.expr.format(f, line_prefix)
 	}
 }
 
@@ -553,6 +722,18 @@ impl Transformable for ExprNodeLvlIndex
 	}
 }
 
+impl Format for ExprNodeLvlIndex
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		self.head.format(f, line_prefix)?;
+		for part in &self.tail {
+			part.format(f, line_prefix)?;
+		}
+		return Ok(());
+	}
+}
+
 impl_visitable!(ExprNodeLvlIndex; head, vec tail);
 impl_partial_eq!(ExprNodeLvlIndex; head, tail);
 
@@ -585,6 +766,16 @@ impl IndexPartNode
 	}
 }
 
+impl Format for IndexPartNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "[")?;
+		self.expr.format(f, line_prefix)?;
+		write!(f, "]")
+	}
+}
+
 impl_transformable!(IndexPartNode; expr);
 impl_visitable!(IndexPartNode; expr);
 impl_partial_eq!(IndexPartNode; expr);
@@ -603,6 +794,16 @@ impl BracketExprNode
 		BracketExprNode {
 			annotation, expr
 		}
+	}
+}
+
+impl Format for BracketExprNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "(")?;
+		self.expr.format(f, line_prefix)?;
+		write!(f, ")")
 	}
 }
 
@@ -629,6 +830,14 @@ impl LiteralNode
 	}
 }
 
+impl Format for LiteralNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, _line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{}", self.literal)
+	}
+}
+
 impl_subnode!(UnaryExprNode for LiteralNode);
 
 impl_transformable!(LiteralNode;);
@@ -649,6 +858,14 @@ impl VariableNode
 		VariableNode {
 			annotation, identifier
 		}
+	}
+}
+
+impl Format for VariableNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, _line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{}", self.identifier)
 	}
 }
 
@@ -676,6 +893,18 @@ impl FunctionCallNode
 	}
 }
 
+impl Format for FunctionCallNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "{}(", self.function)?;
+		for param in &self.params {
+			param.format(f, line_prefix)?;
+		}
+		write!(f, ")")
+	}
+}
+
 impl_subnode!(UnaryExprNode for FunctionCallNode);
 
 impl_transformable!(FunctionCallNode; vec params);
@@ -697,6 +926,21 @@ impl NewExprNode
 		NewExprNode {
 			annotation, base_type, dimensions
 		}
+	}
+}
+
+impl Format for NewExprNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "new ")?;
+		self.base_type.format(f, line_prefix)?;
+		for dim in &self.dimensions {
+			write!(f, "[")?;
+			dim.format(f, line_prefix)?;
+			write!(f, "]")?;
+		}
+		Ok(())
 	}
 }
 
@@ -740,11 +984,45 @@ impl IntTypeNode
 	}
 }
 
+impl Format for IntTypeNode
+{
+	fn format(&self, f: &mut std::fmt::Formatter, _line_prefix: &str) -> std::fmt::Result
+	{
+		write!(f, "int")
+	}
+}
+
 impl_subnode!(BaseTypeNode for IntTypeNode);
 
 impl_visitable!(IntTypeNode;);
 impl_transformable!(IntTypeNode;);
 impl_partial_eq!(IntTypeNode;);
+
+impl_display!(ExprNodeLvlOr);
+impl_display!(OrPartNode);
+impl_display!(ExprNodeLvlAnd);
+impl_display!(AndPartNode);
+impl_display!(ExprNodeLvlCmp);
+impl_display!(CmpPartNodeEq);
+impl_display!(CmpPartNodeNeq);
+impl_display!(CmpPartNodeLeq);
+impl_display!(CmpPartNodeGeq);
+impl_display!(CmpPartNodeLs);
+impl_display!(CmpPartNodeGt);
+impl_display!(ExprNodeLvlAdd);
+impl_display!(SumPartNodeAdd);
+impl_display!(SumPartNodeSub);
+impl_display!(ExprNodeLvlMult);
+impl_display!(ProductPartNodeMult);
+impl_display!(ProductPartNodeDivide);
+impl_display!(ExprNodeLvlIndex);
+impl_display!(IndexPartNode);
+impl_display!(BracketExprNode);
+impl_display!(LiteralNode);
+impl_display!(VariableNode);
+impl_display!(FunctionCallNode);
+impl_display!(NewExprNode);
+impl_display!(IntTypeNode);
 
 impl_node!(ExprNodeLvlOr);
 impl_node!(OrPartNode);

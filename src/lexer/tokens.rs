@@ -5,20 +5,55 @@ use std::fmt::{ Display, Formatter, Error };
 use std::vec::Vec;
 use std::string::String;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Identifier {
-	pub name: String,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Identifier {
+	Named(String), Auto(u32)
 }
 
-impl Display for Identifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", self.name)
+impl Identifier
+{
+	pub fn new(name: &str) -> Identifier
+	{
+		Identifier::Named(name.to_owned())
+	}
+
+	pub fn auto(id: u32) -> Identifier
+	{
+		Identifier::Auto(id)
+	}
+
+	#[cfg(test)]
+	pub fn repr(&self) -> &str
+	{
+		match self {
+			Identifier::Named(name) => name,
+			Identifier::Auto(_id) => "auto"
+		}
+	}
+}
+
+impl Display for Identifier 
+{
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> 
+	{
+        match self {
+			Identifier::Named(name) => write!(f, "{}", name),
+			Identifier::Auto(id) => write!(f, "auto_{}", id)
+		}
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Literal {
 	pub value: i32
+}
+
+impl Display for Literal 
+{
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> 
+	{
+        write!(f, "{}", self.value)
+    }
 }
 
 #[derive(Debug)]
@@ -70,7 +105,7 @@ impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		match self {
 			Token::Literal(ref literal) => write!(f, "'{}'", literal.value),
-			Token::Identifier(ref identifier) => write!(f, "'{}'", identifier.name),
+			Token::Identifier(ref identifier) => write!(f, "'{}'", identifier),
 			Token::If => write!(f, "'if'"),
 			Token::PFor => write!(f, "'pfor'"),
 			Token::Read => write!(f, "'read'"),

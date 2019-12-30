@@ -2,20 +2,29 @@ use super::super::lexer::position::TextPosition;
 use super::super::util::dyn_eq::DynEq;
 
 use super::visitor::{ Visitable, Transformable };
+use super::print::Format;
 
-use std::fmt::Debug;
 use std::any::Any;
 
 pub type AstVec<T> = Vec<Box<T>>;
 pub type Annotation = TextPosition;
 
-pub trait Node : Debug + Any + DynEq + Visitable + Transformable
+pub trait Node : std::fmt::Display + Format + std::fmt::Debug + Any + DynEq + Visitable + Transformable
 {
 	fn get_annotation(&self) -> &Annotation;
 	fn get_annotation_mut(&mut self) -> &mut Annotation;
 	fn dyn_clone_node(&self) -> Box<dyn Node>;
 	fn dynamic(&self) -> &dyn Any;
 	fn dynamic_box(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub fn cast<U: ?Sized + Node, T: Node>(node: Box<U>) -> Result<Box<T>, Box<U>> 
+{
+    if node.dynamic().is::<T>() {
+        return Ok(node.dynamic_box().downcast().unwrap());
+    } else {
+        return Err(node);
+    }
 }
 
 pub trait StmtNode : Node {
@@ -45,6 +54,16 @@ macro_rules! impl_transform {
 				debug_assert_ne!(std::any::TypeId::of::<dyn UnaryExprNode>(), node.dynamic().type_id());
 				node.transform($transformer)
 			});
+			impl_transform!($self; $transformer; $($tail)*);
+		}
+	};
+	($self:ident; $transformer:ident; opt $child:ident, $($tail:tt)*) => {
+		{
+			if let Some(ref mut value) = ($self).$child {
+				debug_assert_ne!(std::any::TypeId::of::<dyn StmtNode>(), value.dynamic().type_id());
+				debug_assert_ne!(std::any::TypeId::of::<dyn UnaryExprNode>(), value.dynamic().type_id());
+				value.transform($transformer)
+			}
 			impl_transform!($self; $transformer; $($tail)*);
 		}
 	};
@@ -86,6 +105,14 @@ macro_rules! impl_visit {
 			impl_visit!($self; $visitor; $($tail)*);
 		}
 	};
+	($self:ident; $visitor:ident; opt $child:ident, $($tail:tt)*) => {
+		{
+			if let Some(ref value) = ($self).$child {
+				value.iterate($visitor)?;
+			}
+			impl_visit!($self; $visitor; $($tail)*);
+		}
+	};
 	($self:ident; $visitor:ident; $child:ident, $($tail:tt)*) => {
 		{
 			($self).$child.iterate($visitor)?;
@@ -120,6 +147,18 @@ macro_rules! impl_subnode {
 			}
 		}
 
+	}
+}
+
+macro_rules! impl_display {
+	($nodetype:ty) => {
+		impl std::fmt::Display for $nodetype 
+		{
+			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+			{
+				self.format(f, "\n")
+			}
+		}
 	}
 }
 

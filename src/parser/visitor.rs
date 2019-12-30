@@ -111,6 +111,20 @@ impl<'a> Visitor<'a> for DoNothingVisitor
     }
 }
 
+impl<'a, F> Visitor<'a> for F
+    where F: FnMut(&'a dyn Node) -> Result<(), CompileError>
+{
+    fn enter(&mut self, node: &'a dyn Node) -> Result<(), CompileError>
+    {
+        self(node)
+    }
+
+    fn exit(&mut self, _node: &'a dyn Node) -> Result<(), CompileError>
+    {
+        Ok(())
+    }
+}
+
 impl<F> Transformer for F
     where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>
 {
@@ -133,6 +147,55 @@ impl<F> Transformer for F
     fn transform_stmt(&mut self, stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
     {
         (self)(stmt)
+    }
+}
+
+pub struct RecTransformer<F, G>
+    where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>,
+        G: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
+{
+    f: F,
+    g: G
+}
+
+impl<F, G> RecTransformer<F, G>
+    where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>,
+        G: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
+{
+    pub fn new(f: F, g: G) -> RecTransformer<F, G>
+    {
+        RecTransformer {
+            f, g
+        }
+    }
+}
+
+impl<F, G> Transformer for RecTransformer<F, G>
+    where F: FnMut(Box<dyn StmtNode>) -> Box<dyn StmtNode>,
+        G: FnMut(Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
+{
+    fn before(&mut self, _node: &dyn Node)
+    {
+
+    }
+
+    fn after(&mut self, _node: &dyn Node)
+    {
+        
+    }
+
+    fn transform_expr(&mut self, expr: Box<dyn UnaryExprNode>) -> Box<dyn UnaryExprNode>
+    {
+        let mut result = (self.g)(expr);
+        result.transform(self);
+        return result;
+    }
+
+    fn transform_stmt(&mut self, stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
+    {
+        let mut result = (self.f)(stmt);
+        result.transform(self);
+        return result;
     }
 }
 
