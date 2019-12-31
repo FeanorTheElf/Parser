@@ -1,7 +1,7 @@
 use super::super::parser::prelude::*;
 use super::scope::*;
 
-use std::collections::{ HashMap, HashSet };
+use std::collections::{ HashMap, BTreeSet };
 
 struct RenameTransformer<'a>
 {
@@ -160,9 +160,9 @@ impl<'a> InlineCallsTransformer<'a>
         }
     }
 
-    fn find_variable_names<'b>(block: &'b BlockNode) -> HashSet<&'b Identifier>
+    fn find_variable_names<'b>(block: &'b BlockNode) -> BTreeSet<&'b Identifier>
     {
-        let mut result = HashSet::new();
+        let mut result = BTreeSet::new();
         block.iterate(&mut |node: &'b dyn Node| {
             if let Some(decl) = node.dynamic().downcast_ref::<VariableDeclarationNode>() {
                 result.insert(&decl.ident);

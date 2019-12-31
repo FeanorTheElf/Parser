@@ -32,6 +32,27 @@ impl Identifier
 	}
 }
 
+impl PartialOrd for Identifier
+{
+	fn partial_cmp(&self, rhs: &Identifier) -> Option<std::cmp::Ordering>
+	{
+		Some(self.cmp(rhs))
+	}
+}
+
+impl Ord for Identifier 
+{
+	fn cmp(&self, rhs: &Identifier) -> std::cmp::Ordering
+	{
+		match (self, rhs) {
+			(Identifier::Named(lhs_name), Identifier::Named(rhs_name)) => lhs_name.cmp(rhs_name),
+			(Identifier::Auto(lhs_id), Identifier::Auto(rhs_id)) => lhs_id.cmp(rhs_id),
+			(Identifier::Auto(_), Identifier::Named(_)) => std::cmp::Ordering::Less,
+			(Identifier::Named(_), Identifier::Auto(_)) => std::cmp::Ordering::Greater,
+		}
+	}
+}
+
 impl Display for Identifier 
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> 

@@ -54,15 +54,7 @@ impl PartialEq for Program
 		}
 		for (key, group) in &self.functions.iter().group_by(|f| &f.ident) {
 			if let Some(rhs_group) = rhs_groups.get(key) {
-				// if !super::super::util::equal_ignore_order(&group.collect(), rhs_group) {
-				let vec = group.collect::<Vec<&FunctionNode>>();
-				let a = vec[0];
-				let b = (*rhs_group)[0];
-				println!("a == b <=> {}", a == b);
-				println!("&a == &b <=> {}", &a == &b);
-				println!("&*a == &*b <=> {}", &*a == &*b);
-				println!("*&a == *&b <=> {}", *&a == *&b);
-				if vec[0] != rhs_group[0] {
+				if !super::super::util::equal_ignore_order(&group.collect(), rhs_group) {
 					return false;
 				}
 			} else {
