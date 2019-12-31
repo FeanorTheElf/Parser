@@ -5,7 +5,8 @@ pub trait RenameAutoVars
     fn rename_auto_vars(&mut self);
 }
 
-impl RenameAutoVars for dyn StmtNode
+impl<T: ?Sized> RenameAutoVars for T
+    where T: Transformable
 {
     fn rename_auto_vars(&mut self)
     {

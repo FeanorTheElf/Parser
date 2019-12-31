@@ -9,10 +9,73 @@ use super::obj_type::*;
 
 use std::any::Any;
 
-pub type Program = Vec<FunctionNode>;
+use itertools::Itertools;
+
+#[derive(Clone, Debug)]
+pub struct Program
+{
+	annotation: Annotation,
+	pub functions: Vec<FunctionNode>
+}
+
+impl Program 
+{
+	pub fn new(annotation: Annotation, mut data: AstVec<FunctionNode>) -> Self 
+	{
+		Program {
+			annotation: annotation,
+			functions: data.drain(..).map(|node| *node).collect()
+		}
+	}
+}
+
+impl Format for Program
+{
+	fn format(&self, f: &mut std::fmt::Formatter, line_prefix: &str) -> std::fmt::Result
+	{
+		for func in &self.functions {
+			func.format(f, line_prefix)?;
+			write!(f, "{}", line_prefix)?;
+		}
+		Ok(())
+	}
+}
+
+impl_transformable!(Program; vec functions);
+impl_visitable!(Program; vec functions);
+
+impl PartialEq for Program
+{
+	fn eq(&self, rhs: &Program) -> bool
+	{
+		let mut rhs_groups: std::collections::HashMap<_, Vec<&FunctionNode>> = std::collections::HashMap::new();
+		for (key, group) in &rhs.functions.iter().group_by(|f| &f.ident) {
+			rhs_groups.insert(key, group.collect());
+		}
+		for (key, group) in &self.functions.iter().group_by(|f| &f.ident) {
+			if let Some(rhs_group) = rhs_groups.get(key) {
+				// if !super::super::util::equal_ignore_order(&group.collect(), rhs_group) {
+				let vec = group.collect::<Vec<&FunctionNode>>();
+				let a = vec[0];
+				let b = (*rhs_group)[0];
+				println!("a == b <=> {}", a == b);
+				println!("&a == &b <=> {}", &a == &b);
+				println!("&*a == &*b <=> {}", &*a == &*b);
+				println!("*&a == *&b <=> {}", *&a == *&b);
+				if vec[0] != rhs_group[0] {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
+		return true;
+	}
+}
 
 #[derive(Debug)]
-pub struct FunctionNode {
+pub struct FunctionNode 
+{
 	annotation: Annotation,
 	pub ident: Identifier,
 	pub params: AstVec<ParameterNode>,
@@ -20,7 +83,8 @@ pub struct FunctionNode {
 	pub implementation: Box<dyn FunctionImplementationNode>
 }
 
-impl FunctionNode {
+impl FunctionNode 
+{
 	pub fn new(annotation: Annotation, ident: Identifier, params: AstVec<ParameterNode>, result: Box<dyn TypeNode>, implementation: Box<dyn FunctionImplementationNode>) -> Self {
 		FunctionNode {
 			annotation, ident, params, result, implementation
@@ -38,13 +102,21 @@ impl Format for FunctionNode
 		}
 		write!(f, "): ")?;
 		self.result.format(f, line_prefix)?;
+		write!(f, " ")?;
 		self.implementation.format(f, line_prefix)
 	}
 }
 
 impl_transformable!(FunctionNode; vec params, result, implementation);
 impl_visitable!(FunctionNode; vec params, result, implementation);
-impl_partial_eq!(FunctionNode; annotation, ident, params, result, implementation);
+
+impl PartialEq for FunctionNode
+{
+	fn eq(&self, rhs: &FunctionNode) -> bool
+	{
+		&self.ident == &rhs.ident && &self.params == &rhs.params && &self.result == &rhs.result && &self.implementation == &rhs.implementation
+	}
+}
 
 impl Clone for FunctionNode {
 	fn clone(&self) -> Self {
@@ -141,7 +213,7 @@ impl Format for ParameterNode
 	{
 		write!(f, "{}: ", self.ident)?;
 		self.param_type.format(f, line_prefix)?;
-		write!(f, ",")
+		write!(f, ", ")
 	}
 }
 
@@ -498,6 +570,7 @@ impl_transformable!(VoidTypeNode;);
 impl_visitable!(VoidTypeNode;);
 impl_partial_eq!(VoidTypeNode;);
 
+impl_display!(Program);
 impl_display!(FunctionNode);
 impl_display!(NativeFunctionNode);
 impl_display!(ImplementedFunctionNode);
@@ -512,6 +585,7 @@ impl_display!(ReturnNode);
 impl_display!(ArrTypeNode);
 impl_display!(VoidTypeNode);
 
+impl_node!(Program);
 impl_node!(FunctionNode);
 impl_node!(NativeFunctionNode);
 impl_node!(ImplementedFunctionNode);
@@ -545,5 +619,17 @@ impl TypeDefinition for VoidTypeNode
 	fn calc_type(&self) -> Result<Option<Type>, CompileError>
 	{
 		Ok(None)
+	}
+}
+
+#[cfg(test)]
+use super::prelude::*;
+
+#[cfg(test)]
+impl ArrTypeNode
+{
+	pub fn test_val(dims: u8) -> Box<dyn TypeNode>
+	{
+		Box::new(ArrTypeNode::new(TextPosition::create(0, 0), Box::new(IntTypeNode::new(TextPosition::create(0, 0))), dims))
 	}
 }

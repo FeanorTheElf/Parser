@@ -6,6 +6,8 @@ use super::parser_gen::Flatten;
 #[cfg(test)]
 use super::super::lexer::lexer::lex;
 
+impl_parse!{ Program => Program(Token#BOF { FunctionNode } Token#EOF) }
+
 impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
 impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
                                              | ImplementedFunctionNode(BlockNode)}
@@ -49,7 +51,7 @@ impl Parse for dyn StmtNode {
 impl_parse!{ IfNode => IfNode(Token#If ExprNode BlockNode) }
 impl_parse!{ WhileNode => WhileNode(Token#While ExprNode BlockNode) }
 impl_parse!{ ReturnNode => ReturnNode(Token#Return ExprNode Token#Semicolon) }
-impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode Token#Assign [ ExprNode ] Token#Semicolon) }
+impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identifier Token#Colon TypeNode [ Token#Assign ExprNode ] Token#Semicolon) }
 
 impl Parse for dyn TypeNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
@@ -115,12 +117,9 @@ impl Parse for dyn UnaryExprNode {
 			if stream.ends(&Token::BracketOpen) {
 				stream.expect_next(&Token::BracketOpen)?;
 				let mut params: AstVec<ExprNode> = vec![];
-				if !stream.ends(&Token::BracketClose) {
+				while !stream.ends(&Token::BracketClose) {
 					params.push(ExprNode::parse(stream)?);
-					while stream.ends(&Token::Comma) {
-						stream.expect_next(&Token::Comma)?;
-						params.push(ExprNode::parse(stream)?);
-					}
+					stream.expect_next(&Token::Comma)?;
 				}
 				stream.expect_next(&Token::BracketClose)?;
 				return Ok(Box::new(FunctionCallNode::new(pos, ident, params)));
@@ -141,26 +140,21 @@ impl_parse!{ NewExprNode => NewExprNode(Token#New BaseTypeNode {IndexPartNode}) 
 
 impl_parse!{ dyn BaseTypeNode => IntTypeNode(Token#Int) }
 
-#[cfg(test)]
-fn create_int_arr(dims: u8) -> Box<dyn TypeNode> {
-	Box::new(ArrTypeNode::new(TextPosition::create(0, 0), Box::new(IntTypeNode::new(TextPosition::create(0, 0))), dims))
-}
-
 #[test]
 fn test_parse_simple_function() {
     let ident = |name: &'static str| Identifier::new(name);
-    let len = *FunctionNode::parse(&mut lex("fn len(a: int[],): int { let b: int[] = a; { return len(b); } }")).unwrap();
+    let len = *FunctionNode::parse(lex("fn len(a: int[],): int { let b: int[] = a; { return len(b, ); } }").expect_next(&Token::BOF).unwrap()).unwrap();
 
 	assert_eq!(ident("len"), len.ident);
 	assert_eq!(1, len.params.len());
 	assert_eq!(ident("a"), len.params[0].ident);
-	assert_eq!(&create_int_arr(1), &len.params[0].param_type);
-	assert_eq!(&create_int_arr(0), &len.result);
+	assert_eq!(&ArrTypeNode::test_val(1), &len.params[0].param_type);
+	assert_eq!(&ArrTypeNode::test_val(0), &len.result);
 
 	let body = &len.implementation.dynamic().downcast_ref::<ImplementedFunctionNode>().unwrap().body;
 	let let_stmt = &body.stmts[0].dynamic().downcast_ref::<VariableDeclarationNode>().unwrap();
 	assert_eq!(ident("b"), let_stmt.ident);
-	assert_eq!(&create_int_arr(1), &let_stmt.variable_type);
+	assert_eq!(&ArrTypeNode::test_val(1), &let_stmt.variable_type);
 
 	let return_stmt = &body.stmts[1].dynamic().downcast_ref::<BlockNode>().unwrap().stmts[0].dynamic().downcast_ref::<ReturnNode>().unwrap();
 	let function_call = &return_stmt.expr.head.head.head.head.head.head.dynamic().downcast_ref::<FunctionCallNode>().unwrap();

@@ -98,7 +98,9 @@ pub enum Token {
 	OpUnequal,
 	OpNot,
 	Wildcard,
-	View
+	View,
+	EOF,
+	BOF
 }
 
 impl std::fmt::Display for Token {
@@ -142,7 +144,9 @@ impl std::fmt::Display for Token {
 			Token::OpUnequal => write!(f, "'!='"),
 			Token::OpNot => write!(f, "'!'"),
 			Token::Wildcard => write!(f, "'?'"),
-			Token::View => write!(f, "'&'")
+			Token::View => write!(f, "'&'"),
+			Token::EOF => write!(f, "EOF"),
+			Token::BOF => write!(f, "BOF")
 		}
     }
 }
@@ -198,13 +202,13 @@ impl Stream {
 		}
 	}
 
-	pub fn expect_next(&mut self, token: &Token) -> Result<(), CompileError> {
+	pub fn expect_next(&mut self, token: &Token) -> Result<&mut Self, CompileError> {
 		let pos = self.pos();
 		match self.data.pop() {
 			Some(value) => if *token != value.token {
 				Err(CompileError::new(pos, format!("Expected token {:?}, but got token {:?}", token, value.token), ErrorType::SyntaxError))
 			} else {
-				Ok(())
+				Ok(self)
 			},
 			None => Err(CompileError::new(pos, format!("Expected token {:?}, but got end of stream", token), ErrorType::SyntaxError))
 		}

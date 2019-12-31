@@ -2,6 +2,7 @@ use super::super::parser::prelude::*;
 use super::obj_type::SymbolDefinition;
 
 use std::collections::HashSet;
+use std::borrow::Borrow;
 
 pub trait EnumerateDefinitions<'a> {
     type IntoIter: Iterator<Item = &'a dyn SymbolDefinition>;
@@ -22,7 +23,7 @@ impl<'a> Iterator for GlobalDefinitionsIter<'a>
     }
 }
 
-impl<'a> EnumerateDefinitions<'a> for &'a Program
+impl<'a> EnumerateDefinitions<'a> for &'a [FunctionNode]
 {
     type IntoIter = GlobalDefinitionsIter<'a>;
 
@@ -34,12 +35,22 @@ impl<'a> EnumerateDefinitions<'a> for &'a Program
     }
 }
 
-pub struct BlockNodeDefinitionsIter<'a>
+impl<'a> EnumerateDefinitions<'a> for &'a Program
+{
+    type IntoIter = GlobalDefinitionsIter<'a>;
+
+    fn enumerate(self) -> Self::IntoIter 
+    {
+        self.functions.enumerate()
+    }
+}
+
+pub struct StmtsNodeDefinitionsIter<'a>
 {
     iter: std::slice::Iter<'a, Box<dyn StmtNode>>
 }
 
-impl<'a> Iterator for BlockNodeDefinitionsIter<'a>
+impl<'a> Iterator for StmtsNodeDefinitionsIter<'a>
 {
     type Item = &'a dyn SymbolDefinition;
 
@@ -50,11 +61,11 @@ impl<'a> Iterator for BlockNodeDefinitionsIter<'a>
 
 impl<'a> EnumerateDefinitions<'a> for &'a BlockNode 
 {
-    type IntoIter = BlockNodeDefinitionsIter<'a>;
+    type IntoIter = StmtsNodeDefinitionsIter<'a>;
 
     fn enumerate(self) -> Self::IntoIter 
     {
-        BlockNodeDefinitionsIter {
+        StmtsNodeDefinitionsIter {
             iter: self.stmts.iter()
         }
     }
@@ -86,6 +97,18 @@ impl<'a> EnumerateDefinitions<'a> for &'a FunctionNode
     }
 }
 
+impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn StmtNode>> 
+{
+    type IntoIter = StmtsNodeDefinitionsIter<'a>;
+
+    fn enumerate(self) -> Self::IntoIter 
+    {
+        StmtsNodeDefinitionsIter {
+            iter: self.iter()
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ScopeNode 
 {
@@ -94,7 +117,7 @@ struct ScopeNode
 
 impl ScopeNode 
 {
-    fn create<T>(scope: &T) -> ScopeNode 
+    fn create<T: ?Sized>(scope: &T) -> ScopeNode 
         where for<'a> &'a T: EnumerateDefinitions<'a>
     {
         ScopeNode {
@@ -112,7 +135,7 @@ pub struct ScopeStack
 
 impl ScopeStack 
 {
-    pub fn new(global: &Program) -> ScopeStack
+    pub fn new(global: &[FunctionNode]) -> ScopeStack
     {
         ScopeStack {
             scope_stack: None,
@@ -166,18 +189,32 @@ impl ScopeStack
         return result;
     }
 
-    pub fn rename_disjunct<'a, I: Iterator<Item = &'a Identifier>>(&'a self, it: I) -> impl Iterator<Item = (&'a Identifier, Identifier)>
+    pub fn rename_disjunct<'a, I>(&'a self, it: I) -> impl 'a + Iterator<Item = (I::Item, Identifier)>
+        where I: 'a + Iterator, I::Item: Borrow<Identifier>
     {
         let mut current = 0;
-        it.map(move |name: &'a Identifier| {
-            if self.find_definition(name).is_some() {
+        it.map(move |name: I::Item| {
+            if self.find_definition(name.borrow()).is_some() {
                 while self.find_definition(&Identifier::auto(current)).is_some() {
                     current = current + 1;
                 }
-                (name, Identifier::auto(current))
+                current = current + 1;
+                (name, Identifier::auto(current - 1))
             } else {
-                (name, (*name).clone())
+                let result = name.borrow().clone();
+                (name, result)
             }
         })
+    }
+}
+
+#[cfg(test)]
+impl<'a> EnumerateDefinitions<'a> for &'a Vec<ParameterNode>
+{
+    type IntoIter = std::iter::Map<std::slice::Iter<'a, ParameterNode>, Box<dyn Fn(&'a ParameterNode) -> &'a dyn SymbolDefinition>>;
+
+    fn enumerate(self) -> Self::IntoIter
+    {
+        self.iter().map(Box::new(|node: &'a ParameterNode| node as &'a dyn SymbolDefinition))
     }
 }

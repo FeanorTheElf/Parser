@@ -900,6 +900,7 @@ impl Format for FunctionCallNode
 		write!(f, "{}(", self.function)?;
 		for param in &self.params {
 			param.format(f, line_prefix)?;
+			write!(f, ", ")?;
 		}
 		write!(f, ")")
 	}

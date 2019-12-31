@@ -18,3 +18,17 @@ pub fn find_min<I, F>(it: I, f: &F) -> Option<I::Item>
 	}
 	return current_item;
 }
+
+pub fn equal_ignore_order<T>(lhs: &Vec<T>, rhs: &Vec<T>) -> bool
+	where T: PartialEq<T>
+{
+	if lhs.len() != rhs.len() {
+		return false;
+	}
+	for el in lhs.iter() {
+		if lhs.iter().filter(|t| t == &el).count() != rhs.iter().filter(|t| t == &el).count() {
+			return false;
+		}
+	}
+	return true;
+}

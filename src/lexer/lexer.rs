@@ -84,6 +84,9 @@ pub fn lex(input: &str) -> Stream {
 	let mut current = String::new();
 	let mut current_pos = TextPosition::create(0, 0);
 	let mut current_token_start_pos = current_pos.clone();
+
+	result.push(PosToken::create(Token::BOF, current_pos.clone()));
+
 	for c in input.chars() {
 		let mut separator = false;
 
@@ -125,8 +128,9 @@ pub fn lex(input: &str) -> Stream {
 		}
 	}
 	if !current.is_empty() {
-		result.push(PosToken::create(lex_str(&current), current_token_start_pos.clone()));
+		result.push(PosToken::create(lex_str(&current), current_token_start_pos));
 	}
+	result.push(PosToken::create(Token::EOF, current_pos));
 	result.reverse();
 	return Stream::create(result);
 }
@@ -136,7 +140,8 @@ use std::iter::FromIterator;
 
 #[test]
 fn test_lex() {
-	assert_eq!(vec![Token::Let, 
+	assert_eq!(vec![Token::BOF,
+		Token::Let, 
 		Token::Identifier(Identifier::new("test")),
 		Token::Colon,
 		Token::Int,
@@ -159,12 +164,14 @@ fn test_lex() {
 		Token::OpAdd,
 		Token::OpSubtract,
 		Token::Identifier(Identifier::new("d")),
-		Token::Semicolon], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;")));
+		Token::Semicolon,
+		Token::EOF], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;")));
 }
 
 #[test]
 fn test_lex_position() {
 	let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
+	stream.expect_next(&Token::BOF).unwrap();
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());

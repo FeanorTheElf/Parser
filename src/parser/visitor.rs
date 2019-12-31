@@ -218,16 +218,16 @@ fn blockify(mut stmt: Box<dyn StmtNode>) -> Box<dyn StmtNode>
 
 #[test]
 fn test_transform() {
-    let mut ast = FunctionNode::parse(&mut lex("
+    let mut ast = FunctionNode::parse(lex("
         fn test(a: int, b: int,): int {
             if a < b {
                 return a;
             } 
             return b;
-        }
-    ")).unwrap();
+        }").expect_next(&Token::BOF).unwrap()).unwrap();
+        
     ast.transform(&mut blockify);
-    assert_eq!(FunctionNode::parse(&mut lex("
+    assert_eq!(FunctionNode::parse(lex("
         fn test(a: int, b: int,): int {
             {
                 if a < b {
@@ -239,5 +239,5 @@ fn test_transform() {
             {
                 return b;
             }
-        }")).unwrap(), ast);
+        }").expect_next(&Token::BOF).unwrap()).unwrap(), ast);
 }

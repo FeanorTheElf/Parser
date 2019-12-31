@@ -60,9 +60,29 @@ macro_rules! rule_alt_parser {
 			els
 		}, rule_alt_parser!($stream; $($tail)*)).flatten()
     };
+	($stream:ident; { Token#$token:ident $name:ident } $($tail:tt)*) => {
+        ({
+			let mut els = AstVec::new();
+			while ($stream).ends(&Token::$token) {
+				($stream).expect_next(&Token::$token)?;
+				els.push($name::parse($stream)?);
+			}
+			els
+		}, rule_alt_parser!($stream; $($tail)*)).flatten()
+    };
 	($stream:ident; [ $name:ident ] $($tail:tt)*) => {
         ({
 			if $name::guess_can_parse($stream) {
+				Some($name::parse($stream)?)
+			} else {
+				None
+			}
+		}, rule_alt_parser!($stream; $($tail)*)).flatten()
+	};
+	($stream:ident; [ Token#$token:ident $name:ident ] $($tail:tt)*) => {
+        ({
+			if ($stream).ends(&Token::$token) {
+				($stream).expect_next(&Token::$token)?;
 				Some($name::parse($stream)?)
 			} else {
 				None
@@ -82,14 +102,6 @@ macro_rules! rule_base_alt_parser {
         if $stream.ends_ident() {
 			let pos = ($stream).pos();
 			Ok(Box::new(($variant::new).call((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten())))
-		} else {
-			$else_code
-		}
-    };
-	($stream:ident; $else_code:tt; $variant:ident({ $name:ident } $($tail:tt)*)) => {
-        if $name::guess_can_parse($stream) {
-			let pos = ($stream).pos();
-			Ok(Box::new(($variant::new).call((pos, rule_alt_parser!($stream; { $name } $($tail)*)).flatten())))
 		} else {
 			$else_code
 		}
