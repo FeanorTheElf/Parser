@@ -1,4 +1,3 @@
-use super::super::lexer::tokens::{ Identifier };
 use super::super::lexer::error::{ CompileError, ErrorType };
 
 use super::ast_expr::*;

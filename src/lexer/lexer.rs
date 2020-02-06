@@ -1,10 +1,11 @@
-use super::tokens::*;
-use super::position::TextPosition;
-
 use std::vec::Vec;
 use std::string::String;
 
-fn lex_op(string: &str) -> Option<Token> {
+use super::super::language::position::TextPosition;
+use super::tokens::*;
+
+fn lex_op(string: &str) -> Option<Token> 
+{
 	match string {
 		"" => None,
 		"(" => Some(Token::BracketOpen),
@@ -36,7 +37,8 @@ fn lex_op(string: &str) -> Option<Token> {
 	}
 }
 
-fn lex_keyword(string: &str) -> Option<Token> {
+fn lex_keyword(string: &str) -> Option<Token> 
+{
 	match string {
 		"if" => Some(Token::If),
 		"while" => Some(Token::While),
@@ -54,32 +56,38 @@ fn lex_keyword(string: &str) -> Option<Token> {
 	}
 }
 
-fn lex_str(string: &str) -> Token {
+fn lex_str(string: &str) -> Token 
+{
 	lex_op(string)
 	.or_else(||lex_keyword(string))
 	.unwrap_or_else(||match string.parse::<i32>() {
-		Ok(value) => Token::Literal(Literal { value: value }),
-		Err(_err) => Token::Identifier(Identifier::new(string))
+		Ok(value) => Token::Literal(value),
+		Err(_err) => Token::Identifier(string.to_owned())
 	})
 }
 
-fn is_whitespace(c: char) -> bool {
+fn is_whitespace(c: char) -> bool 
+{
 	c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
-fn is_newline(c: char) -> bool {
+fn is_newline(c: char) -> bool 
+{
 	c == '\n'
 }
 
-fn is_alphanumeric(c: char) -> bool {
+fn is_alphanumeric(c: char) -> bool 
+{
 	c == '_' || c.is_ascii_alphanumeric()
 }
 
-fn is_first_char_alphanumeric(string: &String) -> Option<bool> {
+fn is_first_char_alphanumeric(string: &String) -> Option<bool> 
+{
 	string.chars().next().map(|first| is_alphanumeric(first))
 }
 
-pub fn lex(input: &str) -> Stream {
+pub fn lex(input: &str) -> Stream 
+{
 	let mut result: Vec<PosToken> = vec![];
 	let mut current = String::new();
 	let mut current_pos = TextPosition::create(0, 0);
@@ -139,46 +147,48 @@ pub fn lex(input: &str) -> Stream {
 use std::iter::FromIterator;
 
 #[test]
-fn test_lex() {
+fn test_lex() 
+{
 	assert_eq!(vec![Token::BOF,
 		Token::Let, 
-		Token::Identifier(Identifier::new("test")),
+		Token::Identifier("test".to_owned()),
 		Token::Colon,
 		Token::Int,
 		Token::SquareBracketOpen,
 		Token::SquareBracketClose,
 		Token::Assign,
-		Token::Identifier(Identifier::new("a")),
+		Token::Identifier("a".to_owned()),
 		Token::SquareBracketOpen,
-		Token::Literal(Literal { value: 2 }),
+		Token::Literal(2),
 		Token::SquareBracketClose,
 		Token::SquareBracketOpen,
-		Token::Literal(Literal { value: 4 }),
+		Token::Literal(4),
 		Token::OpEqual,
-		Token::Literal(Literal { value: 1 }),
+		Token::Literal(1),
 		Token::SquareBracketClose,
 		Token::OpGreaterEq,
-		Token::Identifier(Identifier::new("b")),
+		Token::Identifier("b".to_owned()),
 		Token::OpAnd,
-		Token::Identifier(Identifier::new("c")),
+		Token::Identifier("c".to_owned()),
 		Token::OpAdd,
 		Token::OpSubtract,
-		Token::Identifier(Identifier::new("d")),
+		Token::Identifier("d".to_owned()),
 		Token::Semicolon,
 		Token::EOF], Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;")));
 }
 
 #[test]
-fn test_lex_position() {
+fn test_lex_position() 
+{
 	let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
 	stream.expect_next(&Token::BOF).unwrap();
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());
-	assert_eq!("a", stream.next_ident().unwrap().repr());
+	assert_eq!("a", stream.next_ident().unwrap());
 	assert_eq!(6, stream.pos().column());
 	assert_eq!(Token::Assign, stream.next());
-	assert_eq!("b", stream.next_ident().unwrap().repr());
+	assert_eq!("b", stream.next_ident().unwrap());
 	assert_eq!(Token::SquareBracketOpen, stream.next());
 	assert_eq!(10, stream.pos().column());
 	for _i in 0..7 {
@@ -186,7 +196,7 @@ fn test_lex_position() {
 	}
 	assert_eq!(1, stream.pos().column());
 	assert_eq!(2, stream.pos().line());
-	assert_eq!("a", stream.next_ident().unwrap().repr());
+	assert_eq!("a", stream.next_ident().unwrap());
 	stream.next();
 	stream.next();
 	assert_eq!(5, stream.pos().column());

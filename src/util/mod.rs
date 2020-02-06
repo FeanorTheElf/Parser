@@ -1,6 +1,6 @@
 pub mod push_iter;
 pub mod ref_eq;
-pub mod dyn_eq;
+pub mod dynamic;
 #[macro_use]
 pub mod macros;
 

@@ -1,8 +1,6 @@
 use std::fmt::{ Debug, Display, Formatter, Error };
 
-#[derive(Clone)]
-#[derive(PartialEq)]
-#[derive(Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TextPosition {
     line: u32,
     column: u32

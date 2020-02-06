@@ -1,88 +1,16 @@
-use super::position::TextPosition;
-use super::error::{ CompileError, ErrorType };
+use super::super::language::error::{ CompileError, ErrorType };
+use super::super::language::position::TextPosition;
 
-use std::fmt::{ Display, Formatter, Error };
 use std::vec::Vec;
 use std::string::String;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Identifier {
-	Named(String), Auto(u32)
-}
-
-impl Identifier
-{
-	pub fn new(name: &str) -> Identifier
-	{
-		Identifier::Named(name.to_owned())
-	}
-
-	pub fn auto(id: u32) -> Identifier
-	{
-		Identifier::Auto(id)
-	}
-
-	#[cfg(test)]
-	pub fn repr(&self) -> &str
-	{
-		match self {
-			Identifier::Named(name) => name,
-			Identifier::Auto(_id) => "auto"
-		}
-	}
-}
-
-impl PartialOrd for Identifier
-{
-	fn partial_cmp(&self, rhs: &Identifier) -> Option<std::cmp::Ordering>
-	{
-		Some(self.cmp(rhs))
-	}
-}
-
-impl Ord for Identifier 
-{
-	fn cmp(&self, rhs: &Identifier) -> std::cmp::Ordering
-	{
-		match (self, rhs) {
-			(Identifier::Named(lhs_name), Identifier::Named(rhs_name)) => lhs_name.cmp(rhs_name),
-			(Identifier::Auto(lhs_id), Identifier::Auto(rhs_id)) => lhs_id.cmp(rhs_id),
-			(Identifier::Auto(_), Identifier::Named(_)) => std::cmp::Ordering::Less,
-			(Identifier::Named(_), Identifier::Auto(_)) => std::cmp::Ordering::Greater,
-		}
-	}
-}
-
-impl Display for Identifier 
-{
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> 
-	{
-        match self {
-			Identifier::Named(name) => write!(f, "{}", name),
-			Identifier::Auto(id) => write!(f, "auto_{}", id)
-		}
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Literal {
-	pub value: i32
-}
-
-impl Display for Literal 
-{
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> 
-	{
-        write!(f, "{}", self.value)
-    }
-}
 
 #[derive(Debug)]
 #[derive(PartialEq)]
 #[derive(Eq)]
-pub enum Token {
-	Literal(Literal),
-	Identifier(Identifier),
+pub enum Token 
+{
+	Literal(i32),
+	Identifier(String),
 	If,
 	PFor,
 	Read,
@@ -124,10 +52,12 @@ pub enum Token {
 	BOF
 }
 
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl std::fmt::Display for Token 
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result 
+	{
 		match self {
-			Token::Literal(ref literal) => write!(f, "'{}'", literal.value),
+			Token::Literal(ref literal) => write!(f, "'{}'", literal),
 			Token::Identifier(ref identifier) => write!(f, "'{}'", identifier),
 			Token::If => write!(f, "'if'"),
 			Token::PFor => write!(f, "'pfor'"),
@@ -207,7 +137,7 @@ impl Stream {
 		self.data.pop().unwrap().token
 	}
 
-	pub fn next_literal(&mut self) -> Result<Literal, CompileError> {
+	pub fn next_literal(&mut self) -> Result<i32, CompileError> {
 		let pos = self.pos();
 		match self.next() {
 			Token::Literal(lit) => Ok(lit),
@@ -215,7 +145,7 @@ impl Stream {
 		}
 	}
 
-	pub fn next_ident(&mut self) -> Result<Identifier, CompileError> {
+	pub fn next_ident(&mut self) -> Result<String, CompileError> {
 		let pos = self.pos();
 		match self.next() {
 			Token::Identifier(id) => Ok(id),

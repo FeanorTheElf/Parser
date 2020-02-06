@@ -1,3 +1,5 @@
+use super::{ Build, Parse };
+
 pub trait Flatten {
 	type Flattened;
 
@@ -101,7 +103,7 @@ macro_rules! rule_base_alt_parser {
 	($stream:ident; $else_code:tt; $variant:ident(identifier $($tail:tt)*)) => {
         if $stream.ends_ident() {
 			let pos = ($stream).pos();
-			Ok(Box::new(($variant::new).call((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten())))
+			Ok(Box::new($variant::build((pos, rule_alt_parser!($stream; identifier $($tail)*)).flatten())))
 		} else {
 			$else_code
 		}
@@ -109,7 +111,7 @@ macro_rules! rule_base_alt_parser {
 	($stream:ident; $else_code:tt; $variant:ident(Token#$token:ident $($tail:tt)*)) => {
         if $stream.ends(&Token::$token) {
 			let pos = ($stream).pos();
-			Ok(Box::new(($variant::new).call((pos, rule_alt_parser!($stream; Token#$token $($tail)*)).flatten())))
+			Ok(Box::new($variant::build((pos, rule_alt_parser!($stream; Token#$token $($tail)*)).flatten())))
 		} else {
 			$else_code
 		}
@@ -117,7 +119,7 @@ macro_rules! rule_base_alt_parser {
     ($stream:ident; $else_code:tt; $variant:ident($name:ident $($tail:tt)*)) => {
         if $name::guess_can_parse($stream) {
 			let pos = ($stream).pos();
-			Ok(Box::new(($variant::new).call((pos, rule_alt_parser!($stream; $name $($tail)*)).flatten())))
+			Ok(Box::new($variant::build((pos, rule_alt_parser!($stream; $name $($tail)*)).flatten())))
 		} else {
 			$else_code
 		}
