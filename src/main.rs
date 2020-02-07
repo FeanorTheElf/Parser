@@ -11,7 +11,7 @@ mod util;
 mod language;
 mod lexer;
 mod parser;
-mod la;
+// mod la;
 // mod backend;
 
 use lexer::lexer::lex;

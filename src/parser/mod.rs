@@ -1,19 +1,26 @@
 use super::lexer::tokens::Stream;
 use super::language::error::CompileError;
+use super::language::position::TextPosition;
 
-pub trait Parse 
+pub trait Buildable
 {
-	fn guess_can_parse(stream: &Stream) -> bool;
-	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>;
+    type OutputType;
 }
 
-pub trait Build<T>
+pub trait Build<T>: Buildable
 {
-	fn build(params: T) -> Self;
+	fn build(pos: TextPosition, params: T) -> Self::OutputType;
+}
+
+pub trait Parse: Buildable
+{
+	fn guess_can_parse(stream: &Stream) -> bool;
+	fn parse(stream: &mut Stream) -> Result<Self::OutputType, CompileError>;
 }
 
 #[macro_use]
 pub mod parser_gen;
+pub mod parser;
 // pub mod obj_type;
 // pub mod print;
 // pub mod visitor;
