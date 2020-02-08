@@ -1,134 +1,502 @@
 use super::super::lexer::tokens::{ Stream, Token };
 use super::super::language::prelude::*;
 use super::parser_gen::Flatten;
-use super::{ Buildable, Build, Parse };
+use super::{ Parseable, Build, Parser };
 
-impl Buildable for Function
+impl Parseable for Program
 {
-    type OutputType = Box<Self>;
+    type ParseOutputType = Self;
 }
 
-impl Build<(String, Vec<ParameterNode>, TypeNode, FunctionImpl)> for Function
+impl Build<(Vec<Function>,)> for Program
 {
-    fn build(pos: TextPosition, params: (String, Vec<ParameterNode>, TypeNode, FunctionImpl)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: (Vec<Function>,)) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Program {
+            items: param.0.into_iter().map(&Box::new).collect()
+        }
     }
 }
 
-impl Buildable for Block
+impl Parseable for Type
 {
-    type OutputType = Self;
+    type ParseOutputType = Self;
+}
+
+impl Build<TypeNode> for Type
+{
+    fn build(_pos: TextPosition, param: TypeNode) -> Self::ParseOutputType
+    {
+        if let Some(dimensions) = (param.1).1 {
+            Type::Array(PrimitiveType::Int, (dimensions.1).0)
+        } else {
+            Type::Primitive(PrimitiveType::Int)
+        }
+    }
+}
+
+impl Parseable for Name
+{
+    type ParseOutputType = Self;
+}
+
+impl Parser for Name
+{
+    fn is_applicable(stream: &Stream) -> bool
+    {
+        stream.is_next_identifier()
+    }
+    
+    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
+    {
+        Ok(Name::new(stream.next_ident()?))
+    }
+}
+
+impl Parseable for Variable
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<Name> for Variable
+{
+    fn build(pos: TextPosition, param: Name) -> Self::ParseOutputType
+    {
+        Variable {
+            pos: pos,
+            identifier: Identifier::Name(param)
+        }
+    }
+}
+
+impl Parseable for Literal
+{
+    type ParseOutputType = Self;
+}
+
+impl Parser for Literal
+{
+    fn is_applicable(stream: &Stream) -> bool
+    {
+        stream.is_next_literal()
+    }
+    
+    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
+    {
+        Ok(Literal { 
+            pos: stream.pos(), 
+            value: stream.next_literal()? 
+        })
+    }
+}
+
+impl Parseable for Function
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Name, Vec<ParameterNode>, TypeNode, FunctionImpl)> for Function
+{
+    fn build(pos: TextPosition, param: (Name, Vec<ParameterNode>, TypeNode, FunctionImpl)) -> Self::ParseOutputType
+    {
+        let block = if let FunctionImpl::Block(block) = param.3 {
+            Some(block)
+        } else {
+            None
+        };
+        Function {
+            pos: pos,
+            identifier: param.0,
+            params: param.1.into_iter().map(|p| (p.0.clone(), (p.1).0, Type::build(p.0, (p.1).1))).collect(),
+            return_type: Type::build((param.2).0.clone(), param.2),
+            body: block
+        }
+    }
+}
+
+impl Parseable for Block
+{
+    type ParseOutputType = Self;
 }
 
 impl Build<(Vec<Box<dyn Statement>>,)> for Block
 {
-    fn build(pos: TextPosition, params: (Vec<Box<dyn Statement>>,)) -> Self::OutputType
+    fn build(pos: TextPosition, param: (Vec<Box<dyn Statement>>,)) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Block {
+            pos: pos,
+            statements: param.0
+        }
     }
 }
 
-impl Buildable for dyn Statement
+impl Parseable for dyn Statement
 {
-    type OutputType = Box<Self>;
+    type ParseOutputType = Box<Self>;
 }
 
 impl Build<ExpressionNode> for dyn Statement
 {
-    fn build(pos: TextPosition, params: (ExpressionNode,)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: ExpressionNode) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Box::new((param.1).0)
     }
 }
 
-impl Buildable for If
+impl Parseable for If
 {
-    type OutputType = Self;
+    type ParseOutputType = Self;
 }
 
 impl Build<(Box<dyn Expression>, Block)> for If
 {
-    fn build(pos: TextPosition, params: (Box<dyn Expression>, Block)) -> Self::OutputType
+    fn build(pos: TextPosition, param: (Box<dyn Expression>, Block)) -> Self::ParseOutputType
     {
-        unimplemented!()
+        If {
+            pos: pos,
+            condition: param.0,
+            body: param.1
+        }
     }
 }
 
 impl Build<If> for dyn Statement
 {
-    fn build(pos: TextPosition, params: (If,)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: If) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Box::new(param)
     }
 }
 
-impl Buildable for While
+impl Parseable for While
 {
-    type OutputType = Self;
+    type ParseOutputType = Self;
 }
 
 impl Build<(Box<dyn Expression>, Block)> for While
 {
-    fn build(pos: TextPosition, params: (Box<dyn Expression>, Block)) -> Self::OutputType
+    fn build(pos: TextPosition, param: (Box<dyn Expression>, Block)) -> Self::ParseOutputType
     {
-        unimplemented!()
+        While {
+            pos: pos,
+            condition: param.0,
+            body: param.1
+        }
     }
 }
 
 impl Build<While> for dyn Statement
 {
-    fn build(pos: TextPosition, params: (While,)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: While) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Box::new(param)
     }
 }
 
 impl Build<Block> for dyn Statement
 {
-    fn build(pos: TextPosition, params: (Block,)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: Block) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Box::new(param)
     }
 }
 
-impl Buildable for Return
+impl Parseable for Return
 {
-    type OutputType = Self;
+    type ParseOutputType = Self;
 }
 
-impl Build<(Box<dyn Expression>,)> for Return
+impl Build<(Option<Box<dyn Expression>>,)> for Return
 {
-    fn build(pos: TextPosition, params: (Box<dyn Expression>,)) -> Self::OutputType
+    fn build(pos: TextPosition, param: (Option<Box<dyn Expression>>,)) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Return {
+            pos: pos,
+            value: param.0
+        }
     }
 }
 
-impl Build<(Return,)> for dyn Statement
+impl Build<Return> for dyn Statement
 {
-    fn build(pos: TextPosition, params: (Return,)) -> Self::OutputType
+    fn build(_pos: TextPosition, param: Return) -> Self::ParseOutputType
     {
-        unimplemented!()
+        Box::new(param)
     }
 }
 
-impl Buildable for dyn Expression
+impl Parseable for Declaration
 {
-    type OutputType = Box<Self>;
+    type ParseOutputType = Self;
 }
 
-impl_parse!{ Function => Token#Fn identifier Token#BracketOpen { ParameterNode } Token#BracketClose Token#Colon TypeNode FunctionImpl }
-grammar_rule!{ ParameterNode => identifier Token#Colon TypeNode }
-grammar_rule!{ TypeNode => PrimitiveType { Dimension } }
-grammar_rule!{ Dimension => Token#SquareBracketOpen Token#SquareBracketClose }
-grammar_rule!{ PrimitiveType => Token#Int }
-grammar_rule!{ FunctionImpl => NativeFunction | ImplementedFunction }
-grammar_rule!{ NativeFunction => Token#Native Token#Semicolon }
-grammar_rule!{ ImplementedFunction => Block }
-impl_parse!{ Block => Token#CurlyBracketOpen { Statement } Token#CurlyBracketClose }
-impl_parse!{ dyn Statement => If | While | Return | Block | ExpressionNode }
-grammar_rule!{ ExpressionNode => Expression Token#Semicolon }
-impl_parse!{ If => Token#If Expression Block }
-impl_parse!{ While => Token#While Expression Block }
-impl_parse!{ Return => Token#Return Expression Token#Semicolon }
+impl Build<(Name, TypeNode, Option<Box<dyn Expression>>)> for Declaration
+{
+    fn build(pos: TextPosition, param: (Name, TypeNode, Option<Box<dyn Expression>>)) -> Self::ParseOutputType
+    {
+        Declaration {
+            pos: pos,
+            variable: param.0,
+            variable_type: Type::build((param.1).0.clone(), param.1),
+            value: param.2
+        }
+    }
+}
+
+impl Build<Declaration> for dyn Statement
+{
+    fn build(_pos: TextPosition, param: Declaration) -> Self::ParseOutputType
+    {
+        Box::new(param)
+    }
+}
+
+impl Parseable for Assignment
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Box<dyn Expression>, Box<dyn Expression>)> for Assignment
+{
+    fn build(pos: TextPosition, param: (Box<dyn Expression>, Box<dyn Expression>)) -> Self::ParseOutputType
+    {
+        Assignment {
+            pos: pos,
+            assignee: param.0,
+            value: param.1
+        }
+    }
+}
+
+impl Build<Assignment> for dyn Statement
+{
+    fn build(_pos: TextPosition, param: Assignment) -> Self::ParseOutputType
+    {
+        Box::new(param)
+    }
+}
+
+impl Parseable for dyn Expression
+{
+    type ParseOutputType = Box<Self>;
+}
+
+fn build_function_call(pos: TextPosition, function: BuiltInIdentifier, params: Vec<Box<dyn Expression>>) -> Box<FunctionCall>
+{
+    Box::new(FunctionCall {
+        pos: pos.clone(),
+        function: Box::new(Variable {
+            pos: pos, 
+            identifier: Identifier::BuiltIn(function)
+        }),
+        parameters: params
+    })
+}
+
+fn build_expr<T, I>(pos: TextPosition, function: BuiltInIdentifier, first: T, mut others: I) -> <dyn Expression as Parseable>::ParseOutputType
+    where dyn Expression: Build<T>, I: Iterator<Item = T>, T: AstNode
+{
+    let second: Option<T> = others.next();
+    if let Some(sec) = second {
+        build_function_call(pos, function, std::iter::once(first)
+            .chain(std::iter::once(sec))
+            .chain(others)
+            .map(|e| Expression::build(e.pos().clone(), e)).collect())
+    } else {
+        Expression::build(pos, first)
+    }
+}
+
+impl Build<Box<dyn Expression>> for dyn Expression
+{
+    fn build(_pos: TextPosition, param: Box<dyn Expression>) -> Self::ParseOutputType
+    {
+        param
+    }
+}
+
+impl Build<ExprNodeLevelOr> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelOr) -> Self::ParseOutputType
+    {
+        build_expr(pos, BuiltInIdentifier::FunctionOr, (param.1).0, (param.1).1.into_iter().map(|n| (n.1).0))
+    }
+}
+
+impl Build<ExprNodeLevelAnd> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelAnd) -> Self::ParseOutputType
+    {
+        build_expr(pos, BuiltInIdentifier::FunctionAnd, (param.1).0, (param.1).1.into_iter().map(|n| (n.1).0))
+    }
+}
+
+impl Build<ExprNodeLevelCmp> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelCmp) -> Self::ParseOutputType
+    {
+        (param.1).1.into_iter().fold(Expression::build(pos.clone(), *(param.1).0), |current, next| 
+        {
+            let (function, parameter) = match next {
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartEq(node) => (BuiltInIdentifier::FunctionEq, Expression::build(node.0, *(node.1).0)),
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartNeq(node) => (BuiltInIdentifier::FunctionNeq, Expression::build(node.0, *(node.1).0)),
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartLeq(node) => (BuiltInIdentifier::FunctionLeq, Expression::build(node.0, *(node.1).0)),
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartGeq(node) => (BuiltInIdentifier::FunctionGeq, Expression::build(node.0, *(node.1).0)),
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartLs(node) => (BuiltInIdentifier::FunctionLs, Expression::build(node.0, *(node.1).0)),
+                ExprNodeLevelCmpPart::ExprNodeLevelCmpPartGt(node) => (BuiltInIdentifier::FunctionGt, Expression::build(node.0, *(node.1).0)),
+            };
+            build_function_call(pos.clone(), function, vec![current, parameter])
+        })
+    }
+}
+
+impl Build<ExprNodeLevelAdd> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelAdd) -> Self::ParseOutputType
+    {
+        build_expr(pos, BuiltInIdentifier::FunctionAdd, Expression::build(param.0, (param.1).0), (param.1).1.into_iter().map(|node| {
+            match node {
+                ExprNodeLevelAddPart::ExprNodeLevelAddPartAdd(part) => Expression::build(part.0, (part.1).0),
+                ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => build_function_call(part.0.clone(), BuiltInIdentifier::FunctionUnaryNeg, vec![Expression::build(part.0, (part.1).0)])
+            }
+        }))
+    }
+}
+
+impl Build<ExprNodeLevelMul> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelMul) -> Self::ParseOutputType
+    {
+        build_expr(pos, BuiltInIdentifier::FunctionMul, Expression::build(param.0, (param.1).0), (param.1).1.into_iter().map(|node| {
+            match node {
+                ExprNodeLevelMulPart::ExprNodeLevelMulPartMul(part) => Expression::build(part.0, (part.1).0),
+                ExprNodeLevelMulPart::ExprNodeLevelMulPartDiv(part) => build_function_call(part.0.clone(), BuiltInIdentifier::FunctionUnaryDiv, vec![Expression::build(part.0, (part.1).0)])
+            }
+        }))
+    }
+}
+
+impl Build<ExprNodeLevelCall> for dyn Expression
+{
+    fn build(pos: TextPosition, param: ExprNodeLevelCall) -> Self::ParseOutputType
+    {
+        (param.1).1.into_iter().fold(Expression::build(pos, (param.1).0), |current, next| 
+        {
+            match next {
+                FunctionCallOrIndexAccess::IndexAccessParameters(mut node) => {
+                    (node.1).0.push(current);
+                    build_function_call(node.0, BuiltInIdentifier::FunctionIndex, (node.1).0)
+                },
+                FunctionCallOrIndexAccess::FunctionCallParameters(node) => {
+                    Box::new(FunctionCall {
+                        pos: node.0,
+                        function: current,
+                        parameters: (node.1).0
+                    })
+                }
+            }
+        })
+    }
+}
+
+impl Build<BaseExpr> for dyn Expression
+{
+    fn build(_pos: TextPosition, param: BaseExpr) -> Self::ParseOutputType
+    {
+        match param {
+            BaseExpr::BracketExpr(node) => (node.1).0,
+            BaseExpr::Variable(node) => Box::new(node),
+            BaseExpr::Literal(node) => Box::new(node)
+        }
+    }
+}
+
+impl_parse!{ Program := Token#BOF { Function } Token#EOF }
+grammar_rule!{ TypeNode := PrimitiveTypeNode [ Dimensions ] }
+grammar_rule!{ Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
+grammar_rule!{ PrimitiveTypeNode := Token#Int }
+
+impl_parse!{ Function := Token#Fn Name Token#BracketOpen { ParameterNode } Token#BracketClose Token#Colon TypeNode FunctionImpl }
+grammar_rule!{ ParameterNode := Name Token#Colon TypeNode Token#Comma }
+grammar_rule!{ FunctionImpl := NativeFunction | Block }
+grammar_rule!{ NativeFunction := Token#Native Token#Semicolon }
+
+impl Parser for dyn Statement
+{
+    fn is_applicable(stream: &Stream) -> bool
+    {
+        If::is_applicable(stream) || 
+        While::is_applicable(stream) ||
+        Return::is_applicable(stream) || 
+        Block::is_applicable(stream) ||
+        Expression::is_applicable(stream) ||
+        Declaration::is_applicable(stream)
+    }
+
+    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
+    {
+        let pos = stream.pos();
+        if If::is_applicable(stream) {
+            Ok(Statement::build(pos, If::parse(stream)?))
+        } else if While::is_applicable(stream) {
+            Ok(Statement::build(pos, While::parse(stream)?))
+        } else if Return::is_applicable(stream) {
+            Ok(Statement::build(pos, Return::parse(stream)?))
+        } else if Block::is_applicable(stream) {
+            Ok(Statement::build(pos, Block::parse(stream)?))
+        } else if Declaration::is_applicable(stream) {
+            Ok(Statement::build(pos, Declaration::parse(stream)?))
+        } else {
+            let expr = Expression::parse(stream)?;
+            if stream.is_next(&Token::Assign) {
+                stream.skip_next(&Token::Assign)?;
+                let value = Expression::parse(stream)?;
+                stream.skip_next(&Token::Semicolon)?;
+                return Ok(Statement::build(pos.clone(), Assignment::build(pos, (expr, value))));
+            } else {
+                stream.skip_next(&Token::Semicolon)?;
+                return Ok(Statement::build(pos.clone(), ExpressionNode::build(pos, (expr,))));
+            }
+        }
+    }
+}
+impl_parse!{ Block := Token#CurlyBracketOpen { Statement } Token#CurlyBracketClose }
+impl_parse!{ If := Token#If Expression Block }
+impl_parse!{ While := Token#While Expression Block }
+impl_parse!{ Return := Token#Return [ Expression ] Token#Semicolon }
+grammar_rule!{ ExpressionNode := Expression Token#Semicolon }
+impl_parse!{ Declaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
+
+impl_parse!{ dyn Expression := ExprNodeLevelOr }
+grammar_rule!{ ExprNodeLevelOr := ExprNodeLevelAnd { ExprNodeLevelOrPart } }
+grammar_rule!{ ExprNodeLevelOrPart := Token#OpOr ExprNodeLevelAnd }
+grammar_rule!{ ExprNodeLevelAnd := ExprNodeLevelCmp { ExprNodeLevelAndPart } }
+grammar_rule!{ ExprNodeLevelAndPart := Token#OpOr ExprNodeLevelCmp }
+
+grammar_rule!{ ExprNodeLevelCmp := ExprNodeLevelAdd { ExprNodeLevelCmpPart } }
+grammar_rule!{ ExprNodeLevelCmpPart := ExprNodeLevelCmpPartGt | ExprNodeLevelCmpPartLs | ExprNodeLevelCmpPartGeq | ExprNodeLevelCmpPartLeq | ExprNodeLevelCmpPartEq | ExprNodeLevelCmpPartNeq }
+grammar_rule!{ ExprNodeLevelCmpPartGt := Token#OpGreater ExprNodeLevelAdd }
+grammar_rule!{ ExprNodeLevelCmpPartLs := Token#OpLess ExprNodeLevelAdd }
+grammar_rule!{ ExprNodeLevelCmpPartGeq := Token#OpGreaterEq ExprNodeLevelAdd }
+grammar_rule!{ ExprNodeLevelCmpPartLeq := Token#OpLessEq ExprNodeLevelAdd }
+grammar_rule!{ ExprNodeLevelCmpPartEq := Token#OpEqual ExprNodeLevelAdd }
+grammar_rule!{ ExprNodeLevelCmpPartNeq := Token#OpUnequal ExprNodeLevelAdd }
+
+grammar_rule!{ box ExprNodeLevelAdd := ExprNodeLevelMul { ExprNodeLevelAddPart } }
+grammar_rule!{ ExprNodeLevelAddPart := ExprNodeLevelAddPartAdd | ExprNodeLevelAddPartSub }
+grammar_rule!{ ExprNodeLevelAddPartAdd := Token#OpAdd ExprNodeLevelMul }
+grammar_rule!{ ExprNodeLevelAddPartSub := Token#OpSubtract ExprNodeLevelMul }
+
+grammar_rule!{ ExprNodeLevelMul := ExprNodeLevelCall { ExprNodeLevelMulPart } }
+grammar_rule!{ ExprNodeLevelMulPart := ExprNodeLevelMulPartMul | ExprNodeLevelMulPartDiv }
+grammar_rule!{ ExprNodeLevelMulPartMul := Token#OpMult ExprNodeLevelCall }
+grammar_rule!{ ExprNodeLevelMulPartDiv := Token#OpDivide ExprNodeLevelCall }
+
+grammar_rule!{ ExprNodeLevelCall := BaseExpr { FunctionCallOrIndexAccess } }
+grammar_rule!{ FunctionCallOrIndexAccess := IndexAccessParameters | FunctionCallParameters }
+grammar_rule!{ IndexAccessParameters := Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose }
+grammar_rule!{ FunctionCallParameters := Token#BracketOpen { Expression Token#Comma } Token#BracketClose }
+
+grammar_rule!{ BaseExpr := Variable | Literal | BracketExpr }
+grammar_rule!{ BracketExpr := Token#BracketOpen Expression Token#BracketClose }
+impl_parse!{ Variable := Name }

@@ -153,7 +153,7 @@ impl Stream {
 		}
 	}
 
-	pub fn expect_next(&mut self, token: &Token) -> Result<&mut Self, CompileError> {
+	pub fn skip_next(&mut self, token: &Token) -> Result<&mut Self, CompileError> {
 		let pos = self.pos();
 		match self.data.pop() {
 			Some(value) => if *token != value.token {
@@ -165,18 +165,18 @@ impl Stream {
 		}
 	}
 
-	pub fn ends(&self, token: &Token) -> bool {
+	pub fn is_next(&self, token: &Token) -> bool {
 		self.peek().is_some() && self.peek().unwrap() == token
 	}
 
-	pub fn ends_literal(&self) -> bool {
+	pub fn is_next_literal(&self) -> bool {
 		match self.peek() {
 			Some(Token::Literal(_val)) => true,
 			_ => false
 		}
 	}
 
-	pub fn ends_ident(&self) -> bool {
+	pub fn is_next_identifier(&self) -> bool {
 		match self.peek() {
 			Some(Token::Identifier(_name)) => true,
 			_ => false

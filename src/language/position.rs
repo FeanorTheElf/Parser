@@ -1,12 +1,19 @@
 use std::fmt::{ Debug, Display, Formatter, Error };
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct TextPosition {
+pub struct TextPosition 
+{
     line: u32,
     column: u32
 }
 
-impl TextPosition {
+pub const BEGIN: TextPosition = TextPosition {
+    line: 0,
+    column: 0
+};
+
+impl TextPosition 
+{
     pub fn create(line: u32, column: u32) -> Self {
         TextPosition {
             line: line,

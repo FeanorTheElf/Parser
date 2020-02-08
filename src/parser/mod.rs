@@ -2,20 +2,20 @@ use super::lexer::tokens::Stream;
 use super::language::error::CompileError;
 use super::language::position::TextPosition;
 
-pub trait Buildable
+pub trait Parseable
 {
-    type OutputType;
+	type ParseOutputType;
 }
 
-pub trait Build<T>: Buildable
+pub trait Build<T>: Parseable
 {
-	fn build(pos: TextPosition, params: T) -> Self::OutputType;
+	fn build(pos: TextPosition, params: T) -> Self::ParseOutputType;
 }
 
-pub trait Parse: Buildable
+pub trait Parser: Parseable
 {
-	fn guess_can_parse(stream: &Stream) -> bool;
-	fn parse(stream: &mut Stream) -> Result<Self::OutputType, CompileError>;
+	fn is_applicable(stream: &Stream) -> bool;
+	fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>;
 }
 
 #[macro_use]

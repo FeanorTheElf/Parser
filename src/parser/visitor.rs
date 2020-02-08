@@ -224,7 +224,7 @@ fn test_transform() {
                 return a;
             } 
             return b;
-        }").expect_next(&Token::BOF).unwrap()).unwrap();
+        }").skip_next(&Token::BOF).unwrap()).unwrap();
         
     ast.transform(&mut blockify);
     assert_eq!(FunctionNode::parse(lex("
@@ -239,5 +239,5 @@ fn test_transform() {
             {
                 return b;
             }
-        }").expect_next(&Token::BOF).unwrap()).unwrap(), ast);
+        }").skip_next(&Token::BOF).unwrap()).unwrap(), ast);
 }

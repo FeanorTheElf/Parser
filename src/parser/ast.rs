@@ -28,7 +28,8 @@ pub fn cast<U: ?Sized + Node, T: Node>(node: Box<U>) -> Result<Box<T>, Box<U>>
     }
 }
 
-pub trait StmtNode : Node {
+pub trait StmtNode : Node
+{
 	fn dyn_clone(&self) -> Box<dyn StmtNode>;
 }
 

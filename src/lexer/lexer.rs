@@ -86,7 +86,15 @@ fn is_first_char_alphanumeric(string: &String) -> Option<bool>
 	string.chars().next().map(|first| is_alphanumeric(first))
 }
 
-pub fn lex(input: &str) -> Stream 
+fn is_sequence_valid_operator(current: &mut String, next_char: char) -> bool
+{
+	current.push(next_char);
+	let new_current_operator = lex_op(&current).is_some();
+	current.pop();
+	return new_current_operator;
+}
+
+pub fn lex(input: &str) -> Stream
 {
 	let mut result: Vec<PosToken> = vec![];
 	let mut current = String::new();
@@ -109,13 +117,8 @@ pub fn lex(input: &str) -> Stream
 		} else {
 			if is_first_char_alphanumeric(&current).unwrap_or(false) {
 				separator = true;
-			} else {
-				current.push(c);
-				let new_current_operator = lex_op(&current).is_some();
-				current.pop();
-				if lex_op(&current).is_some() && !new_current_operator {
-					separator = true;
-				}
+			} else if lex_op(&current).is_some() && !is_sequence_valid_operator(&mut current, c) {
+				separator = true;
 			}
 		}
 		if separator {
@@ -181,7 +184,7 @@ fn test_lex()
 fn test_lex_position() 
 {
 	let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
-	stream.expect_next(&Token::BOF).unwrap();
+	stream.skip_next(&Token::BOF).unwrap();
 	assert_eq!(0, stream.pos().column());
 	assert_eq!(0, stream.pos().line());
 	assert_eq!(Token::Let, stream.next());

@@ -1,15 +1,14 @@
-use super::super::lexer::tokens::{ Token, Stream };
-use super::super::language::error::{ CompileError, ErrorType };
-use super::super::language::position::TextPosition;
-
-type AstVec<T: ?Sized> = Vec<Box<T>>;
-
-use super::Parse;
+use super::super::lexer::tokens::{ Stream, Token };
+use super::super::language::prelude::*;
 use super::parser_gen::Flatten;
+use super::{ Buildable, Build, Parse };
+
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
 
 impl_parse!{ Program => Program(Token#BOF { FunctionNode } Token#EOF) }
 
-impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen {ParameterNode} Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
+impl_parse!{ FunctionNode => FunctionNode(Token#Fn identifier Token#BracketOpen { ParameterNode } Token#BracketClose Token#Colon TypeNode FunctionImplementationNode) }
 impl_parse!{ dyn FunctionImplementationNode => NativeFunctionNode(Token#Native Token#Semicolon) 
                                              | ImplementedFunctionNode(BlockNode)}
 impl_parse!{ ParameterNode => ParameterNode(identifier Token#Colon TypeNode Token#Comma) }
@@ -17,34 +16,34 @@ impl_parse!{ BlockNode => BlockNode(Token#CurlyBracketOpen {StmtNode} Token#Curl
 
 impl Parse for dyn StmtNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
-		ExprNode::guess_can_parse(stream) || stream.ends(&Token::If) || stream.ends(&Token::While) || stream.ends(&Token::CurlyBracketOpen) || stream.ends(&Token::Return) || stream.ends(&Token::Let)
+		ExprNode::guess_can_parse(stream) || stream.is_next(&Token::If) || stream.is_next(&Token::While) || stream.is_next(&Token::CurlyBracketOpen) || stream.is_next(&Token::Return) || stream.is_next(&Token::Let)
 	}
 
 	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError> {
 		let pos = stream.pos();
-		if stream.ends(&Token::If) {
+		if IfNode::guess_can_parse(stream) {
 			return Ok(Box::new(*IfNode::parse(stream)?));
-		} else if stream.ends(&Token::While) {
+		} else if WhileNode::guess_can_parse(stream) {
 			return Ok(Box::new(*WhileNode::parse(stream)?));
 		} else if BlockNode::guess_can_parse(stream) {
 			return Ok(BlockNode::parse(stream)?);
-		} else if stream.ends(&Token::Return) {
+		} else if ReturnNode::guess_can_parse(stream) {
 			return Ok(Box::new(*ReturnNode::parse(stream)?));
-		} else if stream.ends(&Token::Let) {
+		} else if VariableDeclarationNode::guess_can_parse(stream) {
 			return Ok(Box::new(*VariableDeclarationNode::parse(stream)?));
 		} else if ExprNode::guess_can_parse(stream) {
 			let expr = ExprNode::parse(stream)?;
-			if stream.ends(&Token::Assign) {
-				stream.expect_next(&Token::Assign)?;
+			if stream.is_next(&Token::Assign) {
+				stream.skip_next(&Token::Assign)?;
 				let new_val = ExprNode::parse(stream)?;
-				stream.expect_next(&Token::Semicolon)?;
+				stream.skip_next(&Token::Semicolon)?;
 				return Ok(Box::new(AssignmentNode::new(pos, expr, new_val)));
 			} else {
-				stream.expect_next(&Token::Semicolon)?;
+				stream.skip_next(&Token::Semicolon)?;
 				return Ok(Box::new(ExprStmtNode::new(pos, expr)));
 			}
 		} else {
-			panic!("Expected statement, got {:?} at position {}", stream.peek(), stream.pos());
+			return Err(CompileError::new(pos, format!("Expected statement, got {:?} at position {}", stream.peek(), stream.pos()), ErrorType::SyntaxError));
 		}
 	}
 }
@@ -56,20 +55,20 @@ impl_parse!{ VariableDeclarationNode => VariableDeclarationNode(Token#Let identi
 
 impl Parse for dyn TypeNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
-		BaseTypeNode::guess_can_parse(stream) || stream.ends(&Token::Void)
+		BaseTypeNode::guess_can_parse(stream) || stream.is_next(&Token::Void)
 	}
 
 	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>  {
 		let pos = stream.pos();
-		if stream.ends(&Token::Void) {
-			stream.expect_next(&Token::Void)?;
+		if stream.is_next(&Token::Void) {
+			stream.skip_next(&Token::Void)?;
 			return Ok(Box::new(VoidTypeNode::new(pos)));
 		} else if BaseTypeNode::guess_can_parse(stream) {
 			let base_type = BaseTypeNode::parse(stream)?;
 			let mut dimensions: u8 = 0;
-			while stream.ends(&Token::SquareBracketOpen) {
-				stream.expect_next(&Token::SquareBracketOpen)?;
-				stream.expect_next(&Token::SquareBracketClose)?;
+			while stream.is_next(&Token::SquareBracketOpen) {
+				stream.skip_next(&Token::SquareBracketOpen)?;
+				stream.skip_next(&Token::SquareBracketClose)?;
 				dimensions += 1;
 			}
 			return Ok(Box::new(ArrTypeNode::new(pos, base_type, dimensions)));
@@ -106,30 +105,30 @@ impl_parse!{ IndexPartNode => IndexPartNode(Token#SquareBracketOpen ExprNode Tok
 
 impl Parse for dyn UnaryExprNode {
 	fn guess_can_parse(stream: &Stream) -> bool {
-		stream.ends_ident() || stream.ends_literal() || stream.ends(&Token::BracketOpen) || stream.ends(&Token::New)
+		stream.is_next_identifier() || stream.is_next_literal() || stream.is_next(&Token::BracketOpen) || stream.is_next(&Token::New)
 	}
 
 	fn parse(stream: &mut Stream) -> Result<Box<Self>, CompileError>  {
 		let pos = stream.pos();
-		if stream.ends(&Token::BracketOpen) {
+		if stream.is_next(&Token::BracketOpen) {
 			return Ok(Box::new(*BracketExprNode::parse(stream)?));
-		} else if stream.ends_ident() {
+		} else if stream.is_next_identifier() {
 			let ident = stream.next_ident()?;
-			if stream.ends(&Token::BracketOpen) {
-				stream.expect_next(&Token::BracketOpen)?;
+			if stream.is_next(&Token::BracketOpen) {
+				stream.skip_next(&Token::BracketOpen)?;
 				let mut params: AstVec<ExprNode> = vec![];
-				while !stream.ends(&Token::BracketClose) {
+				while !stream.is_next(&Token::BracketClose) {
 					params.push(ExprNode::parse(stream)?);
-					stream.expect_next(&Token::Comma)?;
+					stream.skip_next(&Token::Comma)?;
 				}
-				stream.expect_next(&Token::BracketClose)?;
+				stream.skip_next(&Token::BracketClose)?;
 				return Ok(Box::new(FunctionCallNode::new(pos, ident, params)));
 			} else {
 				return Ok(Box::new(VariableNode::new(pos, ident)));
 			}
-		} else if stream.ends_literal() {
+		} else if stream.is_next_literal() {
 			return Ok(Box::new(LiteralNode::new(pos, stream.next_literal()?)));
-		} else if stream.ends(&Token::New) {
+		} else if stream.is_next(&Token::New) {
 			return Ok(Box::new(*NewExprNode::parse(stream)?));
 		} else {
 			return Err(CompileError::new(stream.pos(), format!("Expected 'new', '(', identifier or literal, got {:?}", stream.peek()), ErrorType::SyntaxError));
@@ -144,7 +143,7 @@ impl_parse!{ dyn BaseTypeNode => IntTypeNode(Token#Int) }
 #[test]
 fn test_parse_simple_function() {
     let ident = |name: &'static str| Identifier::new(name);
-    let len = *FunctionNode::parse(lex("fn len(a: int[],): int { let b: int[] = a; { return len(b, ); } }").expect_next(&Token::BOF).unwrap()).unwrap();
+    let len = *FunctionNode::parse(lex("fn len(a: int[],): int { let b: int[] = a; { return len(b, ); } }").skip_next(&Token::BOF).unwrap()).unwrap();
 
 	assert_eq!(ident("len"), len.ident);
 	assert_eq!(1, len.params.len());

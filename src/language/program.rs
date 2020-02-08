@@ -1,56 +1,8 @@
 use std::vec::Vec;
-use std::any::Any;
 
-use super::super::util::dynamic::{ DynEq, Dynamic };
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Identifier {
-    name: String,
-    id: u32
-}
-
-impl Identifier
-{
-	pub fn new(name: &str) -> Identifier
-	{
-        Identifier {
-            name: name.to_owned(),
-            id: 0
-        }
-	}
-
-	pub fn auto(id: u32) -> Identifier
-	{
-		Identifier {
-            name: "auto".to_owned(),
-            id: id
-        }
-	}
-}
-
-impl PartialOrd for Identifier
-{
-	fn partial_cmp(&self, rhs: &Identifier) -> Option<std::cmp::Ordering>
-	{
-		Some(self.cmp(rhs))
-	}
-}
-
-impl Ord for Identifier
-{
-	fn cmp(&self, rhs: &Identifier) -> std::cmp::Ordering
-	{
-        match self.name.cmp(&rhs.name) {
-            std::cmp::Ordering::Equal => self.id.cmp(&rhs.id),
-            x => x
-        }
-	}
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Literal {
-	pub value: i32
-}
+use super::AstNode;
+use super::position::{ TextPosition, BEGIN };
+use super::identifier::{ Identifier, Name };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PrimitiveType 
@@ -67,24 +19,69 @@ pub enum Type
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Program
+{
+    pub items: Vec<Box<Function>>
+}
+
+impl AstNode for Program
+{
+    fn pos(&self) -> &TextPosition 
+    {
+        &BEGIN
+    }
+}
+
+#[derive(Debug, Eq)]
 pub struct Function
 {
-    identifier: Identifier,
-    params: Vec<(Identifier, Type)>,
-    return_type: Type,
-    body: Option<Block>
+    pub pos: TextPosition,
+    pub identifier: Name,
+    pub params: Vec<(TextPosition, Name, Type)>,
+    pub return_type: Type,
+    pub body: Option<Block>
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl AstNode for Function
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl PartialEq for Function
+{
+    fn eq(&self, rhs: &Function) -> bool
+    {
+        self.identifier == rhs.identifier && self.params == rhs.params && self.return_type == rhs.return_type && self.body == rhs.body
+    }
+}
+
+#[derive(Debug, Eq)]
 pub struct Block
 {
-    statements: Vec<Box<dyn Statement>>
+    pub pos: TextPosition,
+    pub statements: Vec<Box<dyn Statement>>
 }
 
-pub trait Statement: std::fmt::Debug + Any + DynEq + Dynamic
+impl AstNode for Block
 {
-
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
+
+impl PartialEq for Block
+{
+    fn eq(&self, rhs: &Block) -> bool
+    {
+        self.statements == rhs.statements
+    }
+}
+
+pub trait Statement: AstNode { }
 
 impl PartialEq for dyn Statement
 {
@@ -96,36 +93,20 @@ impl PartialEq for dyn Statement
 
 impl Eq for dyn Statement {}
 
-impl Statement for Block
-{
-
-}
-
-pub trait Expression: std::fmt::Debug + Any + DynEq + Dynamic
-{
-
-}
-
-impl PartialEq for dyn Expression
-{
-    fn eq(&self, rhs: &dyn Expression) -> bool
-    {
-        self.dyn_eq(rhs.dynamic())
-    }
-}
-
-impl Eq for dyn Expression {}
-
-impl Statement for dyn Expression 
-{
-
-}
-
 #[derive(Debug, Eq)]
 pub struct If
 {
-    condition: Box<dyn Expression>,
-    body: Block
+    pub pos: TextPosition,
+    pub condition: Box<dyn Expression>,
+    pub body: Block
+}
+
+impl AstNode for If
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
 
 impl PartialEq for If
@@ -139,8 +120,17 @@ impl PartialEq for If
 #[derive(Debug, Eq)]
 pub struct While
 {
-    condition: Box<dyn Expression>,
-    body: Block
+    pub pos: TextPosition,
+    pub condition: Box<dyn Expression>,
+    pub body: Block
+}
+
+impl AstNode for While
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
 
 impl PartialEq for While
@@ -154,8 +144,17 @@ impl PartialEq for While
 #[derive(Debug, Eq)]
 pub struct Assignment
 {
-    assignee: Box<dyn Expression>,
-    value: Box<dyn Expression>
+    pub pos: TextPosition,
+    pub assignee: Box<dyn Expression>,
+    pub value: Box<dyn Expression>
+}
+
+impl AstNode for Assignment
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
 
 impl PartialEq for Assignment
@@ -166,24 +165,102 @@ impl PartialEq for Assignment
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct Declaration
 {
-    variable: Identifier,
-    value: Option<Box<dyn Expression>>
+    pub pos: TextPosition,
+    pub variable: Name,
+    pub variable_type: Type,
+    pub value: Option<Box<dyn Expression>>
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl AstNode for Declaration
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl PartialEq for Declaration
+{
+    fn eq(&self, rhs: &Declaration) -> bool
+    {
+        self.variable == rhs.variable && self.variable_type == rhs.variable_type && self.value == rhs.value
+    }
+}
+
+#[derive(Debug, Eq)]
 pub struct Return
 {
-    value: Option<Box<dyn Expression>>
+    pub pos: TextPosition,
+    pub value: Option<Box<dyn Expression>>
+}
+
+impl AstNode for Return
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl PartialEq for Return
+{
+    fn eq(&self, rhs: &Return) -> bool
+    {
+        self.value == rhs.value
+    }
+}
+
+impl Statement for Box<dyn Expression> { }
+
+impl Statement for If { }
+
+impl Statement for While { }
+
+impl Statement for Return { }
+
+impl Statement for Block { }
+
+impl Statement for Declaration { }
+
+impl Statement for Assignment { }
+
+pub trait Expression: AstNode { }
+
+impl PartialEq for dyn Expression
+{
+    fn eq(&self, rhs: &dyn Expression) -> bool
+    {
+        self.dyn_eq(rhs.dynamic())
+    }
+}
+
+impl Eq for dyn Expression {}
+
+impl AstNode for Box<dyn Expression>
+{
+    fn pos(&self) -> &TextPosition
+    {
+        (**self).pos()
+    }
 }
 
 #[derive(Debug, Eq)]
 pub struct FunctionCall
 {
-    function: Box<dyn Expression>,
-    parameters: Vec<Box<dyn Expression>>
+    pub pos: TextPosition,
+    pub function: Box<dyn Expression>,
+    pub parameters: Vec<Box<dyn Expression>>
+}
+
+impl AstNode for FunctionCall
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
 
 impl PartialEq for FunctionCall
@@ -194,17 +271,52 @@ impl PartialEq for FunctionCall
     }
 }
 
-impl Expression for FunctionCall
-{
+impl Expression for FunctionCall { }
 
+#[derive(Debug, Eq, Clone)]
+pub struct Variable {
+    pub pos: TextPosition,
+	pub identifier: Identifier
 }
 
-impl Expression for Identifier
+impl PartialEq for Variable
 {
-
+    fn eq(&self, rhs: &Variable) -> bool
+    {
+        self.identifier == rhs.identifier
+    }
 }
 
-impl Expression for Literal
+impl AstNode for Variable
 {
-
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
 }
+
+impl Expression for Variable { }
+
+#[derive(Debug, Eq, Clone)]
+pub struct Literal {
+    pub pos: TextPosition,
+	pub value: i32
+}
+
+impl PartialEq for Literal
+{
+    fn eq(&self, rhs: &Literal) -> bool
+    {
+        self.value == rhs.value
+    }
+}
+
+impl AstNode for Literal
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl Expression for Literal { }
