@@ -42,10 +42,40 @@ impl Ord for Name
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl std::fmt::Display for Name
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    {
+        write!(f, "{}#{}", self.name, self.id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltInIdentifier 
 {
     FunctionIndex, FunctionAdd, FunctionMul, FunctionUnaryDiv, FunctionUnaryNeg, FunctionAnd, FunctionOr, FunctionLeq, FunctionGeq, FunctionEq, FunctionNeq, FunctionLs, FunctionGt
+}
+
+impl std::fmt::Display for BuiltInIdentifier
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    {
+        write!(f, "{}", match self {
+            BuiltInIdentifier::FunctionIndex => "[]", 
+            BuiltInIdentifier::FunctionAdd => "+", 
+            BuiltInIdentifier::FunctionMul => "*", 
+            BuiltInIdentifier::FunctionUnaryDiv => "/", 
+            BuiltInIdentifier::FunctionUnaryNeg => "-", 
+            BuiltInIdentifier::FunctionAnd => "&&", 
+            BuiltInIdentifier::FunctionOr => "||", 
+            BuiltInIdentifier::FunctionLeq => "<=", 
+            BuiltInIdentifier::FunctionGeq => ">=", 
+            BuiltInIdentifier::FunctionEq => "==", 
+            BuiltInIdentifier::FunctionNeq => "!=", 
+            BuiltInIdentifier::FunctionLs => "<", 
+            BuiltInIdentifier::FunctionGt => ">"
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

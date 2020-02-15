@@ -8,6 +8,7 @@ extern crate test;
 
 #[macro_use]
 mod util;
+#[macro_use]
 mod language;
 mod lexer;
 mod parser;

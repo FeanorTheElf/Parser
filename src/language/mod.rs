@@ -11,12 +11,9 @@ pub trait AstNode: std::fmt::Debug + Any + DynEq + Dynamic
 
 pub mod error;
 pub mod identifier;
+pub mod print;
 pub mod program;
 pub mod prelude;
-
-// #[cfg(test)]
-// pub mod test_rename;
-
-// pub mod obj_type;
-// pub mod scope;
-// pub mod inline;
+pub mod nazgul_printer;
+#[macro_use]
+pub mod test;

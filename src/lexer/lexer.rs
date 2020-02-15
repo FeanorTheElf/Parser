@@ -78,7 +78,7 @@ fn is_newline(c: char) -> bool
 
 fn is_alphanumeric(c: char) -> bool 
 {
-	c == '_' || c.is_ascii_alphanumeric()
+	c == '_' || c == '#' || c.is_ascii_alphanumeric()
 }
 
 fn is_first_char_alphanumeric(string: &String) -> Option<bool> 

@@ -9,7 +9,8 @@ pub enum ErrorType {
     ShadowedDefinition,
     VariableVoidType,
     DuplicateDefinition,
-    IllegalArrayBaseType
+    IllegalArrayBaseType,
+    IncorrectIdentifier
 }
 
 #[derive(Debug)]

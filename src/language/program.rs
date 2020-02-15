@@ -3,6 +3,7 @@ use std::vec::Vec;
 use super::AstNode;
 use super::position::{ TextPosition, BEGIN };
 use super::identifier::{ Identifier, Name };
+use super::print::{ Printer, Printable };
 
 use super::super::util::iterable::{ Iterable, LifetimeIterable };
 
@@ -19,6 +20,31 @@ pub enum Type
     Primitive(PrimitiveType),
     Array(PrimitiveType, u32),
     Function(Vec<Box<Type>>, Option<Box<Type>>)
+}
+
+impl std::fmt::Display for Type
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    {
+        match self {
+            Type::TestType => write!(f, "test"),
+            Type::Primitive(PrimitiveType::Int) => write!(f, "int"),
+            Type::Array(PrimitiveType::Int, dims) => write!(f, "int[{}]", ",".repeat(*dims as usize)),
+            Type::Function(params, result) => {
+                f.write_str("fn(")?;
+                for param in params {
+                    param.fmt(f)?;
+                    f.write_str(", ")?;
+                }
+                f.write_str(")")?;
+                if let Some(result_type) = result {
+                    f.write_str(": ")?;
+                    result_type.fmt(f)?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,13 +70,13 @@ pub struct Block
     pub statements: Vec<Box<dyn Statement>>
 }
 
-pub trait Statement: AstNode + Iterable<Box<dyn Expression>> { }
+pub trait Statement: AstNode + Iterable<Expression> + Printable { }
 
 #[derive(Debug, Eq)]
 pub struct If
 {
     pub pos: TextPosition,
-    pub condition: Box<dyn Expression>,
+    pub condition: Expression,
     pub body: Block
 }
 
@@ -58,7 +84,7 @@ pub struct If
 pub struct While
 {
     pub pos: TextPosition,
-    pub condition: Box<dyn Expression>,
+    pub condition: Expression,
     pub body: Block
 }
 
@@ -66,8 +92,8 @@ pub struct While
 pub struct Assignment
 {
     pub pos: TextPosition,
-    pub assignee: Box<dyn Expression>,
-    pub value: Box<dyn Expression>
+    pub assignee: Expression,
+    pub value: Expression
 }
 
 #[derive(Debug, Eq)]
@@ -76,24 +102,30 @@ pub struct Declaration
     pub pos: TextPosition,
     pub variable: Name,
     pub variable_type: Type,
-    pub value: Option<Box<dyn Expression>>
+    pub value: Option<Expression>
 }
 
 #[derive(Debug, Eq)]
 pub struct Return
 {
     pub pos: TextPosition,
-    pub value: Option<Box<dyn Expression>>
+    pub value: Option<Expression>
 }
 
-pub trait Expression: AstNode { }
+#[derive(Debug, PartialEq, Eq)]
+pub enum Expression
+{
+    Call(Box<FunctionCall>),
+    Variable(Variable),
+    Literal(Literal)
+}
 
 #[derive(Debug, Eq)]
 pub struct FunctionCall
 {
     pub pos: TextPosition,
-    pub function: Box<dyn Expression>,
-    pub parameters: Vec<Box<dyn Expression>>
+    pub function: Expression,
+    pub parameters: Vec<Expression>
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -170,7 +202,7 @@ impl PartialEq for If
 {
     fn eq(&self, rhs: &If) -> bool
     {
-        *self.condition == *rhs.condition && self.body == rhs.body
+        self.condition == rhs.condition && self.body == rhs.body
     }
 }
 
@@ -186,7 +218,7 @@ impl PartialEq for While
 {
     fn eq(&self, rhs: &While) -> bool
     {
-        *self.condition == *rhs.condition && self.body == rhs.body
+        self.condition == rhs.condition && self.body == rhs.body
     }
 }
 
@@ -202,7 +234,7 @@ impl PartialEq for Assignment
 {
     fn eq(&self, rhs: &Assignment) -> bool
     {
-        *self.assignee == *rhs.assignee && *self.value == *rhs.value
+        self.assignee == rhs.assignee && self.value == rhs.value
     }
 }
 
@@ -238,7 +270,7 @@ impl PartialEq for Return
     }
 }
 
-impl Statement for Box<dyn Expression> { }
+impl Statement for Expression { }
 
 impl Statement for If { }
 
@@ -252,21 +284,15 @@ impl Statement for Declaration { }
 
 impl Statement for Assignment { }
 
-impl PartialEq for dyn Expression
-{
-    fn eq(&self, rhs: &dyn Expression) -> bool
-    {
-        self.dyn_eq(rhs.dynamic())
-    }
-}
-
-impl Eq for dyn Expression {}
-
-impl AstNode for Box<dyn Expression>
+impl AstNode for Expression
 {
     fn pos(&self) -> &TextPosition
     {
-        (**self).pos()
+        match self {
+            Expression::Call(call) => call.pos(),
+            Expression::Variable(var) => var.pos(),
+            Expression::Literal(lit) => lit.pos()
+        }
     }
 }
 
@@ -282,11 +308,9 @@ impl PartialEq for FunctionCall
 {
     fn eq(&self, rhs: &FunctionCall) -> bool
     {
-        *self.function == *rhs.function && self.parameters == rhs.parameters
+        self.function == rhs.function && self.parameters == rhs.parameters
     }
 }
-
-impl Expression for FunctionCall { }
 
 impl PartialEq for Variable
 {
@@ -304,8 +328,6 @@ impl AstNode for Variable
     }
 }
 
-impl Expression for Variable { }
-
 impl PartialEq for Literal
 {
     fn eq(&self, rhs: &Literal) -> bool
@@ -322,50 +344,121 @@ impl AstNode for Literal
     }
 }
 
-impl Expression for Literal { }
-
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Box<dyn Expression>
+impl Printable for Function
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_function_header(self);
+        if let Some(ref body) = self.body {
+            body.print(printer);
+        }
+    }
+}
+
+impl Printable for Block
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.enter_block();
+        for statement in self.statements.iter() {
+            statement.print(printer);
+        }
+        printer.exit_block();
+    }
+}
+
+impl Printable for Expression
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_expression(self);
+    }
+}
+
+impl Printable for If
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_if_header(self);
+        self.body.print(printer);
+    }
+}
+
+impl Printable for While
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_while_header(self);
+        self.body.print(printer);
+    }
+}
+
+impl Printable for Declaration
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_declaration(self);
+    }
+}
+
+impl Printable for Return
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_return(self);
+    }
+}
+
+impl Printable for Assignment
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_assignment(self);
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Expression> for Expression
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         Box::new(std::iter::once(self))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::once(self))
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for If
+impl<'a> LifetimeIterable<'a, Expression> for If
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         Box::new(std::iter::once(&self.condition))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::once(&mut self.condition))
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for While
+impl<'a> LifetimeIterable<'a, Expression> for While
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         Box::new(std::iter::once(&self.condition))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::once(&mut self.condition))
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Return
+impl<'a> LifetimeIterable<'a, Expression> for Return
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         if let Some(ref val) = self.value {
             Box::new(std::iter::once(val))
@@ -374,7 +467,7 @@ impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Return
         }
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         if let Some(ref mut val) = self.value {
             Box::new(std::iter::once(val))
@@ -384,22 +477,22 @@ impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Return
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Block
+impl<'a> LifetimeIterable<'a, Expression> for Block
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         Box::new(std::iter::empty())
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::empty())
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Declaration
+impl<'a> LifetimeIterable<'a, Expression> for Declaration
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         if let Some(ref val) = self.value {
             Box::new(std::iter::once(val))
@@ -408,7 +501,7 @@ impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Declaration
         }
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         if let Some(ref mut val) = self.value {
             Box::new(std::iter::once(val))
@@ -418,14 +511,14 @@ impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Declaration
     }
 }
 
-impl<'a> LifetimeIterable<'a, Box<dyn Expression>> for Assignment
+impl<'a> LifetimeIterable<'a, Expression> for Assignment
 {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Box<dyn Expression>> + 'a)>
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
         Box::new(std::iter::once(&self.assignee).chain(std::iter::once(&self.value)))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Box<dyn Expression>> + 'a)>
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::once(&mut self.assignee).chain(std::iter::once(&mut self.value)))
     }
