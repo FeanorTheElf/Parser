@@ -49,7 +49,7 @@ impl Parser for Name
     
     fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
     {
-        Ok(Name::new(stream.next_ident()?))
+        Ok(Name::new(stream.next_ident()?, 0))
     }
 }
 
@@ -95,9 +95,9 @@ impl Parseable for Function
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, Vec<ParameterNode>, TypeNode, FunctionImpl)> for Function
+impl Build<(Name, Vec<ParameterNode>, Option<TypeNode>, FunctionImpl)> for Function
 {
-    fn build(pos: TextPosition, param: (Name, Vec<ParameterNode>, TypeNode, FunctionImpl)) -> Self::ParseOutputType
+    fn build(pos: TextPosition, param: (Name, Vec<ParameterNode>, Option<TypeNode>, FunctionImpl)) -> Self::ParseOutputType
     {
         let block = if let FunctionImpl::Block(block) = param.3 {
             Some(block)
@@ -108,7 +108,7 @@ impl Build<(Name, Vec<ParameterNode>, TypeNode, FunctionImpl)> for Function
             pos: pos,
             identifier: param.0,
             params: param.1.into_iter().map(|p| (p.0.clone(), (p.1).0, Type::build(p.0, (p.1).1))).collect(),
-            return_type: Type::build((param.2).0.clone(), param.2),
+            return_type: param.2.map(|p| Type::build(p.0.clone(), p)),
             body: block
         }
     }
@@ -416,7 +416,7 @@ grammar_rule!{ TypeNode := PrimitiveTypeNode [ Dimensions ] }
 grammar_rule!{ Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
 grammar_rule!{ PrimitiveTypeNode := Token#Int }
 
-impl_parse!{ Function := Token#Fn Name Token#BracketOpen { ParameterNode } Token#BracketClose Token#Colon TypeNode FunctionImpl }
+impl_parse!{ Function := Token#Fn Name Token#BracketOpen { ParameterNode } Token#BracketClose [ Token#Colon TypeNode ] FunctionImpl }
 grammar_rule!{ ParameterNode := Name Token#Colon TypeNode Token#Comma }
 grammar_rule!{ FunctionImpl := NativeFunction | Block }
 grammar_rule!{ NativeFunction := Token#Native Token#Semicolon }

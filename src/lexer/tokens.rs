@@ -119,7 +119,7 @@ impl PosToken {
 
 #[derive(Debug)]
 pub struct Stream {
-	data: Vec<PosToken>
+	pub data: Vec<PosToken>
 }
 
 impl Stream {

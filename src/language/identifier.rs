@@ -2,19 +2,25 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name
 {
-    name: String,
-    id: u32
+    pub name: String,
+    pub id: u32
 }
 
 impl Name
 {
-	pub fn new(name: String) -> Name
+	pub fn new(name: String, id: u32) -> Name
 	{
         Name {
             name: name,
-            id: 0
+            id: id
         }
-	}
+    }
+
+    #[cfg(test)]
+    pub fn l(name: &'static str) -> Name
+    {
+        Name::new(name.to_owned(), 0)
+    }
 }
 
 impl PartialOrd for Name

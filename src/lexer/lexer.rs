@@ -147,6 +147,15 @@ pub fn lex(input: &str) -> Stream
 }
 
 #[cfg(test)]
+pub fn fragment_lex(input: &str) -> Stream
+{
+	let mut result = lex(input);
+	result.data.remove(0);
+	result.data.pop();
+	return result;
+}
+
+#[cfg(test)]
 use std::iter::FromIterator;
 
 #[test]
