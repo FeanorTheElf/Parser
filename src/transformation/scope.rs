@@ -125,23 +125,50 @@ impl ScopeNode
     }
 }
 
-#[derive(Clone)]
-pub struct ScopeStack 
+struct ScopeStackIter<'a>
 {
+    current: Option<&'a ScopeStack<'a>>
+}
+
+impl<'a> Iterator for ScopeStackIter<'a>
+{
+    type Item = &'a ScopeStack<'a>;
+
+    fn next(&mut self) -> Option<Self::Item>
+    {
+        let result = self.current;
+        self.current = self.current.and_then(|scopes| scopes.parent);
+        result
+    }
+}
+
+#[derive(Clone)]
+pub struct ScopeStack<'a>
+{
+    parent: Option<&'a ScopeStack<'a>>,
     scopes: Vec<ScopeNode>
 }
 
-impl ScopeStack 
+impl<'a> ScopeStack<'a>
 {
     pub fn new(global: &[Box<Function>]) -> ScopeStack
     {
         ScopeStack {
+            parent: None,
             scopes: vec![ScopeNode::create(global)]
         }
     }
 
+    pub fn child_stack<'b>(&'b self) -> ScopeStack<'b>
+    {
+        ScopeStack {
+            parent: Some(self),
+            scopes: vec![]
+        }
+    }
+
     pub fn enter<T: ?Sized>(&mut self, scope: &T)
-        where for<'a> &'a T: EnumerateDefinitions<'a>
+        where for<'b> &'b T: EnumerateDefinitions<'b>
     {
         self.scopes.push(ScopeNode::create(scope));
     }
@@ -151,12 +178,19 @@ impl ScopeStack
         self.scopes.pop().expect("Cannot call exit() on empty scope stack");
     }
 
-    pub fn definitions<'a>(&'a self) -> impl 'a + Iterator<Item = &'a Name>
+    fn parent_stacks<'b>(&'b self) -> ScopeStackIter<'b>
     {
-        self.scopes.iter().flat_map(|scope_node| scope_node.definitions.iter())
+        ScopeStackIter {
+            current: Some(self)
+        }
+    }
+
+    pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = &'b Name>
+    {
+        self.parent_stacks().flat_map(|stack| stack.scopes.iter()).flat_map(|scope_node| scope_node.definitions.iter())
     } 
 
-    pub fn rename_disjunct<'a>(&'a self) -> impl 'a + FnMut(Name) -> Name
+    pub fn rename_disjunct<'b>(&'b self) -> impl 'b + FnMut(Name) -> Name
     {
         let mut current: HashMap<String, u32> = HashMap::new();
         move |name: Name| {

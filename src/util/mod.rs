@@ -1,8 +1,5 @@
-pub mod push_iter;
 pub mod ref_eq;
 pub mod dynamic;
-#[macro_use]
-pub mod macros;
 pub mod iterable;
 
 #[allow(unused)]
@@ -18,4 +15,19 @@ pub fn equal_ignore_order<T>(lhs: &Vec<T>, rhs: &Vec<T>) -> bool
 		}
 	}
 	return true;
+}
+
+pub fn get_all_mut<'a, T, I>(vec: &'a mut Vec<T>, it: I) -> impl 'a + Iterator<Item = &'a mut T>
+	where I: Iterator<Item = usize> + 'a
+{
+	it.scan((&mut vec[..], 0), |state: &mut (&'a mut [T], usize), index| {
+		assert!(index >= state.1 && index < state.1 + state.0.len(), "The given index operator must yield a strictly ascending sequence bounded by the vector length");
+		let mut result: Option<&'a mut T> = None;
+		take_mut::take(state, |(current_slice, current_index)| {
+			let (head, tail): (&'a mut [T], &'a mut [T]) = current_slice.split_at_mut(index - current_index + 1);
+			result = Some(&mut head[head.len() - 1]);
+			return (tail, index + 1);
+		});
+		return result;
+	})
 }

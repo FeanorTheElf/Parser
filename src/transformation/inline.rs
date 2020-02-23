@@ -1,15 +1,16 @@
 use super::super::language::prelude::*;
 use super::scope::ScopeStack;
+use super::super::util;
 
-fn replace_expression_with_inlined<'a, F>(rename_disjunct: &'a mut F, result: &'a mut Vec<Box<dyn Statement>>) -> impl (FnMut(Expression) -> Expression) + 'a
+fn replace_expression_with_inlined<'a, F>(rename_disjunct: &'a mut F) -> impl (FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<usize>) -> Expression) + 'a
     where F: FnMut(Name) -> Name
 {
-    move |expr| {
+    move |expr, result, subblock_indices| {
         match expr {
             Expression::Call(call) => {
                 let pos = call.pos().clone();
                 let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
-                let replace_params = replace_expression_with_inlined(rename_disjunct, result);
+                let mut replace_params = replace_expression_with_inlined(rename_disjunct);
                 let declaration = Declaration {
                     pos: pos.clone(),
                     value: None,
@@ -28,12 +29,13 @@ fn replace_expression_with_inlined<'a, F>(rename_disjunct: &'a mut F, result: &'
                             value: Expression::Call(Box::new(FunctionCall {
                                 pos: pos.clone(),
                                 function: call.function,
-                                parameters: call.parameters.into_iter().map(replace_params).collect()
+                                parameters: call.parameters.into_iter().map(|p| replace_params(p, result, subblock_indices)).collect()
                             }))
                         })
                     ]
                 };
                 result.push(Box::new(declaration));
+                subblock_indices.push(result.len());
                 result.push(Box::new(value_block));
                 return Expression::Variable(Variable {
                     pos: pos,
@@ -45,20 +47,26 @@ fn replace_expression_with_inlined<'a, F>(rename_disjunct: &'a mut F, result: &'
     }
 }
 
-fn prepare_inline_expressions_in_block(block: &mut Block, scopes: &ScopeStack)
+fn prepare_inline_expressions_in_block<'a, 'b>(block: &'a mut Block, parent_scopes: &'b ScopeStack<'b>) -> (ScopeStack<'b>, impl 'a + Iterator<Item = &'a mut Block>)
 {
-    let mut rename_disjunct = scopes.rename_disjunct();
-    let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
-    for mut statement in block.statements.drain(..) {
-        {
-            let mut prepare_inline_expression = replace_expression_with_inlined(&mut rename_disjunct, &mut result_statements);
+    let mut scopes = parent_scopes.child_stack();
+    let mut prepared_subblock_indices: Vec<usize> = vec![];
+    scopes.enter(block);
+    {
+        let mut rename_disjunct = scopes.rename_disjunct();
+        let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
+        for mut statement in block.statements.drain(..) {
+            let mut prepare_inline_expression = replace_expression_with_inlined(&mut rename_disjunct);
             for expression in statement.iter_mut() {
-                take_mut::take(expression, &mut prepare_inline_expression);
+                take_mut::take(expression, &mut |expr| prepare_inline_expression(expr, &mut result_statements, &mut prepared_subblock_indices));
             }
+            result_statements.push(statement);
         }
-        result_statements.push(statement);
+        block.statements = result_statements;
     }
-    block.statements = result_statements;
+    scopes.exit();
+    scopes.enter(block);
+    return (scopes, util::get_all_mut(&mut block.statements, prepared_subblock_indices.into_iter()).map(|s| s.dynamic_mut().downcast_mut::<Block>().unwrap()));
 }
 
 #[cfg(test)]
