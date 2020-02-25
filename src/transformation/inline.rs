@@ -149,7 +149,6 @@ fn inline_single_function_call(call: FunctionCall, definition: &Function, result
     let pos = call.pos;
     let mut rename_disjunct = scopes.rename_disjunct();
     let mut rename_mapping: HashMap<Name, Name> = HashMap::new();
-    rename_mapping.insert(result_var.clone(), result_var.clone());
     for (given_param, formal_param) in call.parameters.into_iter().zip(definition.params.iter()) {
         let param_name = rename_disjunct(formal_param.1.clone());
         rename_mapping.insert(formal_param.1.clone(), param_name.clone());
@@ -177,16 +176,20 @@ fn process_inline_body<F>(block: &mut Block, result_var: &Name, return_label: &N
     where F: FnMut(Name) -> Name
 {
     for statement in &mut block.statements {
-        if statement.dynamic().is::<Return>() {
-            take_mut::take(statement, |statement| transform_return(statement, result_var, return_label));
-        } else if let Some(declaration) = statement.dynamic_mut().downcast_mut::<Declaration>() {
-            declaration.variable = rename_identifier(&declaration.variable, rename_disjunct, rename_mapping);
-        }
         for subblock in statement.iter_mut() {
             process_inline_body(subblock, result_var, return_label, rename_disjunct, rename_mapping);
         }
         for expression in statement.iter_mut() {
             recursive_rename_variables(expression, rename_disjunct, rename_mapping);
+        }
+        if statement.dynamic().is::<Return>() {
+            take_mut::take(statement, |statement| transform_return(statement, result_var, return_label));
+        } else if let Some(declaration) = statement.dynamic_mut().downcast_mut::<Declaration>() {
+            declaration.variable = rename_identifier(&declaration.variable, rename_disjunct, rename_mapping);
+        } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
+            goto.target = rename_identifier(&goto.target, rename_disjunct, rename_mapping);
+        } else if let Some(label) = statement.dynamic_mut().downcast_mut::<Label>() {
+            label.label = rename_identifier(&label.label, rename_disjunct, rename_mapping);
         }
     }
 }
@@ -257,23 +260,29 @@ use super::super::parser::Parser;
 use super::super::language::nazgul_printer::print_nazgul;
 
 #[test]
-fn test_inline() {
+fn test_inline_function_calls_in_block() {
     let mut scope_stack: ScopeStack = ScopeStack::new(&[]);
     let predefined_variables = [Name::l("b"), Name::l("c"), Name::l("other_func"), Name::l("some_func")];
     scope_stack.enter(&predefined_variables as &[Name]);
     let mut test = Inliner { should_inline: |_, _| true };
 
-    let mut block = Block::parse(&mut fragment_lex("{
+    let mut block = Block::parse(&mut fragment_lex("
+    {
         let a: int = some_func(other_func(b, ), c + b, );
+        let x: int = a + 1;
     }")).unwrap();
-    let some_func: Function = Function::parse(&mut fragment_lex("fn some_func(a: int, b: int, ): int {
+
+    let some_func: Function = Function::parse(&mut fragment_lex("
+    fn some_func(a: int, b: int, ): int  {
         let c: int = a;
         while (c > b) {
             c = c - b;
         }
         return c;
     }")).unwrap();
-    let other_func: Function = Function::parse(&mut fragment_lex("fn other_func(x: int, ): int {
+
+    let other_func: Function = Function::parse(&mut fragment_lex("
+    fn other_func(x: int, ): int {
         let i: int = 2;
         while (1) {
             i = i + 1;
@@ -290,12 +299,12 @@ fn test_inline() {
         let result#0: int;
         let result#1: int;
         {
-            let x: int = b;
+            let x#1: int = b;
             {
                 let i: int = 2;
                 while (1) {
                     i = i + 1;
-                    if ((x / i) * i == x) {
+                    if ((x#1 / i) * i == x#1) {
                         {
                             result#1 = i;
                             goto other_func#1;
@@ -303,7 +312,7 @@ fn test_inline() {
                     }
                 }
                 {
-                    result#1 = x;
+                    result#1 = x#1;
                     goto other_func#1;
                 }
             }
@@ -325,6 +334,62 @@ fn test_inline() {
             @some_func#1
         }
         let a: int = result#0;
+        let x: int = a + 1;
     }")).unwrap();
     assert_ast_eq!(expected, block);
+}
+
+#[test]
+fn test_process_inline_body() {
+    let mut body = Block::parse(&mut fragment_lex("
+    {
+        let result: int = 10;
+        while (1) {
+            if (result < 5) {
+                if (result == 0) {
+                    return result;
+                    goto result#1;
+                }
+                {
+                    result = result - 1;
+                    return result;
+                }
+                @result#1
+            }
+        }
+    }")).unwrap();
+    let mut rename_mapping = HashMap::new();
+    let mut scopes = ScopeStack::new(&[]);
+    scopes.enter(&[Name::l("result")] as &[Name]);
+    process_inline_body(&mut body, &Name::l("result"), &Name::l("return_label"), &mut scopes.rename_disjunct(), &mut rename_mapping);
+
+    let expected = Block::parse(&mut fragment_lex("
+    {
+        let result#1: int = 10;
+        while (1) {
+            if (result#1 < 5) {
+                if (result#1 == 0) {
+                    {
+                        result = result#1;
+                        goto return_label;
+                    }
+                    goto result#2;
+                }
+                {
+                    result#1 = result#1 - 1;
+                    {
+                        result = result#1;
+                        goto return_label;
+                    }
+                }
+                @result#2
+            }
+        }
+    }")).unwrap();
+    assert_ast_eq!(expected, body);
+
+    let mut expected_mapping = HashMap::new();
+    expected_mapping.insert(Name::new("result".to_owned(), 0), Name::new("result".to_owned(), 1));
+    expected_mapping.insert(Name::new("result".to_owned(), 1), Name::new("result".to_owned(), 2));
+    assert_eq!(expected_mapping, rename_mapping);
 }
