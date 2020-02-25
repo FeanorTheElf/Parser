@@ -19,6 +19,19 @@ impl SymbolDefinition for Declaration
     }
 }
 
+impl SymbolDefinition for Label
+{
+    fn get_name(&self) -> &Name
+    {
+        &self.label
+    }
+
+    fn calc_type(&self) -> Type
+    {
+        Type::JumpLabel
+    }
+}
+
 impl SymbolDefinition for (TextPosition, Name, Type)
 {
     fn get_name(&self) -> &Name

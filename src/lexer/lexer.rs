@@ -33,6 +33,7 @@ fn lex_op(string: &str) -> Option<Token>
 		":" => Some(Token::Colon),
 		"?" => Some(Token::Wildcard),
 		"&" => Some(Token::View),
+		"@" => Some(Token::Target),
 		_ => None
 	}
 }
@@ -52,6 +53,7 @@ fn lex_keyword(string: &str) -> Option<Token>
 		"read" => Some(Token::Read),
 		"write" => Some(Token::Write),
 		"native" => Some(Token::Native),
+		"goto" => Some(Token::Goto),
 		_ => None
 	}
 }

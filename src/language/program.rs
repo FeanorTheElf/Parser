@@ -17,6 +17,7 @@ pub enum PrimitiveType
 pub enum Type
 {
     TestType,
+    JumpLabel,
     Primitive(PrimitiveType),
     Array(PrimitiveType, u32),
     Function(Vec<Box<Type>>, Option<Box<Type>>)
@@ -42,18 +43,19 @@ impl std::fmt::Display for Type
                     result_type.fmt(f)?;
                 }
                 Ok(())
-            }
+            },
+            Type::JumpLabel => write!(f, "LABEL")
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Program
 {
     pub items: Vec<Box<Function>>
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Function
 {
     pub pos: TextPosition,
@@ -63,16 +65,27 @@ pub struct Function
     pub body: Option<Block>
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Block
 {
     pub pos: TextPosition,
     pub statements: Vec<Box<dyn Statement>>
 }
 
-pub trait Statement: AstNode + Iterable<Expression> + Printable { }
+pub trait Statement: AstNode + Iterable<Expression> + Iterable<Block> + Printable
+{ 
+    fn dyn_clone(&self) -> Box<dyn Statement>;
+}
 
-#[derive(Debug, Eq)]
+impl Clone for Box<dyn Statement>
+{
+    fn clone(&self) -> Box<dyn Statement>
+    {
+        self.dyn_clone()
+    }
+}
+
+#[derive(Debug, Eq, Clone)]
 pub struct If
 {
     pub pos: TextPosition,
@@ -80,7 +93,7 @@ pub struct If
     pub body: Block
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct While
 {
     pub pos: TextPosition,
@@ -88,7 +101,7 @@ pub struct While
     pub body: Block
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Assignment
 {
     pub pos: TextPosition,
@@ -96,7 +109,7 @@ pub struct Assignment
     pub value: Expression
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Declaration
 {
     pub pos: TextPosition,
@@ -105,14 +118,28 @@ pub struct Declaration
     pub value: Option<Expression>
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Return
 {
     pub pos: TextPosition,
     pub value: Option<Expression>
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, Clone)]
+pub struct Label
+{
+    pub pos: TextPosition,
+    pub label: Name
+}
+
+#[derive(Debug, Eq, Clone)]
+pub struct Goto
+{
+    pub pos: TextPosition,
+    pub target: Name
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression
 {
     Call(Box<FunctionCall>),
@@ -120,7 +147,7 @@ pub enum Expression
     Literal(Literal)
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct FunctionCall
 {
     pub pos: TextPosition,
@@ -262,6 +289,22 @@ impl AstNode for Return
     }
 }
 
+impl PartialEq for Label
+{
+    fn eq(&self, rhs: &Label) -> bool
+    {
+        self.label == rhs.label
+    }
+}
+
+impl AstNode for Label
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
 impl PartialEq for Return
 {
     fn eq(&self, rhs: &Return) -> bool
@@ -270,19 +313,93 @@ impl PartialEq for Return
     }
 }
 
-impl Statement for Expression { }
+impl PartialEq for Goto
+{
+    fn eq(&self, rhs: &Goto) -> bool
+    {
+        self.target == rhs.target
+    }
+}
 
-impl Statement for If { }
+impl AstNode for Goto
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
 
-impl Statement for While { }
+impl Statement for Expression
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
 
-impl Statement for Return { }
+impl Statement for If
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
 
-impl Statement for Block { }
+impl Statement for While
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
 
-impl Statement for Declaration { }
+impl Statement for Return
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
 
-impl Statement for Assignment { }
+impl Statement for Block
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
+
+impl Statement for Declaration
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
+
+impl Statement for Assignment
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
+
+impl Statement for Label
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
+
+impl Statement for Goto
+{
+    fn dyn_clone(&self) -> Box<dyn Statement>
+    {
+        Box::new(self.clone())
+    }
+}
 
 impl AstNode for Expression
 {
@@ -417,6 +534,22 @@ impl Printable for Assignment
     }
 }
 
+impl Printable for Label
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_label(self);
+    }
+}
+
+impl Printable for Goto
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        printer.print_goto(self);
+    }
+}
+
 impl<'a> LifetimeIterable<'a, Expression> for Expression
 {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
@@ -521,5 +654,148 @@ impl<'a> LifetimeIterable<'a, Expression> for Assignment
     fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
     {
         Box::new(std::iter::once(&mut self.assignee).chain(std::iter::once(&mut self.value)))
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Expression> for Label
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Expression> for Goto
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Declaration
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Assignment
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Expression
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Return
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Goto
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Label
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::empty())
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for If
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::once(&self.body))
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::once(&mut self.body))
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for While
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::once(&self.body))
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::once(&mut self.body))
+    }
+}
+
+impl<'a> LifetimeIterable<'a, Block> for Block
+{
+    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
+    {
+        Box::new(std::iter::once(self))
+    }
+
+    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
+    {
+        Box::new(std::iter::once(self))
     }
 }

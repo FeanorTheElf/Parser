@@ -54,7 +54,8 @@ impl<'a> Iterator for BlockDefinitionsIter<'a>
     type Item = &'a dyn SymbolDefinition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find_map(|stmt| stmt.dynamic().downcast_ref::<Declaration>()).map(|decl| decl as &dyn SymbolDefinition)
+        self.iter.find_map(|stmt| stmt.dynamic().downcast_ref::<Declaration>().map(|decl| decl as &dyn SymbolDefinition).or(
+            stmt.dynamic().downcast_ref::<Label>().map(|decl| decl as &dyn SymbolDefinition)))
     }
 }
 
@@ -198,7 +199,7 @@ impl<'a> ScopeStack<'a>
                 *index += 1;
                 Name::new(name.name, *index)
             } else {
-                let index: u32 = self.definitions().filter(|def| def.name == name.name).map(|def| def.id).max().unwrap_or(0) + 1;
+                let index: u32 = self.definitions().filter(|def| def.name == name.name).map(|def| def.id).max().map(|x| x + 1).unwrap_or(0);
                 current.insert(name.name.clone(), index);
                 Name::new(name.name, index)
             }

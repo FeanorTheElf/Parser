@@ -48,6 +48,8 @@ pub enum Token
 	OpNot,
 	Wildcard,
 	View,
+	Goto,
+	Target,
 	EOF,
 	BOF
 }
@@ -71,6 +73,7 @@ impl std::fmt::Display for Token
 			Token::New => write!(f, "'new'"),
 			Token::Let => write!(f, "'let'"),
 			Token::Void => write!(f, "'void'"),
+			Token::Goto => write!(f, "'goto'"),
 			Token::Assign => write!(f, "'='"),
 			Token::SquareBracketOpen => write!(f, "'['"),
 			Token::SquareBracketClose => write!(f, "']'"),
@@ -96,6 +99,7 @@ impl std::fmt::Display for Token
 			Token::OpNot => write!(f, "'!'"),
 			Token::Wildcard => write!(f, "'?'"),
 			Token::View => write!(f, "'&'"),
+			Token::Target => write!(f, "'@'"),
 			Token::EOF => write!(f, "EOF"),
 			Token::BOF => write!(f, "BOF")
 		}

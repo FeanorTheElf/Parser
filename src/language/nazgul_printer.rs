@@ -137,6 +137,27 @@ impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
         })
     }
 
+    fn print_label(&mut self, node: &Label)
+    {
+        self.state = self.state.and_then(|_| {
+            self.newline()?;
+            self.result.write_str("@")?;
+            node.label.fmt(&mut self.result)?;
+            Ok(())
+        })
+    }
+
+    fn print_goto(&mut self, node: &Goto)
+    {
+        self.state = self.state.and_then(|_| {
+            self.newline()?;
+            self.result.write_str("goto ")?;
+            node.target.fmt(&mut self.result)?;
+            self.result.write_str(";")?;
+            Ok(())
+        })
+    }
+
     fn print_if_header(&mut self, node: &If)
     {
         self.state = self.state.and_then(|_| {

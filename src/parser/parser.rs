@@ -201,6 +201,54 @@ impl Build<While> for dyn Statement
     }
 }
 
+impl Parseable for Label
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Name,)> for Label
+{
+    fn build(pos: TextPosition, param: (Name,)) -> Self::ParseOutputType
+    {
+        Label {
+            pos: pos,
+            label: param.0
+        }
+    }
+}
+
+impl Build<Label> for dyn Statement
+{
+    fn build(_pos: TextPosition, param: Label) -> Self::ParseOutputType
+    {
+        Box::new(param)
+    }
+}
+
+impl Parseable for Goto
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Name,)> for Goto
+{
+    fn build(pos: TextPosition, param: (Name,)) -> Self::ParseOutputType
+    {
+        Goto {
+            pos: pos,
+            target: param.0
+        }
+    }
+}
+
+impl Build<Goto> for dyn Statement
+{
+    fn build(_pos: TextPosition, param: Goto) -> Self::ParseOutputType
+    {
+        Box::new(param)
+    }
+}
+
 impl Build<Block> for dyn Statement
 {
     fn build(_pos: TextPosition, param: Block) -> Self::ParseOutputType
@@ -438,7 +486,9 @@ impl Parser for dyn Statement
         Return::is_applicable(stream) || 
         Block::is_applicable(stream) ||
         Expression::is_applicable(stream) ||
-        Declaration::is_applicable(stream)
+        Declaration::is_applicable(stream) ||
+        Goto::is_applicable(stream) ||
+        Label::is_applicable(stream)
     }
 
     fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
@@ -454,6 +504,10 @@ impl Parser for dyn Statement
             Ok(Statement::build(pos, Block::parse(stream)?))
         } else if Declaration::is_applicable(stream) {
             Ok(Statement::build(pos, Declaration::parse(stream)?))
+        } else if Label::is_applicable(stream) {
+            Ok(Statement::build(pos, Label::parse(stream)?))
+        } else if Goto::is_applicable(stream) {
+            Ok(Statement::build(pos, Goto::parse(stream)?))
         } else {
             let expr = Expression::parse(stream)?;
             if stream.is_next(&Token::Assign) {
@@ -472,6 +526,8 @@ impl_parse!{ Block := Token#CurlyBracketOpen { Statement } Token#CurlyBracketClo
 impl_parse!{ If := Token#If Expression Block }
 impl_parse!{ While := Token#While Expression Block }
 impl_parse!{ Return := Token#Return [ Expression ] Token#Semicolon }
+impl_parse!{ Label := Token#Target Name }
+impl_parse!{ Goto := Token#Goto Name Token#Semicolon }
 grammar_rule!{ ExpressionNode := Expression Token#Semicolon }
 impl_parse!{ Declaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
 
