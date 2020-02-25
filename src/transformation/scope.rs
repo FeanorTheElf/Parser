@@ -109,7 +109,7 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>>
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct ScopeNode 
 {
     definitions: HashSet<Name>
@@ -143,7 +143,7 @@ impl<'a> Iterator for ScopeStackIter<'a>
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ScopeStack<'a>
 {
     parent: Option<&'a ScopeStack<'a>>,
@@ -152,7 +152,7 @@ pub struct ScopeStack<'a>
 
 impl<'a> ScopeStack<'a>
 {
-    pub fn new(global: &[Box<Function>]) -> ScopeStack
+    pub fn new(global: &[Box<Function>]) -> ScopeStack<'a>
     {
         ScopeStack {
             parent: None,

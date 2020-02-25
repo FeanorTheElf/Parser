@@ -28,12 +28,14 @@ struct InlineTask<'a>
 
 trait ExtractFunctionCallFn<'b> = FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression;
 
+type DefinedFunctions = [Box<Function>];
+
 impl<F> Inliner<F>
     where F: FnMut(&FunctionCall, &Function) -> bool
 {
 
     #[allow(dead_code)]
-    fn create_extract_function_call_function<'a, 'b, G>(&'a mut self, rename_disjunct: &'a mut G, defined_functions: &'b [Function]) -> impl (FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression) + 'a
+    fn create_extract_function_call_function<'a, 'b, G>(&'a mut self, rename_disjunct: &'a mut G, defined_functions: &'b DefinedFunctions) -> impl (FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression) + 'a
         where G: FnMut(Name) -> Name, 'b: 'a
     {
         move |expr: Expression, result: &mut Vec<Box<dyn Statement>>, inline_tasks: &mut Vec<InlineTask<'b>>| {
@@ -93,7 +95,7 @@ impl<F> Inliner<F>
         }
     }
 
-    fn inline_function_calls_in_block<'a, 'b>(&mut self, block: &'a mut Block, parent_scopes: &'b ScopeStack<'b>, defined_functions: &'b [Function])
+    fn inline<'a, 'b>(&mut self, block: &'a mut Block, parent_scopes: &'b ScopeStack<'b>, defined_functions: &'b DefinedFunctions)
     {
         let mut scopes = parent_scopes.child_stack();
         let mut inline_tasks: Vec<InlineTask> = vec![];
@@ -122,13 +124,28 @@ impl<F> Inliner<F>
         }
         for statement in &mut block.statements {
             for subblock in statement.iter_mut() {
-                self.inline_function_calls_in_block(subblock, &scopes, defined_functions);
+                self.inline(subblock, &scopes, defined_functions);
             }
+        }
+    }
+
+    fn inline_all(&mut self, program: &mut Program)
+    {
+        assert_ne!(program.items.len(), 0);
+        let mut scopes = ScopeStack::new(&program.items[..]);
+        for i in 0..program.items.len() {
+            program.items.swap(0, i);
+            let (current, other) = program.items[..].split_at_mut(1);
+            scopes.enter(&*current[0]);
+            if let Some(body) = &mut current[0].body {
+                self.inline(body, &scopes, other);
+            }
+            scopes.exit();
         }
     }
 }
 
-fn find_function_definition<'b>(expr: &Expression, all_functions: &'b [Function]) -> Result<FunctionDefinition<'b>, CompileError>
+fn find_function_definition<'b>(expr: &Expression, all_functions: &'b DefinedFunctions) -> Result<FunctionDefinition<'b>, CompileError>
 {
     if let Expression::Variable(identifier) = expr {
         match &identifier.identifier {
@@ -253,14 +270,14 @@ fn rename_identifier<F>(name: &Name, rename_disjunct: &mut F, rename_mapping: &m
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::fragment_lex;
+use super::super::lexer::lexer::{ fragment_lex, lex };
 #[cfg(test)]
 use super::super::parser::Parser;
 #[cfg(test)]
 use super::super::language::nazgul_printer::print_nazgul;
 
 #[test]
-fn test_inline_function_calls_in_block() {
+fn test_inline() {
     let mut scope_stack: ScopeStack = ScopeStack::new(&[]);
     let predefined_variables = [Name::l("b"), Name::l("c"), Name::l("other_func"), Name::l("some_func")];
     scope_stack.enter(&predefined_variables as &[Name]);
@@ -293,7 +310,7 @@ fn test_inline_function_calls_in_block() {
         return x;
     }")).unwrap();
 
-    let _ = test.inline_function_calls_in_block(&mut block, &scope_stack, &[some_func, other_func]);
+    let _ = test.inline(&mut block, &scope_stack, &[Box::new(some_func), Box::new(other_func)]);
 
     let expected = Block::parse(&mut fragment_lex("{
         let result#0: int;
@@ -392,4 +409,80 @@ fn test_process_inline_body() {
     expected_mapping.insert(Name::new("result".to_owned(), 0), Name::new("result".to_owned(), 1));
     expected_mapping.insert(Name::new("result".to_owned(), 1), Name::new("result".to_owned(), 2));
     assert_eq!(expected_mapping, rename_mapping);
+}
+
+#[test]
+fn test_inline_all() {
+    let mut test = Inliner { should_inline: |_, _| true };
+
+    let mut program = Program::parse(&mut lex("
+        fn foo(a: int, ): int {
+            return a * bar();
+        }
+
+        fn bar(): int {
+            return 4;
+        }
+
+        fn foobar(a: int, b: int, ) {
+            return foo(bar(),);
+        }
+    ")).unwrap();
+    test.inline_all(&mut program);
+
+    let expected = Program::parse(&mut lex("
+        fn foobar(a: int, b: int, ) {
+            let result: int;
+            let result#1: int;
+            {
+                {
+                    {
+                        result#1 = 4;
+                        goto bar#1;
+                    }
+                }
+                @bar#1
+            }
+            {
+                let a#1: int = result#1;
+                {
+                    let result#2: int;
+                    {
+                        {
+                            {
+                                result#2 = 4;
+                                goto bar#1;
+                            }
+                        }
+                        @bar#1
+                    }
+                    {
+                        result = a#1 * result#2;
+                        goto foo#1;
+                    }
+                }
+                @foo#1
+            }
+            return result;
+        }
+
+        fn foo(a: int, ): int {
+            let result: int;
+            {
+                {
+                    {
+                        result = 4;
+                        goto bar#1;
+                    }
+                }
+                @bar#1
+            }
+            return a * result;
+        }
+
+        fn bar(): int {
+            return 4;
+        }
+    ")).unwrap();
+    assert_ast_eq!(expected, program);
 }

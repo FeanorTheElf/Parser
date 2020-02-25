@@ -461,6 +461,16 @@ impl AstNode for Literal
     }
 }
 
+impl Printable for Program
+{
+    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
+    {
+        for item in &self.items {
+            item.print(printer);
+        }
+    }
+}
+
 impl Printable for Function
 {
     fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
