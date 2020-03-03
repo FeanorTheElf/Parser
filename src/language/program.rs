@@ -58,9 +58,17 @@ pub struct Function
 {
     pub pos: TextPosition,
     pub identifier: Name,
-    pub params: Vec<(TextPosition, Name, Type)>,
+    pub params: Vec<FormalParameter>,
     pub return_type: Option<Type>,
     pub body: Option<Block>
+}
+
+#[derive(Debug, Eq)]
+pub struct FormalParameter
+{
+    pub pos: TextPosition,
+    pub name: Name,
+    pub param_type: Type
 }
 
 #[derive(Debug, Eq)]
@@ -161,6 +169,22 @@ impl PartialEq for Function
     fn eq(&self, rhs: &Function) -> bool
     {
         self.identifier == rhs.identifier && self.params == rhs.params && self.return_type == rhs.return_type && self.body == rhs.body
+    }
+}
+
+impl AstNode for FormalParameter
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl PartialEq for FormalParameter
+{
+    fn eq(&self, rhs: &FormalParameter) -> bool
+    {
+        self.name == rhs.name && self.param_type == rhs.param_type
     }
 }
 

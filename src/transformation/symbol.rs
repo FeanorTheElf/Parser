@@ -19,16 +19,16 @@ impl SymbolDefinition for Declaration
     }
 }
 
-impl SymbolDefinition for (TextPosition, Name, Type)
+impl SymbolDefinition for FormalParameter
 {
     fn get_name(&self) -> &Name
     {
-        &self.1
+        &self.name
     }
 
     fn calc_type(&self) -> Type
     {
-        self.2.clone()
+        self.param_type.clone()
     }
 }
 
@@ -41,7 +41,7 @@ impl SymbolDefinition for Function
 
     fn calc_type(&self) -> Type
     {
-        Type::Function(self.params.iter().map(|p| Box::new(p.2.clone())).collect(), self.return_type.clone().map(Box::new))
+        Type::Function(self.params.iter().map(|p| Box::new(p.param_type.clone())).collect(), self.return_type.clone().map(Box::new))
     }
 }
 

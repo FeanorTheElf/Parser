@@ -102,10 +102,10 @@ impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
             self.result.write_str("fn ")?;
             node.identifier.fmt(&mut self.result)?;
             self.result.write_str("(")?;
-            for (_, param_name, param_type) in &node.params {
-                param_name.fmt(&mut self.result)?;
+            for param in &node.params {
+                param.name.fmt(&mut self.result)?;
                 self.result.write_str(": ")?;
-                param_type.fmt(&mut self.result)?;
+                param.param_type.fmt(&mut self.result)?;
                 self.result.write_str(", ")?;
             }
             self.result.write_str(")")?;

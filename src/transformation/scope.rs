@@ -72,7 +72,7 @@ impl<'a> EnumerateDefinitions<'a> for &'a Block
 
 pub struct ParameterDefinitionsIter<'a>
 {
-    iter: std::slice::Iter<'a, (TextPosition, Name, Type)>
+    iter: std::slice::Iter<'a, FormalParameter>
 }
 
 impl<'a> Iterator for ParameterDefinitionsIter<'a>
