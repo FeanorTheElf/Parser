@@ -48,11 +48,13 @@ impl<F> Inliner<F>
                             let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
                             let mut replace_params = self.create_extract_function_call_function(rename_disjunct, defined_functions);
                             if let Some(return_type) = &function_def.return_type {
-                                let declaration = Declaration {
-                                    pos: pos.clone(),
-                                    value: None,
-                                    variable: variable_name.clone(),
-                                    variable_type: return_type.clone()
+                                let declaration = LocalVariableDeclaration {
+                                    declaration: Declaration {
+                                        pos: pos.clone(),
+                                        variable: variable_name.clone(),
+                                        variable_type: return_type.clone()
+                                    },
+                                    value: None
                                 };
                                 result.push(Box::new(declaration));
                             }
@@ -167,15 +169,17 @@ fn inline_single_function_call(call: FunctionCall, definition: &Function, result
     let mut rename_disjunct = scopes.rename_disjunct();
     let mut rename_mapping: HashMap<Name, Name> = HashMap::new();
     for (given_param, formal_param) in call.parameters.into_iter().zip(definition.params.iter()) {
-        let param_name = rename_disjunct(formal_param.1.clone());
-        rename_mapping.insert(formal_param.1.clone(), param_name.clone());
-        let param_type = formal_param.2.clone();
+        let param_name = rename_disjunct(formal_param.variable.clone());
+        rename_mapping.insert(formal_param.variable.clone(), param_name.clone());
+        let param_type = formal_param.variable_type.clone();
         let param_value = given_param;
-        let param_decl = Declaration {
-            pos: param_value.pos().clone(),
-            value: Some(param_value),
-            variable: param_name,
-            variable_type: param_type
+        let param_decl = LocalVariableDeclaration {
+            declaration: Declaration {
+                pos: param_value.pos().clone(),
+                variable: param_name,
+                variable_type: param_type
+            },
+            value: Some(param_value)
         };
         block.statements.push(Box::new(param_decl))
     }
@@ -201,8 +205,8 @@ fn process_inline_body<F>(block: &mut Block, result_var: &Name, return_label: &N
         }
         if statement.dynamic().is::<Return>() {
             take_mut::take(statement, |statement| transform_return(statement, result_var, return_label));
-        } else if let Some(declaration) = statement.dynamic_mut().downcast_mut::<Declaration>() {
-            declaration.variable = rename_identifier(&declaration.variable, rename_disjunct, rename_mapping);
+        } else if let Some(declaration) = statement.dynamic_mut().downcast_mut::<LocalVariableDeclaration>() {
+            declaration.declaration.variable = rename_identifier(&declaration.declaration.variable, rename_disjunct, rename_mapping);
         } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
             goto.target = rename_identifier(&goto.target, rename_disjunct, rename_mapping);
         } else if let Some(label) = statement.dynamic_mut().downcast_mut::<Label>() {

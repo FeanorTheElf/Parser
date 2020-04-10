@@ -102,10 +102,10 @@ impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
             self.result.write_str("fn ")?;
             node.identifier.fmt(&mut self.result)?;
             self.result.write_str("(")?;
-            for (_, param_name, param_type) in &node.params {
-                param_name.fmt(&mut self.result)?;
+            for parameter_declaration in &node.params {
+                parameter_declaration.variable.fmt(&mut self.result)?;
                 self.result.write_str(": ")?;
-                param_type.fmt(&mut self.result)?;
+                parameter_declaration.variable_type.fmt(&mut self.result)?;
                 self.result.write_str(", ")?;
             }
             self.result.write_str(")")?;
@@ -216,14 +216,14 @@ impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
         })
     }
 
-    fn print_declaration(&mut self, node: &Declaration)
+    fn print_declaration(&mut self, node: &LocalVariableDeclaration)
     {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("let ")?;
-            node.variable.fmt(&mut self.result)?;
+            node.declaration.variable.fmt(&mut self.result)?;
             self.result.write_str(": ")?;
-            node.variable_type.fmt(&mut self.result)?;
+            node.declaration.variable_type.fmt(&mut self.result)?;
             if let Some(value) = &node.value {
                 self.result.write_str(" = ")?;
                 self.print_expr(value)?;

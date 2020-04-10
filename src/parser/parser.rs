@@ -98,6 +98,23 @@ impl Parser for Literal
     }
 }
 
+impl Parseable for Declaration
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Name, TypeNode)> for Declaration
+{
+    fn build(pos: TextPosition, param: (Name, TypeNode)) -> Self::ParseOutputType
+    {
+        Declaration {
+            pos: pos,
+            variable_type: Type::build((param.1).0.clone(), param.1),
+            variable: param.0
+        }
+    }
+}
+
 impl Parseable for Function
 {
     type ParseOutputType = Self;
@@ -115,7 +132,7 @@ impl Build<(Name, Vec<ParameterNode>, Option<TypeNode>, FunctionImpl)> for Funct
         Function {
             pos: pos,
             identifier: param.0,
-            params: param.1.into_iter().map(|p| (p.0.clone(), (p.1).0, Type::build(p.0, (p.1).1))).collect(),
+            params: param.1.into_iter().map(|p| Declaration::build(p.0, p.1)).collect(),
             return_type: param.2.map(|p| Type::build(p.0.clone(), p)),
             body: block
         }
@@ -281,27 +298,25 @@ impl Build<Return> for dyn Statement
     }
 }
 
-impl Parseable for Declaration
+impl Parseable for LocalVariableDeclaration
 {
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, TypeNode, Option<<Expression as Parseable>::ParseOutputType>)> for Declaration
+impl Build<(Name, TypeNode, Option<<Expression as Parseable>::ParseOutputType>)> for LocalVariableDeclaration
 {
     fn build(pos: TextPosition, param: (Name, TypeNode, Option<<Expression as Parseable>::ParseOutputType>)) -> Self::ParseOutputType
     {
-        Declaration {
-            pos: pos,
-            variable: param.0,
-            variable_type: Type::build((param.1).0.clone(), param.1),
+        LocalVariableDeclaration {
+            declaration: Declaration::build(pos, (param.0, param.1)),
             value: param.2
         }
     }
 }
 
-impl Build<Declaration> for dyn Statement
+impl Build<LocalVariableDeclaration> for dyn Statement
 {
-    fn build(_pos: TextPosition, param: Declaration) -> Self::ParseOutputType
+    fn build(_pos: TextPosition, param: LocalVariableDeclaration) -> Self::ParseOutputType
     {
         Box::new(param)
     }
@@ -486,7 +501,7 @@ impl Parser for dyn Statement
         Return::is_applicable(stream) || 
         Block::is_applicable(stream) ||
         Expression::is_applicable(stream) ||
-        Declaration::is_applicable(stream) ||
+        LocalVariableDeclaration::is_applicable(stream) ||
         Goto::is_applicable(stream) ||
         Label::is_applicable(stream)
     }
@@ -502,8 +517,8 @@ impl Parser for dyn Statement
             Ok(Statement::build(pos, Return::parse(stream)?))
         } else if Block::is_applicable(stream) {
             Ok(Statement::build(pos, Block::parse(stream)?))
-        } else if Declaration::is_applicable(stream) {
-            Ok(Statement::build(pos, Declaration::parse(stream)?))
+        } else if LocalVariableDeclaration::is_applicable(stream) {
+            Ok(Statement::build(pos, LocalVariableDeclaration::parse(stream)?))
         } else if Label::is_applicable(stream) {
             Ok(Statement::build(pos, Label::parse(stream)?))
         } else if Goto::is_applicable(stream) {
@@ -529,7 +544,7 @@ impl_parse!{ Return := Token#Return [ Expression ] Token#Semicolon }
 impl_parse!{ Label := Token#Target Name }
 impl_parse!{ Goto := Token#Goto Name Token#Semicolon }
 grammar_rule!{ ExpressionNode := Expression Token#Semicolon }
-impl_parse!{ Declaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
+impl_parse!{ LocalVariableDeclaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
 
 impl_parse!{ Expression := ExprNodeLevelOr }
 grammar_rule!{ ExprNodeLevelOr := ExprNodeLevelAnd { ExprNodeLevelOrPart } }

@@ -54,7 +54,9 @@ impl SymbolDefinition for Function
 
     fn calc_type(&self) -> Type
     {
-        Type::Function(self.params.iter().map(|p| Box::new(p.2.clone())).collect(), self.return_type.clone().map(Box::new))
+        Type::Function(
+            self.params.iter().map(|p| Box::new(p.variable_type.clone())).collect(), 
+            self.return_type.clone().map(Box::new))
     }
 }
 

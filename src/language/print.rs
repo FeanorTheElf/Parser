@@ -12,7 +12,7 @@ pub trait Printer
     fn print_return(&mut self, node: &Return);
     fn print_expression(&mut self, node: &Expression);
     fn print_assignment(&mut self, node: &Assignment);
-    fn print_declaration(&mut self, node: &Declaration);
+    fn print_declaration(&mut self, node: &LocalVariableDeclaration);
 }
 
 pub trait Printable

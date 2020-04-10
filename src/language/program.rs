@@ -20,7 +20,8 @@ pub enum Type
     JumpLabel,
     Primitive(PrimitiveType),
     Array(PrimitiveType, u32),
-    Function(Vec<Box<Type>>, Option<Box<Type>>)
+    Function(Vec<Box<Type>>, Option<Box<Type>>),
+    View(Box<Type>)
 }
 
 impl std::fmt::Display for Type
@@ -44,7 +45,8 @@ impl std::fmt::Display for Type
                 }
                 Ok(())
             },
-            Type::JumpLabel => write!(f, "LABEL")
+            Type::JumpLabel => write!(f, "LABEL"),
+            Type::View(viewn_type) => write!(f, "&{}", viewn_type)
         }
     }
 }
@@ -56,11 +58,19 @@ pub struct Program
 }
 
 #[derive(Debug, Eq, Clone)]
+pub struct Declaration
+{
+    pub pos: TextPosition,
+    pub variable: Name,
+    pub variable_type: Type
+}
+
+#[derive(Debug, Eq, Clone)]
 pub struct Function
 {
     pub pos: TextPosition,
     pub identifier: Name,
-    pub params: Vec<(TextPosition, Name, Type)>,
+    pub params: Vec<Declaration>,
     pub return_type: Option<Type>,
     pub body: Option<Block>
 }
@@ -110,11 +120,9 @@ pub struct Assignment
 }
 
 #[derive(Debug, Eq, Clone)]
-pub struct Declaration
+pub struct LocalVariableDeclaration
 {
-    pub pos: TextPosition,
-    pub variable: Name,
-    pub variable_type: Type,
+    pub declaration: Declaration,
     pub value: Option<Expression>
 }
 
@@ -137,6 +145,14 @@ pub struct Goto
 {
     pub pos: TextPosition,
     pub target: Name
+}
+
+#[derive(Debug, Clone)]
+pub struct ParallelFor
+{
+    pub pos: TextPosition,
+    pub index_variables: Vec<(TextPosition, Variable, Type)>,
+    pub accesses: Vec<(TextPosition, Vec<Expression>, Option<Name>, Expression)>
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -172,6 +188,22 @@ impl AstNode for Program
     fn pos(&self) -> &TextPosition 
     {
         &BEGIN
+    }
+}
+
+impl AstNode for Declaration
+{
+    fn pos(&self) -> &TextPosition
+    {
+        &self.pos
+    }
+}
+
+impl PartialEq for Declaration
+{
+    fn eq(&self, rhs: &Declaration) -> bool
+    {
+        self.variable == rhs.variable && self.variable_type == rhs.variable_type
     }
 }
 
@@ -265,19 +297,19 @@ impl PartialEq for Assignment
     }
 }
 
-impl AstNode for Declaration
+impl AstNode for LocalVariableDeclaration
 {
     fn pos(&self) -> &TextPosition
     {
-        &self.pos
+        self.declaration.pos()
     }
 }
 
-impl PartialEq for Declaration
+impl PartialEq for LocalVariableDeclaration
 {
-    fn eq(&self, rhs: &Declaration) -> bool
+    fn eq(&self, rhs: &LocalVariableDeclaration) -> bool
     {
-        self.variable == rhs.variable && self.variable_type == rhs.variable_type && self.value == rhs.value
+        self.declaration == rhs.declaration && self.value == rhs.value
     }
 }
 
@@ -369,7 +401,7 @@ impl Statement for Block
     }
 }
 
-impl Statement for Declaration
+impl Statement for LocalVariableDeclaration
 {
     fn dyn_clone(&self) -> Box<dyn Statement>
     {
@@ -520,7 +552,7 @@ impl Printable for While
     }
 }
 
-impl Printable for Declaration
+impl Printable for LocalVariableDeclaration
 {
     fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
     {
@@ -633,7 +665,7 @@ impl<'a> LifetimeIterable<'a, Expression> for Block
     }
 }
 
-impl<'a> LifetimeIterable<'a, Expression> for Declaration
+impl<'a> LifetimeIterable<'a, Expression> for LocalVariableDeclaration
 {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
     {
@@ -693,7 +725,7 @@ impl<'a> LifetimeIterable<'a, Expression> for Goto
     }
 }
 
-impl<'a> LifetimeIterable<'a, Block> for Declaration
+impl<'a> LifetimeIterable<'a, Block> for LocalVariableDeclaration
 {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
     {

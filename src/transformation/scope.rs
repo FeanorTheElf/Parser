@@ -54,7 +54,7 @@ impl<'a> Iterator for BlockDefinitionsIter<'a>
     type Item = &'a dyn SymbolDefinition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find_map(|stmt| stmt.dynamic().downcast_ref::<Declaration>().map(|decl| decl as &dyn SymbolDefinition).or(
+        self.iter.find_map(|stmt| stmt.dynamic().downcast_ref::<LocalVariableDeclaration>().map(|decl| &decl.declaration as &dyn SymbolDefinition).or(
             stmt.dynamic().downcast_ref::<Label>().map(|decl| decl as &dyn SymbolDefinition)))
     }
 }
@@ -73,7 +73,7 @@ impl<'a> EnumerateDefinitions<'a> for &'a Block
 
 pub struct ParameterDefinitionsIter<'a>
 {
-    iter: std::slice::Iter<'a, (TextPosition, Name, Type)>
+    iter: std::slice::Iter<'a, Declaration>
 }
 
 impl<'a> Iterator for ParameterDefinitionsIter<'a>
