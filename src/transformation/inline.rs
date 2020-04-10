@@ -33,20 +33,21 @@ type DefinedFunctions = [Box<Function>];
 impl<F> Inliner<F>
     where F: FnMut(&FunctionCall, &Function) -> bool
 {
-
-    #[allow(dead_code)]
-    fn create_extract_function_call_function<'a, 'b, G>(&'a mut self, rename_disjunct: &'a mut G, defined_functions: &'b DefinedFunctions) -> impl (FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression) + 'a
+    fn extract_function_call<'a, 'b, G>(&'a mut self, 
+            rename_disjunct: &'a mut G, 
+            defined_functions: &'b DefinedFunctions, 
+            function_call_to_extract: Expression, 
+            previous_declaration_statements: &mut Vec<Box<dyn Statement>>, 
+            open_inline_tasks: &mut Vec<InlineTask<'b>>) -> Expression
         where G: FnMut(Name) -> Name, 'b: 'a
     {
-        move |expr: Expression, result: &mut Vec<Box<dyn Statement>>, inline_tasks: &mut Vec<InlineTask<'b>>| {
-            match expr {
+            match function_call_to_extract {
                 Expression::Call(mut call) => {
                     let called_function = find_function_definition(&call.function, defined_functions).expect(TYPE_ERROR);
                     let pos = call.pos().clone();
                     if let FunctionDefinition::UserDefined(function_def) = called_function {
                         if (self.should_inline)(&call, function_def) {
                             let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
-                            let mut replace_params = self.create_extract_function_call_function(rename_disjunct, defined_functions);
                             if let Some(return_type) = &function_def.return_type {
                                 let declaration = LocalVariableDeclaration {
                                     declaration: Declaration {
@@ -56,7 +57,7 @@ impl<F> Inliner<F>
                                     },
                                     value: None
                                 };
-                                result.push(Box::new(declaration));
+                                previous_declaration_statements.push(Box::new(declaration));
                             }
                             let mut inline_task = InlineTask {
                                 destination_statement_index: 0,
@@ -65,28 +66,29 @@ impl<F> Inliner<F>
                                 call_to_inline: FunctionCall {
                                     pos: pos.clone(),
                                     function: call.function,
-                                    parameters: call.parameters.into_iter().map(|p| replace_params(p, result, inline_tasks)).collect()
+                                    parameters: call.parameters.into_iter().map(|p| 
+                                        self.extract_function_call(rename_disjunct, defined_functions, p, previous_declaration_statements, open_inline_tasks)).collect()
                                 }
                             };
                             let value_block = Block {
                                 pos: pos.clone(),
                                 statements: vec![]
                             };
-                            inline_task.destination_statement_index = result.len();
-                            result.push(Box::new(value_block));
-                            inline_tasks.push(inline_task);
+                            inline_task.destination_statement_index = previous_declaration_statements.len();
+                            previous_declaration_statements.push(Box::new(value_block));
+                            open_inline_tasks.push(inline_task);
                             return Expression::Variable(Variable {
                                 pos: pos,
                                 identifier: Identifier::Name(variable_name)
                             });
                         } else {
-                            let mut replace_params = self.create_extract_function_call_function(rename_disjunct, defined_functions);
-                            call.parameters = call.parameters.into_iter().map(|p| replace_params(p, result, inline_tasks)).collect();
+                            call.parameters = call.parameters.into_iter().map(|p| 
+                                self.extract_function_call(rename_disjunct, defined_functions, p, previous_declaration_statements, open_inline_tasks)).collect();
                             return Expression::Call(call);
                         }
                     } else {
-                        let mut replace_params = self.create_extract_function_call_function(rename_disjunct, defined_functions);
-                        call.parameters = call.parameters.into_iter().map(|p| replace_params(p, result, inline_tasks)).collect();
+                        call.parameters = call.parameters.into_iter().map(|p| 
+                            self.extract_function_call(rename_disjunct, defined_functions, p, previous_declaration_statements, open_inline_tasks)).collect();
                         return Expression::Call(call);
                     }
                 },
@@ -94,7 +96,6 @@ impl<F> Inliner<F>
                     return expr;
                 }
             }
-        }
     }
 
     fn inline<'a, 'b>(&mut self, block: &'a mut Block, parent_scopes: &'b ScopeStack<'b>, defined_functions: &'b DefinedFunctions)
@@ -104,11 +105,11 @@ impl<F> Inliner<F>
         scopes.enter(block);
         {
             let mut rename_disjunct = scopes.rename_disjunct();
-            let mut extract_function_call = self.create_extract_function_call_function(&mut rename_disjunct, defined_functions);
             let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
             for mut statement in block.statements.drain(..) {
                 for expression in statement.iter_mut() {
-                    take_mut::take(expression, &mut |expr| extract_function_call(expr, &mut result_statements, &mut inline_tasks));
+                    take_mut::take(expression, &mut |expr| 
+                        self.extract_function_call(&mut rename_disjunct, defined_functions, expr, &mut result_statements, &mut inline_tasks));
                 }
                 result_statements.push(statement);
             }
@@ -185,7 +186,7 @@ fn inline_single_function_call(call: FunctionCall, definition: &Function, result
     }
     let finish_label: Name = rename_disjunct(definition.identifier.clone());
     let mut body = definition.body.as_ref().expect("Cannot inline native function").clone();
-    process_inline_body(&mut body, &result_var, &finish_label, &mut rename_disjunct, &mut rename_mapping);
+    process_inlined_function_body(&mut body, &result_var, &finish_label, &mut rename_disjunct, &mut rename_mapping);
     block.statements.push(Box::new(body));
     block.statements.push(Box::new(Label {
         pos: pos,
@@ -193,18 +194,18 @@ fn inline_single_function_call(call: FunctionCall, definition: &Function, result
     }));
 }
 
-fn process_inline_body<F>(block: &mut Block, result_var: &Name, return_label: &Name, rename_disjunct: &mut F, rename_mapping: &mut HashMap<Name, Name>)
+fn process_inlined_function_body<F>(block: &mut Block, result_variable_name: &Name, return_label: &Name, rename_disjunct: &mut F, rename_mapping: &mut HashMap<Name, Name>)
     where F: FnMut(Name) -> Name
 {
     for statement in &mut block.statements {
         for subblock in statement.iter_mut() {
-            process_inline_body(subblock, result_var, return_label, rename_disjunct, rename_mapping);
+            process_inlined_function_body(subblock, result_variable_name, return_label, rename_disjunct, rename_mapping);
         }
         for expression in statement.iter_mut() {
             recursive_rename_variables(expression, rename_disjunct, rename_mapping);
         }
         if statement.dynamic().is::<Return>() {
-            take_mut::take(statement, |statement| transform_return(statement, result_var, return_label));
+            take_mut::take(statement, |statement| transform_inlined_return_statement(statement, result_variable_name, return_label));
         } else if let Some(declaration) = statement.dynamic_mut().downcast_mut::<LocalVariableDeclaration>() {
             declaration.declaration.variable = rename_identifier(&declaration.declaration.variable, rename_disjunct, rename_mapping);
         } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
@@ -215,7 +216,7 @@ fn process_inline_body<F>(block: &mut Block, result_var: &Name, return_label: &N
     }
 }
 
-fn transform_return(statement: Box<dyn Statement>, result_var: &Name, return_label: &Name) -> Box<dyn Statement>
+fn transform_inlined_return_statement(statement: Box<dyn Statement>, result_var: &Name, return_label: &Name) -> Box<dyn Statement>
 {
     let return_statement = statement.dynamic_box().downcast::<Return>().unwrap();
     let pos = return_statement.pos().clone();
@@ -382,7 +383,7 @@ fn test_process_inline_body() {
     let mut rename_mapping = HashMap::new();
     let mut scopes = ScopeStack::new(&[]);
     scopes.enter(&[Name::l("result")] as &[Name]);
-    process_inline_body(&mut body, &Name::l("result"), &Name::l("return_label"), &mut scopes.rename_disjunct(), &mut rename_mapping);
+    process_inlined_function_body(&mut body, &Name::l("result"), &Name::l("return_label"), &mut scopes.rename_disjunct(), &mut rename_mapping);
 
     let expected = Block::parse(&mut fragment_lex("
     {
