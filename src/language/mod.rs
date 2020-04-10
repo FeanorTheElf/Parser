@@ -14,6 +14,6 @@ pub mod identifier;
 pub mod print;
 pub mod program;
 pub mod prelude;
-pub mod nazgul_printer;
+pub mod debug_printer;
 #[macro_use]
 pub mod test;

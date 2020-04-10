@@ -120,9 +120,9 @@ impl Parseable for Function
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, Vec<ParameterNode>, Option<TypeNode>, FunctionImpl)> for Function
+impl Build<(Name, Vec<DeclarationListNode>, Option<TypeNode>, FunctionImpl)> for Function
 {
-    fn build(pos: TextPosition, param: (Name, Vec<ParameterNode>, Option<TypeNode>, FunctionImpl)) -> Self::ParseOutputType
+    fn build(pos: TextPosition, param: (Name, Vec<DeclarationListNode>, Option<TypeNode>, FunctionImpl)) -> Self::ParseOutputType
     {
         let block = if let FunctionImpl::Block(block) = param.3 {
             Some(block)
@@ -347,6 +347,66 @@ impl Build<Assignment> for dyn Statement
     }
 }
 
+impl Parseable for ArrayEntryAccess
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Vec<Expression>, Option<Alias>)> for ArrayEntryAccess
+{
+    fn build(pos: TextPosition, param: (Vec<Expression>, Option<Alias>)) -> Self::ParseOutputType
+    {
+        ArrayEntryAccess {
+            pos: pos,
+            indices: param.0,
+            alias: param.1.map(|alias| (alias.1).0)
+        }
+    }
+}
+
+impl Parseable for ArrayAccessPattern
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Vec<ArrayEntryAccess>, Expression)> for ArrayAccessPattern
+{
+    fn build(pos: TextPosition, param: (Vec<ArrayEntryAccess>, Expression)) -> Self::ParseOutputType
+    {
+        ArrayAccessPattern {
+            pos: pos,
+            accesses: param.0,
+            array: param.1
+        }
+    }
+}
+
+impl Parseable for ParallelFor
+{
+    type ParseOutputType = Self;
+}
+
+impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)> for ParallelFor
+{
+    fn build(pos: TextPosition, param: (Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)) -> Self::ParseOutputType
+    {
+        ParallelFor {
+            pos: pos,
+            access_pattern: param.1,
+            index_variables: param.0.into_iter().map(|node| Declaration::build(node.0, node.1)).collect(),
+            body: param.2
+        }
+    }
+}
+
+impl Build<ParallelFor> for dyn Statement
+{
+    fn build(_pos: TextPosition, param: ParallelFor) -> Self::ParseOutputType
+    {
+        Box::new(param)
+    }
+}
+
 impl Parseable for Expression
 {
     type ParseOutputType = Self;
@@ -487,8 +547,8 @@ grammar_rule!{ TypeNode := PrimitiveTypeNode [ Dimensions ] }
 grammar_rule!{ Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
 grammar_rule!{ PrimitiveTypeNode := Token#Int }
 
-impl_parse!{ Function := Token#Fn Name Token#BracketOpen { ParameterNode } Token#BracketClose [ Token#Colon TypeNode ] FunctionImpl }
-grammar_rule!{ ParameterNode := Name Token#Colon TypeNode Token#Comma }
+impl_parse!{ Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon TypeNode ] FunctionImpl }
+grammar_rule!{ DeclarationListNode := Name Token#Colon TypeNode Token#Comma }
 grammar_rule!{ FunctionImpl := NativeFunction | Block }
 grammar_rule!{ NativeFunction := Token#Native Token#Semicolon }
 
@@ -503,7 +563,8 @@ impl Parser for dyn Statement
         Expression::is_applicable(stream) ||
         LocalVariableDeclaration::is_applicable(stream) ||
         Goto::is_applicable(stream) ||
-        Label::is_applicable(stream)
+        Label::is_applicable(stream) ||
+        ParallelFor::is_applicable(stream)
     }
 
     fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
@@ -523,6 +584,8 @@ impl Parser for dyn Statement
             Ok(Statement::build(pos, Label::parse(stream)?))
         } else if Goto::is_applicable(stream) {
             Ok(Statement::build(pos, Goto::parse(stream)?))
+        } else if ParallelFor::is_applicable(stream) {
+            Ok(Statement::build(pos, ParallelFor::parse(stream)?))
         } else {
             let expr = Expression::parse(stream)?;
             if stream.is_next(&Token::Assign) {
@@ -545,6 +608,11 @@ impl_parse!{ Label := Token#Target Name }
 impl_parse!{ Goto := Token#Goto Name Token#Semicolon }
 grammar_rule!{ ExpressionNode := Expression Token#Semicolon }
 impl_parse!{ LocalVariableDeclaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
+
+grammar_rule!{ Alias := Token#As Name }
+impl_parse!{ ArrayEntryAccess := Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
+impl_parse!{ ArrayAccessPattern := Token#With { ArrayEntryAccess Token#Comma } Token#In Expression }
+impl_parse!{ ParallelFor := Token#PFor { DeclarationListNode } { ArrayAccessPattern } Block }
 
 impl_parse!{ Expression := ExprNodeLevelOr }
 grammar_rule!{ ExprNodeLevelOr := ExprNodeLevelAnd { ExprNodeLevelOrPart } }
@@ -579,3 +647,38 @@ grammar_rule!{ FunctionCallParameters := Token#BracketOpen { Expression Token#Co
 grammar_rule!{ BaseExpr := Variable | Literal | BracketExpr }
 grammar_rule!{ BracketExpr := Token#BracketOpen Expression Token#BracketClose }
 impl_parse!{ Variable := Name }
+
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
+#[cfg(test)]
+use super::super::language::position::BEGIN;
+
+#[test]
+fn test_parser() {
+    let program = "fn test(a: int[, ], b: int,) {
+        pfor c: int, with this[c, ] as d, in a {
+            d = b;
+        }
+    }";
+    let ast = Program::parse(&mut lex(program)).unwrap();
+    assert_eq!(1, ast.items.len());
+    assert_eq!(Declaration {
+        pos: BEGIN,
+        variable: Name::l("a"),
+        variable_type: Type::Array(PrimitiveType::Int, 1)
+    }, ast.items[0].params[0]);
+    assert_eq!(None, ast.items[0].return_type);
+
+    let pfor = ast.items[0].body.as_ref().unwrap().statements[0].dynamic().downcast_ref::<ParallelFor>().unwrap();
+    assert_eq!(Declaration {
+        pos: BEGIN,
+        variable: Name::l("c"),
+        variable_type: Type::Primitive(PrimitiveType::Int)
+    }, pfor.index_variables[0]);
+
+    let assignment = pfor.body.statements[0].dynamic().downcast_ref::<Assignment>().unwrap();
+    assert_eq!(Expression::Variable(Variable { 
+        pos: BEGIN, 
+        identifier: Identifier::Name(Name::l("d")) 
+    }), assignment.assignee);
+}

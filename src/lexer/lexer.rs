@@ -54,6 +54,10 @@ fn lex_keyword(string: &str) -> Option<Token>
 		"write" => Some(Token::Write),
 		"native" => Some(Token::Native),
 		"goto" => Some(Token::Goto),
+		"with" => Some(Token::With),
+		"in" => Some(Token::In),
+		"this" => Some(Token::This),
+		"as" => Some(Token::As),
 		_ => None
 	}
 }

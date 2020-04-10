@@ -207,8 +207,8 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
 	}
 }
 
-impl<'a, T> MatRef<'a, T> {
-	
+impl<'a, T> MatRef<'a, T>
+{
 	fn assert_row_in_range(&self, row_index: usize) {
 		assert!(row_index < self.rows(), "Expected row index {} to be smaller than the row count {}", row_index, self.rows());
 	}
@@ -238,15 +238,7 @@ impl<'a, T> MatRef<'a, T> {
 
 impl<'a, T> MatRef<'a, T> 
 	where T: Clone
-{
-	pub fn transpose(&self) -> Matrix<T> {
-		let rows = self.rows();
-		let data: Vec<T> = (0..(rows * self.cols()))
-			.map(|index: usize| self.get(index % rows).get(index / rows).clone())
-			.collect();
-		Matrix::new(data.into_boxed_slice(), self.cols())
-	}
-	
+{	
 	pub fn clone(&self) -> Matrix<T> {
 		let cols = self.cols();
 		let data: Vec<T> = (0..(self.rows() * cols))
@@ -425,8 +417,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, usize> for MatRefMut<'b, T> {
 	type Output = RowRef<'a, T>;
 
 	fn get(&'a self, index: usize) -> Self::Output {
-		self.assert_row_in_range(index);
-		self.matrix.get(index + self.rows.start).range(&self.cols)
+		self.as_const().get(index + self.rows.start).range(&self.cols)
 	}
 }
 
@@ -458,10 +449,7 @@ impl<'a, 'b, T: 'a> Indexed<'a, (usize, usize)> for MatRefMut<'b, T> {
 	type Output = (RowRef<'a, T>, RowRef<'a, T>);
 
 	fn get(&'a self, index: (usize, usize)) -> Self::Output {
-		self.assert_row_in_range(index.0);
-		self.assert_row_in_range(index.1);
-		map_tuple(self.matrix.get(map_tuple(index, |row_index|row_index + self.rows.start)), 
-			|row_ref: RowRef<'a, T>|row_ref.range(&self.cols))
+		self.as_const().get(index)
 	}
 }
 

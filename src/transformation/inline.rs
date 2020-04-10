@@ -1,6 +1,5 @@
 use super::super::language::prelude::*;
 use super::scope::ScopeStack;
-use super::super::util;
 
 use std::collections::HashMap;
 
@@ -132,7 +131,7 @@ impl<F> Inliner<F>
         }
     }
 
-    fn inline_all(&mut self, program: &mut Program)
+    pub fn inline_all(&mut self, program: &mut Program)
     {
         assert_ne!(program.items.len(), 0);
         let mut scopes = ScopeStack::new(&program.items[..]);
@@ -279,7 +278,7 @@ use super::super::lexer::lexer::{ fragment_lex, lex };
 #[cfg(test)]
 use super::super::parser::Parser;
 #[cfg(test)]
-use super::super::language::nazgul_printer::print_nazgul;
+use super::super::language::debug_printer::print_debug;
 
 #[test]
 fn test_inline() {

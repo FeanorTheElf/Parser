@@ -5,6 +5,7 @@ pub trait Printer
     fn print_function_header(&mut self, node: &Function);
     fn enter_block(&mut self);
     fn exit_block(&mut self);
+    fn print_parallel_for_header(&mut self, node: &ParallelFor);
     fn print_label(&mut self, node: &Label);
     fn print_goto(&mut self, node: &Goto);
     fn print_if_header(&mut self, node: &If);

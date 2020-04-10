@@ -3,16 +3,16 @@ use super::print::{ Printer, Printable };
 
 use std::fmt::{ Formatter, Result, Write, Display };
 
-pub struct NazgulDisplay<'a, T: ?Sized + Printable>
+pub struct DebugDisplayWrapper<'a, T: ?Sized + Printable>
 {
     node: &'a T
 }
 
-impl<'a, T: ?Sized + Printable> Display for NazgulDisplay<'a, T>
+impl<'a, T: ?Sized + Printable> Display for DebugDisplayWrapper<'a, T>
 {
     fn fmt(&self, f: &mut Formatter) -> Result
     {
-        let mut printer: NazgulPrinter = NazgulPrinter {
+        let mut printer: DebugPrinter = DebugPrinter {
             result: f,
             indent: 0,
             newline: '\n',
@@ -23,14 +23,14 @@ impl<'a, T: ?Sized + Printable> Display for NazgulDisplay<'a, T>
     }
 }
 
-pub fn print_nazgul<T: ?Sized + Printable>(node: &T) -> NazgulDisplay<T>
+pub fn print_debug<T: ?Sized + Printable>(node: &T) -> DebugDisplayWrapper<T>
 {
-    NazgulDisplay {
+    DebugDisplayWrapper {
         node
     }
 }
 
-struct NazgulPrinter<'a, 'b>
+struct DebugPrinter<'a, 'b>
 {
     result: &'a mut Formatter<'b>,
     indent: usize,
@@ -38,7 +38,7 @@ struct NazgulPrinter<'a, 'b>
     state: Result
 }
 
-impl<'a, 'b> NazgulPrinter<'a, 'b>
+impl<'a, 'b> DebugPrinter<'a, 'b>
 {
     fn indent(&mut self) -> Result
     {
@@ -93,7 +93,7 @@ impl<'a, 'b> NazgulPrinter<'a, 'b>
     }
 }
 
-impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
+impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
 {
     fn print_function_header(&mut self, node: &Function)
     {
@@ -229,6 +229,39 @@ impl<'a, 'b> Printer for NazgulPrinter<'a, 'b>
                 self.print_expr(value)?;
             }
             self.result.write_str(";")?;
+            Ok(())
+        })
+    }
+
+    fn print_parallel_for_header(&mut self, node: &ParallelFor)
+    {
+        self.state = self.state.and_then(|_| {
+            self.newline()?;
+            self.result.write_str("pfor ")?;
+            for index_variable in &node.index_variables {
+                index_variable.variable.fmt(&mut self.result)?;
+                self.result.write_str(": ")?;
+                index_variable.variable_type.fmt(&mut self.result)?;
+                self.result.write_str(", ")?;
+            }
+            for array_access_pattern in &node.access_pattern {
+                self.result.write_str("with ")?;
+                for entry_access in &array_access_pattern.accesses {
+                    self.result.write_str("this[")?;
+                    for index in &entry_access.indices {
+                        self.print_expr(index)?;
+                        self.result.write_str(", ")?;
+                    }
+                    self.result.write_str("]")?;
+                    if let Some(alias) = &entry_access.alias {
+                        self.result.write_str(" as ")?;
+                        alias.fmt(&mut self.result)?;
+                    }
+                    self.result.write_str(", ")?;
+                }
+                self.result.write_str("in ")?;
+                self.print_expr(&array_access_pattern.array)?;
+            }
             Ok(())
         })
     }
