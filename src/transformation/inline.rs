@@ -3,8 +3,6 @@ use super::scope::ScopeStack;
 
 use std::collections::HashMap;
 
-const TYPE_ERROR: &'static str = "Type error present, did the typechecker run?";
-
 pub struct Inliner<F>
     where F: FnMut(&FunctionCall, &Function) -> bool
 {
@@ -42,7 +40,7 @@ impl<F> Inliner<F>
     {
             match function_call_to_extract {
                 Expression::Call(mut call) => {
-                    let called_function = find_function_definition(&call.function, defined_functions).expect(TYPE_ERROR);
+                    let called_function = find_function_definition(&call.function, defined_functions).internal_error();
                     let pos = call.pos().clone();
                     if let FunctionDefinition::UserDefined(function_def) = called_function {
                         if (self.should_inline)(&call, function_def) {
@@ -153,7 +151,7 @@ fn find_function_definition<'b>(expr: &Expression, all_functions: &'b DefinedFun
         match &identifier.identifier {
             Identifier::Name(name) => {
                 let found_function = all_functions.iter().find(|f| f.identifier == *name).ok_or(
-                    CompileError::new(expr.pos().clone(), format!("Could not find definition of function {}", name), ErrorType::UndefinedSymbol));
+                    CompileError::new(expr.pos(), format!("Could not find definition of function {}", name), ErrorType::UndefinedSymbol));
                 Ok(FunctionDefinition::UserDefined(found_function?))
             },
             Identifier::BuiltIn(builtin_identifier) => Ok(FunctionDefinition::Builtin(*builtin_identifier))

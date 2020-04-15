@@ -92,7 +92,7 @@ impl Parser for Literal
     fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
     {
         Ok(Literal { 
-            pos: stream.pos(), 
+            pos: stream.pos().clone(), 
             value: stream.next_literal()? 
         })
     }
@@ -352,15 +352,16 @@ impl Parseable for ArrayEntryAccess
     type ParseOutputType = Self;
 }
 
-impl Build<(Vec<Expression>, Option<Alias>)> for ArrayEntryAccess
+impl Build<(Option<RWModifier>, Vec<Expression>, Option<Alias>)> for ArrayEntryAccess
 {
-    fn build(pos: TextPosition, param: (Vec<Expression>, Option<Alias>)) -> Self::ParseOutputType
+    fn build(pos: TextPosition, param: (Option<RWModifier>, Vec<Expression>, Option<Alias>)) -> Self::ParseOutputType
     {
-        ArrayEntryAccess {
-            pos: pos,
-            indices: param.0,
-            alias: param.1.map(|alias| (alias.1).0)
-        }
+        let write = match param.0 {
+            Some(RWModifier::ReadModifier(_)) => false,
+            Some(RWModifier::WriteModifier(_)) => true,
+            None => true
+        };
+        ArrayEntryAccess::new(pos, param.1, param.2.map(|alias| (alias.1).0), write)
     }
 }
 
@@ -375,8 +376,8 @@ impl Build<(Vec<ArrayEntryAccess>, Expression)> for ArrayAccessPattern
     {
         ArrayAccessPattern {
             pos: pos,
-            accesses: param.0,
-            array: param.1
+            array: param.1,
+            entry_accesses: param.0
         }
     }
 }
@@ -485,7 +486,11 @@ impl Build<ExprNodeLevelAdd> for Expression
 {
     fn build(pos: TextPosition, param: ExprNodeLevelAdd) -> Self::ParseOutputType
     {
-        build_expr(pos, BuiltInIdentifier::FunctionAdd, Expression::build(param.0, (param.1).0), (param.1).1.into_iter().map(|node| {
+        let mut start_expr = Expression::build(param.0.clone(), (param.1).1);
+        if let Some(unary_negation) = (param.1).0 {
+            start_expr = build_function_call(unary_negation.0, BuiltInIdentifier::FunctionUnaryNeg, vec![start_expr]);
+        }
+        build_expr(pos, BuiltInIdentifier::FunctionAdd, start_expr, (param.1).2.into_iter().map(|node| {
             match node {
                 ExprNodeLevelAddPart::ExprNodeLevelAddPartAdd(part) => Expression::build(part.0, (part.1).0),
                 ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => build_function_call(part.0.clone(), BuiltInIdentifier::FunctionUnaryNeg, vec![Expression::build(part.0, (part.1).0)])
@@ -569,7 +574,7 @@ impl Parser for dyn Statement
 
     fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
     {
-        let pos = stream.pos();
+        let pos = stream.pos().clone();
         if If::is_applicable(stream) {
             Ok(Statement::build(pos, If::parse(stream)?))
         } else if While::is_applicable(stream) {
@@ -610,9 +615,12 @@ grammar_rule!{ ExpressionNode := Expression Token#Semicolon }
 impl_parse!{ LocalVariableDeclaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
 
 grammar_rule!{ Alias := Token#As Name }
-impl_parse!{ ArrayEntryAccess := Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
+impl_parse!{ ArrayEntryAccess := [ RWModifier ] Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
 impl_parse!{ ArrayAccessPattern := Token#With { ArrayEntryAccess Token#Comma } Token#In Expression }
 impl_parse!{ ParallelFor := Token#PFor { DeclarationListNode } { ArrayAccessPattern } Block }
+grammar_rule!{ RWModifier := ReadModifier | WriteModifier }
+grammar_rule!{ ReadModifier := Token#Read }
+grammar_rule!{ WriteModifier := Token#Write }
 
 impl_parse!{ Expression := ExprNodeLevelOr }
 grammar_rule!{ ExprNodeLevelOr := ExprNodeLevelAnd { ExprNodeLevelOrPart } }
@@ -629,7 +637,8 @@ grammar_rule!{ ExprNodeLevelCmpPartLeq := Token#OpLessEq ExprNodeLevelAdd }
 grammar_rule!{ ExprNodeLevelCmpPartEq := Token#OpEqual ExprNodeLevelAdd }
 grammar_rule!{ ExprNodeLevelCmpPartNeq := Token#OpUnequal ExprNodeLevelAdd }
 
-grammar_rule!{ box ExprNodeLevelAdd := ExprNodeLevelMul { ExprNodeLevelAddPart } }
+grammar_rule!{ box ExprNodeLevelAdd := [ UnaryNegation ] ExprNodeLevelMul { ExprNodeLevelAddPart } }
+grammar_rule!{ UnaryNegation := Token#OpSubtract }
 grammar_rule!{ ExprNodeLevelAddPart := ExprNodeLevelAddPartAdd | ExprNodeLevelAddPartSub }
 grammar_rule!{ ExprNodeLevelAddPartAdd := Token#OpAdd ExprNodeLevelMul }
 grammar_rule!{ ExprNodeLevelAddPartSub := Token#OpSubtract ExprNodeLevelMul }

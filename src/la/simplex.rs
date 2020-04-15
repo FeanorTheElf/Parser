@@ -220,30 +220,3 @@ fn test_impossible_system_solve() {
 	                              1.0, -1.0, 1.0]), 2);
 	assert_eq!(None, solve(&m));
 }
-
-pub fn experiment() {
-	let mut m = Matrix::new(Box::new([1.0,  1.0,  -13.0,  -2.0,
-	                                  -2.0, 1.0,  30.0,   1.0, 
-								      1.0,   -2.0, -17.0, 1.0]), 3);
-	let (mut r1, mut r2) = m.get_mut((0, 1));
-	r2 *= 2.0;
-	r1 += r2;
-
-	let (mut r2, mut r3) = m.get_mut((1, 2));
-	r3 *= 4.0;
-	r2 += r3;
-
-	m.get_mut(0).mul_assign(-1.0/3.0);
-	m.get_mut(1).mul_assign(-1.0/6.0);
-	m.get_mut(2).mul_assign(-1.0/4.0);
-
-	let (r2, mut r3) = m.get_mut((1, 2));
-	r3 -= r2;
-
-	let (r1, mut r3) = m.get_mut((0, 2));
-	r3 += r1;
-
-	m.get_mut(1).mul_assign(-3.0);
-	m.get_mut(0).mul_assign(3.0);
-	println!("{:?}", &m);
-}

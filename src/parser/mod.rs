@@ -15,6 +15,7 @@ pub trait Build<T>: Parseable
 pub trait Parser: Parseable
 {
 	fn is_applicable(stream: &Stream) -> bool;
+
 	fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>;
 }
 

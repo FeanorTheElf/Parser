@@ -1,5 +1,6 @@
-pub use super::error::{ CompileError, ErrorType };
+pub use super::error::{ CompileError, ErrorType, InternalErrorConvertable };
 pub use super::position::TextPosition;
 pub use super::AstNode;
 pub use super::identifier::*;
 pub use super::program::*;
+pub use super::program_parallel_for::*;

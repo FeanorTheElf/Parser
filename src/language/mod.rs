@@ -13,6 +13,7 @@ pub mod error;
 pub mod identifier;
 pub mod print;
 pub mod program;
+pub mod program_parallel_for;
 pub mod prelude;
 pub mod debug_printer;
 #[macro_use]

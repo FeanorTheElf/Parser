@@ -76,6 +76,7 @@ macro_rules! impl_grammar_variant_parse {
 			els
 		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
     };
+    // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
     ($stream:ident; { Token#$token:ident } $($tail:tt)*) => 
     {
         ({
@@ -98,6 +99,7 @@ macro_rules! impl_grammar_variant_parse {
 			els
 		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
     };
+    // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
     ($stream:ident; [ $name:ident ] $($tail:tt)*) => 
     {
         ({
@@ -131,8 +133,30 @@ macro_rules! impl_grammar_variant_guess_can_parse
     {
         $name::is_applicable($stream)
     };
-    // {} and [] are not allowed as first characters, as is_applicable would not correctly
-    // recognize zero repetitions in this case
+    ($stream:ident; ) =>
+    {
+        true
+    };
+
+    // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
+    ($stream:ident; { $name:ident } $($tail:tt)*) => 
+    {
+        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+    };
+    ($stream:ident; { $name:ident Token#$token:ident } $($tail:tt)*) => 
+    {
+        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+    };
+
+    // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
+    ($stream:ident; [ $name:ident ] $($tail:tt)*) => 
+    {
+        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+    };
+    ($stream:ident; [ $name:ident Token#$token:ident ] $($tail:tt)*) => 
+    {
+        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+    };
 }
 
 macro_rules! impl_grammar_rule_parse_wrapper 
@@ -140,7 +164,7 @@ macro_rules! impl_grammar_rule_parse_wrapper
     ($stream:ident; $result:ty; $expected_string:expr; $variant:ident) => 
     {
         if <$variant>::is_applicable($stream) {
-			let pos = ($stream).pos();
+			let pos = ($stream).pos().clone();
 			Ok(<$result>::build(pos, $variant::parse($stream)?))
 		} else {
 			Err(CompileError::new(($stream.pos()), 
@@ -150,7 +174,7 @@ macro_rules! impl_grammar_rule_parse_wrapper
     ($stream:ident; $result:ty; $expected_string:expr; $variant:ident | $($tail:tt)*) => 
     {
         if <$variant>::is_applicable($stream) {
-			let pos = ($stream).pos();
+			let pos = ($stream).pos().clone();
 			Ok(<$result>::build(pos, $variant::parse($stream)?))
 		} else {
 			impl_grammar_rule_parse_wrapper!($stream; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
@@ -196,7 +220,7 @@ macro_rules! impl_parse
             
             fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError> 
             {
-                let pos = stream.pos();
+                let pos = stream.pos().clone();
 			    Ok(Self::build(pos, impl_grammar_variant_parse!(stream; $($tail)*)))
 			}
 		}

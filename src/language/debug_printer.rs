@@ -246,9 +246,9 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
             }
             for array_access_pattern in &node.access_pattern {
                 self.result.write_str("with ")?;
-                for entry_access in &array_access_pattern.accesses {
+                for entry_access in &array_access_pattern.entry_accesses {
                     self.result.write_str("this[")?;
-                    for index in &entry_access.indices {
+                    for index in entry_access.get_indices() {
                         self.print_expr(index)?;
                         self.result.write_str(", ")?;
                     }

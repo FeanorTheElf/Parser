@@ -1,8 +1,6 @@
-use std::vec::Vec;
-
 use super::AstNode;
 use super::position::{ TextPosition, BEGIN };
-use super::identifier::{ Identifier, Name };
+use super::identifier::{ BuiltInIdentifier, Identifier, Name };
 use super::print::{ Printer, Printable };
 
 use super::super::util::iterable::{ Iterable, LifetimeIterable };
@@ -145,31 +143,6 @@ pub struct Goto
 {
     pub pos: TextPosition,
     pub target: Name
-}
-
-#[derive(Debug, Clone)]
-pub struct ArrayEntryAccess
-{
-    pub pos: TextPosition,
-    pub indices: Vec<Expression>,
-    pub alias: Option<Name>
-}
-
-#[derive(Debug, Clone)]
-pub struct ArrayAccessPattern
-{
-    pub pos: TextPosition, 
-    pub accesses: Vec<ArrayEntryAccess>, 
-    pub array: Expression
-} 
-
-#[derive(Debug, Clone)]
-pub struct ParallelFor
-{
-    pub pos: TextPosition,
-    pub index_variables: Vec<Declaration>,
-    pub access_pattern: Vec<ArrayAccessPattern>,
-    pub body: Block
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -378,54 +351,6 @@ impl AstNode for Goto
     }
 }
 
-impl AstNode for ParallelFor
-{
-    fn pos(&self) -> &TextPosition
-    {
-        &self.pos
-    }
-}
-
-impl PartialEq for ParallelFor
-{
-    fn eq(&self, rhs: &ParallelFor) -> bool
-    {
-        self.index_variables == rhs.index_variables && self.access_pattern == rhs.access_pattern
-    }
-}
-
-impl AstNode for ArrayAccessPattern
-{
-    fn pos(&self) -> &TextPosition
-    {
-        &self.pos
-    }
-}
-
-impl PartialEq for ArrayAccessPattern
-{
-    fn eq(&self, rhs: &ArrayAccessPattern) -> bool
-    {
-        self.accesses == rhs.accesses && self.array == rhs.array
-    }
-}
-
-impl AstNode for ArrayEntryAccess
-{
-    fn pos(&self) -> &TextPosition
-    {
-        &self.pos
-    }
-}
-
-impl PartialEq for ArrayEntryAccess
-{
-    fn eq(&self, rhs: &ArrayEntryAccess) -> bool
-    {
-        self.indices == rhs.indices && self.alias == rhs.alias
-    }
-}
-
 impl Statement for Expression
 {
     fn dyn_clone(&self) -> Box<dyn Statement>
@@ -498,14 +423,6 @@ impl Statement for Goto
     }
 }
 
-impl Statement for ParallelFor
-{
-    fn dyn_clone(&self) -> Box<dyn Statement>
-    {
-        Box::new(self.clone())
-    }
-}
-
 impl AstNode for Expression
 {
     fn pos(&self) -> &TextPosition
@@ -514,6 +431,17 @@ impl AstNode for Expression
             Expression::Call(call) => call.pos(),
             Expression::Variable(var) => var.pos(),
             Expression::Literal(lit) => lit.pos()
+        }
+    }
+}
+
+impl PartialEq<BuiltInIdentifier> for Expression
+{
+    fn eq(&self, rhs: &BuiltInIdentifier) -> bool
+    {
+        match self {
+            Expression::Variable(var) => var.identifier == Identifier::BuiltIn(*rhs),
+            _ => false
         }
     }
 }
@@ -665,15 +593,6 @@ impl Printable for Goto
     }
 }
 
-impl Printable for ParallelFor
-{
-    fn print<'a>(&self, printer: &mut (dyn Printer + 'a))
-    {
-        printer.print_parallel_for_header(self);
-        self.body.print(printer);
-    }
-}
-
 impl<'a> LifetimeIterable<'a, Expression> for Expression
 {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
@@ -807,19 +726,6 @@ impl<'a> LifetimeIterable<'a, Expression> for Goto
     }
 }
 
-impl<'a> LifetimeIterable<'a, Expression> for ParallelFor
-{
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)>
-    {
-        Box::new(self.access_pattern.iter().map(|pattern| &pattern.array))
-    }
-
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)>
-    {
-        Box::new(self.access_pattern.iter_mut().map(|pattern| &mut pattern.array))
-    }
-}
-
 impl<'a> LifetimeIterable<'a, Block> for LocalVariableDeclaration
 {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
@@ -934,18 +840,5 @@ impl<'a> LifetimeIterable<'a, Block> for Block
     fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
     {
         Box::new(std::iter::once(self))
-    }
-}
-
-impl<'a> LifetimeIterable<'a, Block> for ParallelFor
-{
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)>
-    {
-        Box::new(std::iter::once(&self.body))
-    }
-
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)>
-    {
-        Box::new(std::iter::once(&mut self.body))
     }
 }

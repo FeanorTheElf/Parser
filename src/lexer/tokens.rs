@@ -150,30 +150,30 @@ impl Stream {
 	}
 
 	pub fn next_literal(&mut self) -> Result<i32, CompileError> {
-		let pos = self.pos();
+		let pos = self.pos().clone();
 		match self.next() {
 			Token::Literal(lit) => Ok(lit),
-			_value => Err(CompileError::new(pos, format!("Expected literal, got {:?}", _value), ErrorType::SyntaxError))
+			_value => Err(CompileError::new(&pos, format!("Expected literal, got {:?}", _value), ErrorType::SyntaxError))
 		}
 	}
 
 	pub fn next_ident(&mut self) -> Result<String, CompileError> {
-		let pos = self.pos();
+		let pos = self.pos().clone();
 		match self.next() {
 			Token::Identifier(id) => Ok(id),
-			_value => Err(CompileError::new(pos, format!("Expected identifier, got {:?}", _value), ErrorType::SyntaxError))
+			_value => Err(CompileError::new(&pos, format!("Expected identifier, got {:?}", _value), ErrorType::SyntaxError))
 		}
 	}
 
 	pub fn skip_next(&mut self, token: &Token) -> Result<&mut Self, CompileError> {
-		let pos = self.pos();
+		let pos = self.pos().clone();
 		match self.data.pop() {
 			Some(value) => if *token != value.token {
-				Err(CompileError::new(pos, format!("Expected token {:?}, but got token {:?}", token, value.token), ErrorType::SyntaxError))
+				Err(CompileError::new(&pos, format!("Expected token {:?}, but got token {:?}", token, value.token), ErrorType::SyntaxError))
 			} else {
 				Ok(self)
 			},
-			None => Err(CompileError::new(pos, format!("Expected token {:?}, but got end of stream", token), ErrorType::SyntaxError))
+			None => Err(CompileError::new(&pos, format!("Expected token {:?}, but got end of stream", token), ErrorType::SyntaxError))
 		}
 	}
 
@@ -195,8 +195,8 @@ impl Stream {
 		}
 	}
 
-	pub fn pos(&self) -> TextPosition {
-		self.data.last().unwrap().pos.clone()
+	pub fn pos(&self) -> &TextPosition {
+		&self.data.last().unwrap().pos
 	}
 }
 

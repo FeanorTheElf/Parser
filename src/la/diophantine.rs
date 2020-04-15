@@ -1,6 +1,4 @@
-use super::super::util::find_min;
-use super::vector::Vector;
-use super::matrix::{ Matrix, MatRef, MatRefMut };
+use super::matrix::{ Matrix, MatRef, MatRefMut, Vector };
 use std::mem::swap;
 
 type Item = i32;
@@ -34,7 +32,7 @@ pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<V
     smith(&mut smith_A.borrow_mut(), &mut iL.borrow_mut(), &mut iR.borrow_mut(), 0);
     // x is solution of (L * smith_A) x = b, get result through r := R^-1 * x
     let mut x = Vector::<Item>::zero(A.cols());
-    let c = &iL.borrow() * b;
+    let c = iL.borrow() * b.borrow();
     for i in 0..usize::min(x.len(), A.rows()) {
         let entry = smith_A[i][i];
         if entry == 0 && c[i] != 0 {
@@ -45,7 +43,7 @@ pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<V
             x[i] = c[i] / entry;
         } 
     }
-    return Some(&iR.borrow() * &x);
+    return Some(iR.borrow() * x.borrow());
 }
 
 /*
@@ -139,12 +137,28 @@ fn find_smallest_gcd_entry<'a>(A: &Mat<'a>) -> (usize, usize) {
     }
 }
 
+fn find_min<T, I, F>(mut it: I, mut f: F) -> Option<T>
+    where I: Iterator<Item = T>,
+        F: FnMut(&T) -> i32
+{
+    let mut result: T = it.next()?;
+    let mut current_val: i32 = f(&result);
+    for item in it {
+        let value = f(&item);
+        if value < current_val {
+            result = item;
+            current_val = value;
+        }
+    }
+    return Some(result);
+}
+
 fn find_smallest_gcd_entry_in_pivot_row<'a>(A: &Mat<'a>) -> usize {
-    find_min(0..A.cols(), &|col: &usize| gcd(A[0][0], A[0][*col])).unwrap()
+    find_min(0..A.cols(), |col: &usize| gcd(A[0][0], A[0][*col])).unwrap()
 }
 
 fn find_smallest_gcd_entry_in_pivot_col<'a>(A: &Mat<'a>) -> usize {
-    find_min(0..A.rows(), &|row: &usize| gcd(A[0][0], A[*row][0])).unwrap()
+    find_min(0..A.rows(), |row: &usize| gcd(A[0][0], A[*row][0])).unwrap()
 }
 
 fn swap_pivot_entry_if_zero<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) -> bool {
@@ -239,8 +253,4 @@ fn test_diophantine_no_rational_solutions() {
     let b = Vector::new(Box::new([2, 3, 4]));
     let x = diophantine_solve(&A.borrow(), &b);
     assert!(x.is_none());
-}
-
-pub fn experiment() {
-    
 }

@@ -14,7 +14,7 @@ mod language;
 mod lexer;
 mod parser;
 mod transformation;
-// mod la;
+mod la;
 
 use lexer::lexer::lex;
 use language::prelude::*;

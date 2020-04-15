@@ -1,6 +1,8 @@
 pub mod ref_eq;
 pub mod dynamic;
 pub mod iterable;
+#[macro_use]
+pub mod macros;
 
 #[allow(unused)]
 pub fn equal_ignore_order<T>(lhs: &Vec<T>, rhs: &Vec<T>) -> bool
