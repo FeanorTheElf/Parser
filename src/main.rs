@@ -9,12 +9,13 @@ extern crate test;
 
 #[macro_use]
 mod util;
+mod la;
 #[macro_use]
 mod language;
 mod lexer;
 mod parser;
+mod check;
 mod transformation;
-mod la;
 
 use lexer::lexer::lex;
 use language::prelude::*;

@@ -6,8 +6,7 @@ use super::print::{ Printer, Printable };
 use super::error::*;
 
 use super::super::util::iterable::LifetimeIterable;
-use super::super::la::matrix::*;
-use super::super::la::indexed::IndexedMut;
+use super::super::la::prelude::*;
 
 use std::ops::MulAssign;
 use std::cell::{ RefCell, Ref };
@@ -168,7 +167,7 @@ impl ArrayEntryAccess
         }
     }
 
-    fn add_multiplication_transform_to_transformation_matrix<'a, I>(factors: I, index_variable_map: &HashMap<&Name, usize>, result: &mut RowRefMut<i32>) -> Result<(), CompileError>
+    fn add_multiplication_transform_to_transformation_matrix<'a, I>(factors: I, index_variable_map: &HashMap<&Name, usize>, result: &mut VecRefMut<i32>) -> Result<(), CompileError>
         where I: Iterator<Item = &'a Expression>
     {
         let mut transform = Vector::<i32>::zero(result.len());
@@ -178,7 +177,7 @@ impl ArrayEntryAccess
             match (Self::evaluate_constant(factor)?, transform_text_position.clone()) {
                 (Ok(a), _) => f *= a,
                 (Err(new_pos), None) => {
-                    Self::add_expression_transform_to_transformation_matrix(factor, index_variable_map, &mut transform.borrow_mut())?;
+                    Self::add_expression_transform_to_transformation_matrix(factor, index_variable_map, &mut transform.get_mut(..))?;
                     transform_text_position = Some(new_pos);
                 },
                 (Err(new_pos), Some(fst_pos)) => {
@@ -189,16 +188,15 @@ impl ArrayEntryAccess
             }
         }
         if transform_text_position.is_some() {
-            transform.borrow_mut().mul_assign(f);
-            *result += transform.borrow();
-            println!("{:?}", f);
+            transform.get_mut(..).mul_assign(f);
+            *result += transform.get(..);
         } else {
             result[ACCESS_MATRIX_AFFINE_COLUMN] += f;
         }
         return Ok(());
     }
 
-    fn add_function_application_to_transformation_matrix(call: &FunctionCall, index_variable_map: &HashMap<&Name, usize>, result: &mut RowRefMut<i32>) -> Result<(), CompileError>
+    fn add_function_application_to_transformation_matrix(call: &FunctionCall, index_variable_map: &HashMap<&Name, usize>, result: &mut VecRefMut<i32>) -> Result<(), CompileError>
     {
         if call.function == BuiltInIdentifier::FunctionAdd {
             for param in &call.parameters {
@@ -208,9 +206,9 @@ impl ArrayEntryAccess
             Self::add_multiplication_transform_to_transformation_matrix(call.parameters.iter(), index_variable_map, result)?;
         } else if call.function == BuiltInIdentifier::FunctionUnaryNeg {
             let mut transform = Vector::<i32>::zero(result.len());
-            Self::add_expression_transform_to_transformation_matrix(&call.parameters[0], index_variable_map, &mut transform.borrow_mut())?;
-            transform.borrow_mut().mul_assign(-1);
-            *result += transform.borrow();
+            Self::add_expression_transform_to_transformation_matrix(&call.parameters[0], index_variable_map, &mut transform.get_mut(..))?;
+            transform.get_mut(..).mul_assign(-1);
+            *result += transform.get(..);
         } else {
             return Err(CompileError::new(call.pos(),
                 format!("Only +, - and * are allowed operations in index expressions"),
@@ -219,7 +217,7 @@ impl ArrayEntryAccess
         return Ok(());
     }
 
-    fn add_expression_transform_to_transformation_matrix(expression: &Expression, index_variable_map: &HashMap<&Name, usize>, result: &mut RowRefMut<i32>) -> Result<(), CompileError>
+    fn add_expression_transform_to_transformation_matrix(expression: &Expression, index_variable_map: &HashMap<&Name, usize>, result: &mut VecRefMut<i32>) -> Result<(), CompileError>
     {
         match expression {
             Expression::Call(call) => {
@@ -257,7 +255,7 @@ impl ArrayEntryAccess
         let variables_in = index_variables.len();
         let variables_out = self.indices.len();
         let mut result = Matrix::<i32>::zero(variables_out, variables_in + 1);
-        for dimension in 0..variables_in {
+        for dimension in 0..variables_out {
             let index = &self.indices[dimension];
             Self::add_expression_transform_to_transformation_matrix(index, &index_variable_map, &mut result.get_mut(dimension))?;
         }

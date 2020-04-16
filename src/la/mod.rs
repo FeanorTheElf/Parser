@@ -4,3 +4,4 @@ pub mod indexed;
 pub mod matrix;
 pub mod simplex;
 pub mod diophantine;
+pub mod prelude;
