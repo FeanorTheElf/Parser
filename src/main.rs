@@ -1,8 +1,8 @@
 #![feature(test)]
 #![feature(trait_alias)]
 
-extern crate take_mut;
 extern crate itertools;
+extern crate take_mut;
 
 #[cfg(test)]
 extern crate test;
@@ -12,17 +12,17 @@ mod util;
 mod la;
 #[macro_use]
 mod language;
+mod check;
 mod lexer;
 mod parser;
-mod check;
 mod transformation;
 
-use lexer::lexer::lex;
 use language::prelude::*;
+use lexer::lexer::lex;
 use parser::Parser;
 
 fn main() {
-	let mut program = Program::parse(&mut lex("
+    let mut program = Program::parse(&mut lex("
 		fn min(a: int, b: int,): int {
 			if a < b {
 				return a;
@@ -40,6 +40,7 @@ fn main() {
 		fn clamp(a: int, lower: int, upper: int,): int {
 			return min(max(a, lower, ), upper, );
 		}
-	")).unwrap();
-	println!("{:?}", program);
+	"))
+    .unwrap();
+    println!("{:?}", program);
 }

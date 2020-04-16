@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
-pub mod rat;
+pub mod diophantine;
 pub mod indexed;
 pub mod matrix;
-pub mod simplex;
-pub mod diophantine;
 pub mod prelude;
+pub mod rat;
+pub mod simplex;

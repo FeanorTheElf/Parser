@@ -1,22 +1,19 @@
-use super::lexer::tokens::Stream;
 use super::language::error::CompileError;
 use super::language::position::TextPosition;
+use super::lexer::tokens::Stream;
 
-pub trait Parseable
-{
-	type ParseOutputType;
+pub trait Parseable {
+    type ParseOutputType;
 }
 
-pub trait Build<T>: Parseable
-{
-	fn build(pos: TextPosition, params: T) -> Self::ParseOutputType;
+pub trait Build<T>: Parseable {
+    fn build(pos: TextPosition, params: T) -> Self::ParseOutputType;
 }
 
-pub trait Parser: Parseable
-{
-	fn is_applicable(stream: &Stream) -> bool;
+pub trait Parser: Parseable {
+    fn is_applicable(stream: &Stream) -> bool;
 
-	fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>;
+    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>;
 }
 
 #[macro_use]

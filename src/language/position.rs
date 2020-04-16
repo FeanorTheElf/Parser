@@ -1,23 +1,18 @@
-use std::fmt::{ Debug, Display, Formatter, Error };
+use std::fmt::{Debug, Display, Error, Formatter};
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct TextPosition 
-{
+pub struct TextPosition {
     line: u32,
-    column: u32
+    column: u32,
 }
 
-pub const BEGIN: TextPosition = TextPosition {
-    line: 0,
-    column: 0
-};
+pub const BEGIN: TextPosition = TextPosition { line: 0, column: 0 };
 
-impl TextPosition 
-{
+impl TextPosition {
     pub fn create(line: u32, column: u32) -> Self {
         TextPosition {
             line: line,
-            column: column
+            column: column,
         }
     }
 
@@ -40,14 +35,12 @@ impl TextPosition
 }
 
 impl Debug for TextPosition {
-
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}:{}", self.line(), self.column())
     }
 }
 
 impl Display for TextPosition {
-
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}:{}", self.line(), self.column())
     }

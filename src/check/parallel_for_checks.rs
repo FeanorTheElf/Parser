@@ -1,8 +1,7 @@
-use super::super::language::prelude::*;
 use super::super::la::prelude::*;
+use super::super::language::prelude::*;
 
-pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError>
-{
+pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
     for item in &program.items {
         if let Some(body) = &item.body {
             for_pfor_in_block(body, &mut check_pfor_data_races)?;
@@ -12,7 +11,8 @@ pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileErr
 }
 
 fn for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileError>
-    where F: FnMut(&ParallelFor) -> Result<(), CompileError>
+where
+    F: FnMut(&ParallelFor) -> Result<(), CompileError>,
 {
     for statement in &block.statements {
         if let Some(pfor) = statement.dynamic().downcast_ref::<ParallelFor>() {
@@ -25,9 +25,12 @@ fn for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileError>
     return Ok(());
 }
 
-fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError>
-{
-    let index_variables = pfor.index_variables.iter().map(|var| &var.variable).collect();
+fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
+    let index_variables = pfor
+        .index_variables
+        .iter()
+        .map(|var| &var.variable)
+        .collect();
     for access_pattern in &pfor.access_pattern {
         for i in 0..access_pattern.entry_accesses.len() {
             for j in i..access_pattern.entry_accesses.len() {
@@ -37,9 +40,10 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError>
                 let transform1 = entry1.get_transformation_matrix(&index_variables)?;
                 let transform2 = entry2.get_transformation_matrix(&index_variables)?;
                 if one_write {
-                    let collision = get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);
+                    let collision =
+                        get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);
                     if let Some((x, y)) = collision {
-                        return Err(CompileError::new(entry1.pos(), 
+                        return Err(CompileError::new(entry1.pos(),
                             format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {} and {}", entry1.pos(), entry2.pos(), x.get(..), y.get(..)),
                             ErrorType::IllegalPForIndexExpression));
                     }
@@ -51,8 +55,11 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError>
 }
 
 #[allow(non_snake_case)]
-fn get_collision(transform1: MatRef<i32>, transform2: MatRef<i32>, same_index_collides: bool) -> Option<(Vector<i32>, Vector<i32>)>
-{
+fn get_collision(
+    transform1: MatRef<i32>,
+    transform2: MatRef<i32>,
+    same_index_collides: bool,
+) -> Option<(Vector<i32>, Vector<i32>)> {
     debug_assert_eq!(transform1.cols(), transform2.cols());
     debug_assert_eq!(transform1.rows(), transform2.rows());
     let variables_in = transform1.cols() - 1;
@@ -72,7 +79,12 @@ fn get_collision(transform1: MatRef<i32>, transform2: MatRef<i32>, same_index_co
 
     let mut iL = Matrix::<i32>::identity(variables_out);
     let mut iR = Matrix::<i32>::identity(2 * variables_in);
-    diophantine::smith(&mut joined_transform.get_mut((.., ..)), &mut iL.get_mut((.., ..)), &mut iR.get_mut((.., ..)), 0);
+    diophantine::smith(
+        &mut joined_transform.get_mut((.., ..)),
+        &mut iL.get_mut((.., ..)),
+        &mut iR.get_mut((.., ..)),
+        0,
+    );
 
     let x = iL.get((.., ..)) * joined_translate.into_column().get(..);
     let mut y = Vector::<i32>::zero(2 * variables_in);
@@ -82,7 +94,7 @@ fn get_collision(transform1: MatRef<i32>, transform2: MatRef<i32>, same_index_co
             return None;
         } else if joined_transform[i][i] == 0 && x[i] == 0 {
             free_dimensions.push(i);
-            // y[i] is already zero
+        // y[i] is already zero
         } else if x[i] % joined_transform[i][i] != 0 {
             return None;
         } else {
@@ -92,7 +104,10 @@ fn get_collision(transform1: MatRef<i32>, transform2: MatRef<i32>, same_index_co
     // We are done, since we found a solution
     if same_index_collides {
         let result = iR.get((.., ..)) * y.get(..);
-        return Some((result.get(0..variables_in).to_owned(), result.get(variables_in..(2 * variables_in)).to_owned()));
+        return Some((
+            result.get(0..variables_in).to_owned(),
+            result.get(variables_in..(2 * variables_in)).to_owned(),
+        ));
     }
     // We have to check whether a solution space looks like (...a... ...a...) * Z^n + ... + (...c... ...c...) * Z^n,
     // so there is a solution but only one where the same thread collides with itself
@@ -102,7 +117,12 @@ fn get_collision(transform1: MatRef<i32>, transform2: MatRef<i32>, same_index_co
         y[free_dim] = 1;
         let basis_vector = iR.get((.., ..)) * y.get(..);
         if basis_vector.get(0..variables_in) != basis_vector.get(variables_in..(2 * variables_in)) {
-            return Some((basis_vector.get(0..variables_in).to_owned(), basis_vector.get(variables_in..(2 * variables_in)).to_owned()))
+            return Some((
+                basis_vector.get(0..variables_in).to_owned(),
+                basis_vector
+                    .get(variables_in..(2 * variables_in))
+                    .to_owned(),
+            ));
         }
         y[free_dim] = 0;
     }
@@ -116,17 +136,21 @@ use super::super::parser::Parser;
 
 #[test]
 fn test_check_collision() {
-    let pfor = ParallelFor::parse(&mut fragment_lex("pfor a: int, with write this[2 * a, ], read this[2 * a + 1, ], in array {}")).unwrap();
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "pfor a: int, with write this[2 * a, ], read this[2 * a + 1, ], in array {}",
+    ))
+    .unwrap();
     assert_eq!((), check_pfor_data_races(&pfor).internal_error());
 }
 
 #[test]
 fn test_check_collision_with_collision() {
-    let pfor = ParallelFor::parse(&mut fragment_lex("pfor a: int, b: int, with write this[2 * a + b, ], read this[2 * a + 1, ], in array {}")).unwrap();
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "pfor a: int, b: int, with write this[2 * a + b, ], read this[2 * a + 1, ], in array {}",
+    ))
+    .unwrap();
     assert!(check_pfor_data_races(&pfor).is_err());
 }
 
 #[test]
-fn test_get_collision() {
-    
-}
+fn test_get_collision() {}

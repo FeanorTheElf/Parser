@@ -1,62 +1,51 @@
 use super::prelude::*;
-use super::print::{ Printer, Printable };
+use super::print::{Printable, Printer};
 
-use std::fmt::{ Formatter, Result, Write, Display };
+use std::fmt::{Display, Formatter, Result, Write};
 
-pub struct DebugDisplayWrapper<'a, T: ?Sized + Printable>
-{
-    node: &'a T
+pub struct DebugDisplayWrapper<'a, T: ?Sized + Printable> {
+    node: &'a T,
 }
 
-impl<'a, T: ?Sized + Printable> Display for DebugDisplayWrapper<'a, T>
-{
-    fn fmt(&self, f: &mut Formatter) -> Result
-    {
+impl<'a, T: ?Sized + Printable> Display for DebugDisplayWrapper<'a, T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         let mut printer: DebugPrinter = DebugPrinter {
             result: f,
             indent: 0,
             newline: '\n',
-            state: Ok(())
+            state: Ok(()),
         };
         self.node.print(&mut printer);
         return printer.state;
     }
 }
 
-pub fn print_debug<T: ?Sized + Printable>(node: &T) -> DebugDisplayWrapper<T>
-{
-    DebugDisplayWrapper {
-        node
-    }
+pub fn print_debug<T: ?Sized + Printable>(node: &T) -> DebugDisplayWrapper<T> {
+    DebugDisplayWrapper { node }
 }
 
-struct DebugPrinter<'a, 'b>
-{
+struct DebugPrinter<'a, 'b> {
     result: &'a mut Formatter<'b>,
     indent: usize,
     newline: char,
-    state: Result
+    state: Result,
 }
 
-impl<'a, 'b> DebugPrinter<'a, 'b>
-{
-    fn indent(&mut self) -> Result
-    {
+impl<'a, 'b> DebugPrinter<'a, 'b> {
+    fn indent(&mut self) -> Result {
         for _ in 0..self.indent {
             self.result.write_str("    ")?;
         }
         Ok(())
     }
 
-    fn newline(&mut self) -> Result
-    {
+    fn newline(&mut self) -> Result {
         self.result.write_char(self.newline)?;
         self.indent()?;
         Ok(())
     }
 
-    fn print_parameters(&mut self, call: &FunctionCall) -> Result
-    {
+    fn print_parameters(&mut self, call: &FunctionCall) -> Result {
         self.result.write_str("(")?;
         for param in &call.parameters {
             self.print_expr(param)?;
@@ -66,23 +55,22 @@ impl<'a, 'b> DebugPrinter<'a, 'b>
         Ok(())
     }
 
-    fn print_expr(&mut self, expr: &Expression) -> Result
-    {
+    fn print_expr(&mut self, expr: &Expression) -> Result {
         match expr {
             Expression::Call(call) => {
                 self.result.write_str("(")?;
                 self.print_expr(&call.function)?;
                 self.result.write_str(")")?;
                 self.print_parameters(call)?;
-            },
+            }
             Expression::Literal(literal) => {
                 literal.value.fmt(&mut self.result)?;
-            },
+            }
             Expression::Variable(variable) => {
                 match &variable.identifier {
                     Identifier::Name(variable_name) => {
                         variable_name.fmt(&mut self.result)?;
-                    },
+                    }
                     Identifier::BuiltIn(builtin_variable) => {
                         builtin_variable.fmt(&mut self.result)?;
                     }
@@ -93,10 +81,8 @@ impl<'a, 'b> DebugPrinter<'a, 'b>
     }
 }
 
-impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
-{
-    fn print_function_header(&mut self, node: &Function)
-    {
+impl<'a, 'b> Printer for DebugPrinter<'a, 'b> {
+    fn print_function_header(&mut self, node: &Function) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("fn ")?;
@@ -118,8 +104,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         });
     }
 
-    fn enter_block(&mut self) 
-    {
+    fn enter_block(&mut self) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.indent += 1;
@@ -127,8 +112,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn exit_block(&mut self)
-    {
+    fn exit_block(&mut self) {
         self.state = self.state.and_then(|_| {
             self.indent -= 1;
             self.newline()?;
@@ -137,8 +121,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_label(&mut self, node: &Label)
-    {
+    fn print_label(&mut self, node: &Label) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("@")?;
@@ -147,8 +130,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_goto(&mut self, node: &Goto)
-    {
+    fn print_goto(&mut self, node: &Goto) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("goto ")?;
@@ -158,8 +140,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_if_header(&mut self, node: &If)
-    {
+    fn print_if_header(&mut self, node: &If) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("if (")?;
@@ -169,8 +150,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_while_header(&mut self, node: &While)
-    {
+    fn print_while_header(&mut self, node: &While) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("while (")?;
@@ -180,8 +160,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_return(&mut self, node: &Return)
-    {
+    fn print_return(&mut self, node: &Return) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("return")?;
@@ -194,8 +173,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_expression(&mut self, node: &Expression)
-    {
+    fn print_expression(&mut self, node: &Expression) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.print_expr(node)?;
@@ -204,8 +182,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_assignment(&mut self, node: &Assignment)
-    {
+    fn print_assignment(&mut self, node: &Assignment) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.print_expr(&node.assignee)?;
@@ -216,8 +193,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_declaration(&mut self, node: &LocalVariableDeclaration)
-    {
+    fn print_declaration(&mut self, node: &LocalVariableDeclaration) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("let ")?;
@@ -233,8 +209,7 @@ impl<'a, 'b> Printer for DebugPrinter<'a, 'b>
         })
     }
 
-    fn print_parallel_for_header(&mut self, node: &ParallelFor)
-    {
+    fn print_parallel_for_header(&mut self, node: &ParallelFor) {
         self.state = self.state.and_then(|_| {
             self.newline()?;
             self.result.write_str("pfor ")?;

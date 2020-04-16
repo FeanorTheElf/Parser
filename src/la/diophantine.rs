@@ -1,12 +1,11 @@
-use super::matrix::{ Matrix, MatRef, MatRefMut, Vector };
 use super::indexed::*;
+use super::matrix::{MatRef, MatRefMut, Matrix, Vector};
 use std::mem::swap;
 
 type Item = i32;
 type Mat<'a> = MatRefMut<'a, Item>;
 
-fn eea(fst: i32, snd: i32) -> (i32, i32) 
-{
+fn eea(fst: i32, snd: i32) -> (i32, i32) {
     let (mut a, mut b) = if fst > snd { (fst, snd) } else { (snd, fst) };
     let (mut sa, mut ta) = (1, 0);
     let (mut sb, mut tb) = (0, 1);
@@ -30,7 +29,12 @@ pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<V
     let mut smith_A = A.clone();
     let mut iL = Matrix::<Item>::identity(A.rows());
     let mut iR = Matrix::<Item>::identity(A.cols());
-    smith(&mut smith_A.get_mut((.., ..)), &mut iL.get_mut((.., ..)), &mut iR.get_mut((.., ..)), 0);
+    smith(
+        &mut smith_A.get_mut((.., ..)),
+        &mut iL.get_mut((.., ..)),
+        &mut iR.get_mut((.., ..)),
+        0,
+    );
     // x is solution of (L * smith_A) x = b, get result through r := R^-1 * x
     let mut x = Vector::<Item>::zero(A.cols());
     let c = iL.get((.., ..)) * b.get(..);
@@ -42,20 +46,19 @@ pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<V
             return None;
         } else if entry != 0 {
             x[i] = c[i] / entry;
-        } 
+        }
     }
     return Some(iR.get((.., ..)) * x.get(..));
 }
 
 ///
-/// Transforms the matrix A into diagonal form and 
-/// changes L, R so that L' * A' * R' = L * A * R 
+/// Transforms the matrix A into diagonal form and
+/// changes L, R so that L' * A' * R' = L * A * R
 /// and |det L'| = |det L|, |det R'| = |det R| holds
 /// Instead of L and R, this function works on their
 /// inverses iL and iR.
-/// 
-pub fn smith<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) 
-{
+///
+pub fn smith<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) {
     if pivot == A.rows() || pivot == A.cols() {
         return;
     }
@@ -91,10 +94,11 @@ fn eliminate_row<'a>(A: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) {
     }
 }
 
-fn transform_pivot_gcd_col<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, pivot: usize)  -> bool {
+fn transform_pivot_gcd_col<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, pivot: usize) -> bool {
     let pivot_row = pivot;
     let pivot_col = pivot;
-    let mut current = find_smallest_gcd_entry_in_pivot_col(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
+    let mut current =
+        find_smallest_gcd_entry_in_pivot_col(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
     if current == 0 {
         return false;
     }
@@ -102,18 +106,20 @@ fn transform_pivot_gcd_col<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, pivot: usize) 
         let (a, b) = (A[pivot_row][pivot_col], A[pivot_row + current][pivot_col]);
         let (s, t) = eea(a, b);
         let gcd = s * a + t * b;
-        let transform = [s, t, -b/gcd, a/gcd];
+        let transform = [s, t, -b / gcd, a / gcd];
         A.transform_two_dims_left(pivot_row, pivot_row + current, &transform);
         iL.transform_two_dims_left(pivot_row, pivot_row + current, &transform);
-        current = find_smallest_gcd_entry_in_pivot_col(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
+        current =
+            find_smallest_gcd_entry_in_pivot_col(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
     }
     return true;
 }
 
-fn transform_pivot_gcd_row<'a>(A: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize)  -> bool {
+fn transform_pivot_gcd_row<'a>(A: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) -> bool {
     let pivot_row = pivot;
     let pivot_col = pivot;
-    let mut current = find_smallest_gcd_entry_in_pivot_row(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
+    let mut current =
+        find_smallest_gcd_entry_in_pivot_row(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
     if current == 0 {
         return false;
     }
@@ -121,10 +127,11 @@ fn transform_pivot_gcd_row<'a>(A: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) 
         let (a, b) = (A[pivot_row][pivot_col], A[pivot_row][pivot_col + current]);
         let (s, t) = eea(a, b);
         let gcd = s * a + t * b;
-        let transform = [s, -b/gcd, t, a/gcd];
+        let transform = [s, -b / gcd, t, a / gcd];
         A.transform_two_dims_right(pivot_col, pivot_col + current, &transform);
         iR.transform_two_dims_left(pivot_col, pivot_col + current, &transform);
-        current = find_smallest_gcd_entry_in_pivot_row(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
+        current =
+            find_smallest_gcd_entry_in_pivot_row(&A.get_mut((pivot..A.rows(), pivot..A.cols())));
     }
     return true;
 }
@@ -139,8 +146,9 @@ fn find_smallest_gcd_entry<'a>(A: &Mat<'a>) -> (usize, usize) {
 }
 
 fn find_min<T, I, F>(mut it: I, mut f: F) -> Option<T>
-    where I: Iterator<Item = T>,
-        F: FnMut(&T) -> i32
+where
+    I: Iterator<Item = T>,
+    F: FnMut(&T) -> i32,
 {
     let mut result: T = it.next()?;
     let mut current_val: i32 = f(&result);
@@ -162,10 +170,17 @@ fn find_smallest_gcd_entry_in_pivot_col<'a>(A: &Mat<'a>) -> usize {
     find_min(0..A.rows(), |row: &usize| gcd(A[0][0], A[*row][0])).unwrap()
 }
 
-fn swap_pivot_entry_if_zero<'a>(A: &mut Mat<'a>, iL: &mut Mat<'a>, iR: &mut Mat<'a>, pivot: usize) -> bool {
+fn swap_pivot_entry_if_zero<'a>(
+    A: &mut Mat<'a>,
+    iL: &mut Mat<'a>,
+    iR: &mut Mat<'a>,
+    pivot: usize,
+) -> bool {
     let pivot_row = pivot;
     let pivot_col = pivot;
-    if let Some((row, col)) = find_not_zero(&mut A.get_mut((pivot_row..A.rows(), pivot_col..A.cols()))) {
+    if let Some((row, col)) =
+        find_not_zero(&mut A.get_mut((pivot_row..A.rows(), pivot_col..A.cols())))
+    {
         A.swap_rows(pivot_row, row + pivot_row);
         iL.swap_rows(pivot_row, row + pivot_row);
         A.swap_cols(pivot_col, col + pivot_col);
@@ -188,8 +203,7 @@ fn find_not_zero<'a>(mat: &mut Mat<'a>) -> Option<(usize, usize)> {
 }
 
 #[test]
-fn test_eea() 
-{
+fn test_eea() {
     assert_eq!((-1, 1), eea(6, 8));
     assert_eq!((-2, 3), eea(16, 11));
     assert_eq!((1, -2), eea(10, 4));
@@ -198,8 +212,7 @@ fn test_eea()
 }
 
 #[test]
-fn test_eea_neg() 
-{
+fn test_eea_neg() {
     assert_eq!((-1, 1), eea(-6, -8));
     assert_eq!((2, 1), eea(15, -27));
     assert_eq!((2, 1), eea(-15, 27));
@@ -226,7 +239,10 @@ fn test_diophantine_no_solution() {
 
 #[test]
 fn test_diophantine_no_solution_three_dim() {
-    let A = Matrix::new(Box::new([1, 2, 0, 1, 0, 2]), 2);
+    #[rustfmt::skip]
+    let A = Matrix::new(Box::new([1, 2, 0, 
+                                  1, 0, 2]), 2);
+
     let b = Vector::new(Box::new([2, 1]));
     let x = diophantine_solve(&A.get((.., ..)), &b);
     assert!(x.is_none());
@@ -234,7 +250,10 @@ fn test_diophantine_no_solution_three_dim() {
 
 #[test]
 fn test_diophantine_three_dim() {
-    let A = Matrix::new(Box::new([1, 2, 0, 1, 0, 2]), 2);
+    #[rustfmt::skip]
+    let A = Matrix::new(Box::new([1, 2, 0, 
+                                  1, 0, 2]), 2);
+
     let b = Vector::new(Box::new([2, 4]));
     let x = diophantine_solve(&A.get((.., ..)), &b);
     assert_eq!(&[4, -1, 0], x.unwrap().data());
@@ -242,7 +261,12 @@ fn test_diophantine_three_dim() {
 
 #[test]
 fn test_diophantine_unnecessary_conditions() {
-    let A = Matrix::new(Box::new([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2]), 4);
+    #[rustfmt::skip]
+    let A = Matrix::new(Box::new([1, 2, 0, 
+                                  1, 2, 0, 
+                                  1, 2, 0, 
+                                  1, 0, 2]), 4);
+
     let b = Vector::new(Box::new([2, 2, 2, 4]));
     let x = diophantine_solve(&A.get((.., ..)), &b);
     assert_eq!(&[4, -1, 0], x.unwrap().data());
@@ -250,7 +274,11 @@ fn test_diophantine_unnecessary_conditions() {
 
 #[test]
 fn test_diophantine_no_rational_solutions() {
-    let A = Matrix::new(Box::new([1, 2, 0, 1, 2, 0, 1, 0, 2]), 3);
+    #[rustfmt::skip]
+    let A = Matrix::new(Box::new([1, 2, 0, 
+                                  1, 2, 0, 
+                                  1, 0, 2]), 3);
+
     let b = Vector::new(Box::new([2, 3, 4]));
     let x = diophantine_solve(&A.get((.., ..)), &b);
     assert!(x.is_none());

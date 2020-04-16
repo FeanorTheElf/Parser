@@ -1,3 +1,3 @@
-pub mod symbol;
-pub mod scope;
 pub mod inline;
+pub mod scope;
+pub mod symbol;

@@ -1,7 +1,6 @@
 use super::prelude::*;
 
-pub trait Printer
-{
+pub trait Printer {
     fn print_function_header(&mut self, node: &Function);
     fn enter_block(&mut self);
     fn exit_block(&mut self);
@@ -16,7 +15,6 @@ pub trait Printer
     fn print_declaration(&mut self, node: &LocalVariableDeclaration);
 }
 
-pub trait Printable
-{
+pub trait Printable {
     fn print<'a>(&self, printer: &mut (dyn Printer + 'a));
 }
