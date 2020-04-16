@@ -31,11 +31,113 @@ impl<F> Inliner<F>
 where
     F: FnMut(&FunctionCall, &Function) -> bool,
 {
+    ///
+    /// Returns a new local variable and inserts statements that initialize this variable with the result value of the
+    /// given call to the given function into `previous_declaration_statements`. The other parameters are as in `inline_calls_in_expression`.
+    ///
     fn extract_function_call<'a, 'b, G>(
         &'a mut self,
+        function_call: FunctionCall,
+        function_definition: &'b Function,
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
-        function_call_to_extract: Expression,
+        previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
+        open_inline_tasks: &mut Vec<InlineTask<'b>>,
+    ) -> Variable
+    where
+        G: FnMut(Name) -> Name,
+        'b: 'a,
+    {
+        let pos = function_call.pos().clone();
+        let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
+        if let Some(return_type) = &function_definition.return_type {
+            let declaration = LocalVariableDeclaration {
+                declaration: Declaration {
+                    pos: pos.clone(),
+                    variable: variable_name.clone(),
+                    variable_type: return_type.clone(),
+                },
+                value: None,
+            };
+            previous_declaration_statements.push(Box::new(declaration));
+        }
+        let inline_calls = |expression: Expression| {
+            self.inline_calls_in_expression(
+                expression,
+                rename_disjunct,
+                defined_functions,
+                previous_declaration_statements,
+                open_inline_tasks,
+            )
+        };
+        let mut inline_task = InlineTask {
+            destination_statement_index: 0,
+            result_variable_name: variable_name.clone(),
+            function_definition: function_definition,
+            call_to_inline: FunctionCall {
+                pos: pos.clone(),
+                function: function_call.function,
+                parameters: function_call
+                    .parameters
+                    .into_iter()
+                    .map(inline_calls)
+                    .collect(),
+            },
+        };
+        let value_block = Block {
+            pos: pos.clone(),
+            statements: vec![],
+        };
+        inline_task.destination_statement_index = previous_declaration_statements.len();
+        previous_declaration_statements.push(Box::new(value_block));
+        open_inline_tasks.push(inline_task);
+        return Variable {
+            pos: pos,
+            identifier: Identifier::Name(variable_name),
+        };
+    }
+
+    ///
+    /// Extracts all function calls in the parameters of the given call. Parameter values are as in `inline_calls_in_expression`.
+    ///
+    fn inline_calls_in_function_call_parameters<'a, 'b, G>(
+        &'a mut self,
+        mut call: FunctionCall,
+        rename_disjunct: &'a mut G,
+        defined_functions: &'b DefinedFunctions,
+        previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
+        open_inline_tasks: &mut Vec<InlineTask<'b>>,
+    ) -> FunctionCall
+    where
+        G: FnMut(Name) -> Name,
+        'b: 'a,
+    {
+        let inline_calls = |expression: Expression| {
+            self.inline_calls_in_expression(
+                expression,
+                rename_disjunct,
+                defined_functions,
+                previous_declaration_statements,
+                open_inline_tasks,
+            )
+        };
+        call.parameters = call.parameters.into_iter().map(inline_calls).collect();
+        return call;
+    }
+
+    ///
+    /// Extracts all function calls in the given expression that match the predicate. A new expression is returned,
+    /// in which the extracted calls are replaced by new local variables. Any statements that have to be made to
+    /// initialize these variables are added to `previous_declaration_statements`. The function execution itself
+    /// is not yet inlined, as the inlining of other calls in the same scope may introduce more variables that can
+    /// again cause name collisions. Instead, the corresponding statements are empty blocks, and a new task is
+    /// added to `open_inline_tasks`. `rename_disjunct` is used to generate names for any new local variables.
+    ///
+    fn inline_calls_in_expression<'a, 'b, G>(
+        &'a mut self,
+        expression: Expression,
+        rename_disjunct: &'a mut G,
+        defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
         open_inline_tasks: &mut Vec<InlineTask<'b>>,
     ) -> Expression
@@ -43,99 +145,51 @@ where
         G: FnMut(Name) -> Name,
         'b: 'a,
     {
-        match function_call_to_extract {
-            Expression::Call(mut call) => {
-                let called_function =
-                    find_function_definition(&call.function, defined_functions).internal_error();
-                let pos = call.pos().clone();
-                if let FunctionDefinition::UserDefined(function_def) = called_function {
-                    if (self.should_inline)(&call, function_def) {
-                        let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
-                        if let Some(return_type) = &function_def.return_type {
-                            let declaration = LocalVariableDeclaration {
-                                declaration: Declaration {
-                                    pos: pos.clone(),
-                                    variable: variable_name.clone(),
-                                    variable_type: return_type.clone(),
-                                },
-                                value: None,
-                            };
-                            previous_declaration_statements.push(Box::new(declaration));
-                        }
-                        let mut inline_task = InlineTask {
-                            destination_statement_index: 0,
-                            result_variable_name: variable_name.clone(),
-                            function_definition: function_def,
-                            call_to_inline: FunctionCall {
-                                pos: pos.clone(),
-                                function: call.function,
-                                parameters: call
-                                    .parameters
-                                    .into_iter()
-                                    .map(|p| {
-                                        self.extract_function_call(
-                                            rename_disjunct,
-                                            defined_functions,
-                                            p,
-                                            previous_declaration_statements,
-                                            open_inline_tasks,
-                                        )
-                                    })
-                                    .collect(),
-                            },
-                        };
-                        let value_block = Block {
-                            pos: pos.clone(),
-                            statements: vec![],
-                        };
-                        inline_task.destination_statement_index =
-                            previous_declaration_statements.len();
-                        previous_declaration_statements.push(Box::new(value_block));
-                        open_inline_tasks.push(inline_task);
-                        return Expression::Variable(Variable {
-                            pos: pos,
-                            identifier: Identifier::Name(variable_name),
-                        });
-                    } else {
-                        call.parameters = call
-                            .parameters
-                            .into_iter()
-                            .map(|p| {
-                                self.extract_function_call(
-                                    rename_disjunct,
-                                    defined_functions,
-                                    p,
-                                    previous_declaration_statements,
-                                    open_inline_tasks,
-                                )
-                            })
-                            .collect();
-                        return Expression::Call(call);
+        match expression {
+            Expression::Call(call) => {
+                match find_function_definition(&call.function, defined_functions).internal_error() {
+                    FunctionDefinition::UserDefined(definition)
+                        if (self.should_inline)(&call, definition) =>
+                    {
+                        Expression::Variable(self.extract_function_call(
+                            *call,
+                            definition,
+                            rename_disjunct,
+                            defined_functions,
+                            previous_declaration_statements,
+                            open_inline_tasks,
+                        ))
                     }
-                } else {
-                    call.parameters = call
-                        .parameters
-                        .into_iter()
-                        .map(|p| {
-                            self.extract_function_call(
-                                rename_disjunct,
-                                defined_functions,
-                                p,
-                                previous_declaration_statements,
-                                open_inline_tasks,
-                            )
-                        })
-                        .collect();
-                    return Expression::Call(call);
+                    FunctionDefinition::UserDefined(_) => {
+                        Expression::Call(Box::new(self.inline_calls_in_function_call_parameters(
+                            *call,
+                            rename_disjunct,
+                            defined_functions,
+                            previous_declaration_statements,
+                            open_inline_tasks,
+                        )))
+                    }
+                    _ => Expression::Call(Box::new(self.inline_calls_in_function_call_parameters(
+                        *call,
+                        rename_disjunct,
+                        defined_functions,
+                        previous_declaration_statements,
+                        open_inline_tasks,
+                    ))),
                 }
             }
-            expr => {
-                return expr;
-            }
+            expr => expr,
         }
     }
 
-    fn inline<'a, 'b>(
+    ///
+    /// Inlines all function calls in expressions that occur in the given block and that match the predicate.
+    /// The `parent_scopes` parameter must be a scope stack describing the whole context up to this block, not
+    /// including it which is used to resolve called functions and prevent name collisions. The given
+    /// `defined_functions` must include any function definition that might be called from within this block
+    /// (excluding builtin functions), and is used to retrieve the body to inline.
+    ///
+    fn inline_calls_in_block<'a, 'b>(
         &mut self,
         block: &'a mut Block,
         parent_scopes: &'b ScopeStack<'b>,
@@ -150,10 +204,10 @@ where
             for mut statement in block.statements.drain(..) {
                 for expression in statement.iter_mut() {
                     take_mut::take(expression, &mut |expr| {
-                        self.extract_function_call(
+                        self.inline_calls_in_expression(
+                            expr,
                             &mut rename_disjunct,
                             defined_functions,
-                            expr,
                             &mut result_statements,
                             &mut inline_tasks,
                         )
@@ -163,8 +217,10 @@ where
             }
             block.statements = result_statements;
         }
+
         scopes.exit();
         scopes.enter(block);
+
         for task in inline_tasks.into_iter() {
             let block_index = task.destination_statement_index;
             inline_single_function_call(
@@ -178,14 +234,18 @@ where
                 &scopes,
             );
         }
+
         for statement in &mut block.statements {
             for subblock in statement.iter_mut() {
-                self.inline(subblock, &scopes, defined_functions);
+                self.inline_calls_in_block(subblock, &scopes, defined_functions);
             }
         }
     }
 
-    pub fn inline_all(&mut self, program: &mut Program) {
+    ///
+    /// Traverses the program ast and inlines all calls that match the predicate.
+    ///
+    pub fn inline_calls_in_program(&mut self, program: &mut Program) {
         assert_ne!(program.items.len(), 0);
         let mut scopes = ScopeStack::new(&program.items[..]);
         for i in 0..program.items.len() {
@@ -193,7 +253,7 @@ where
             let (current, other) = program.items[..].split_at_mut(1);
             scopes.enter(&*current[0]);
             if let Some(body) = &mut current[0].body {
-                self.inline(body, &scopes, other);
+                self.inline_calls_in_block(body, &scopes, other);
             }
             scopes.exit();
         }
@@ -442,7 +502,7 @@ fn test_inline() {
     ))
     .unwrap();
 
-    let _ = test.inline(
+    let _ = test.inline_calls_in_block(
         &mut block,
         &scope_stack,
         &[Box::new(some_func), Box::new(other_func)],
@@ -588,7 +648,7 @@ fn test_inline_all() {
         }
     "))
     .unwrap();
-    test.inline_all(&mut program);
+    test.inline_calls_in_program(&mut program);
 
     let expected = Program::parse(&mut lex("
         fn foobar(a: int, b: int, ) {
