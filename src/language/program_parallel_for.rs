@@ -1,7 +1,7 @@
 use super::error::*;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
-use super::print::{Printable, Printer};
+use super::backend::{ Printable, Backend, OutputError };
 use super::program::*;
 use super::AstNode;
 
@@ -79,9 +79,10 @@ impl Statement for ParallelFor {
 }
 
 impl Printable for ParallelFor {
-    fn print<'a>(&self, printer: &mut (dyn Printer + 'a)) {
-        printer.print_parallel_for_header(self);
-        self.body.print(printer);
+    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+        printer.print_parallel_for_header(self)?;
+        self.body.print(printer)?;
+        Ok(())
     }
 }
 

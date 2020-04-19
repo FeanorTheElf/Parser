@@ -25,16 +25,6 @@ impl SymbolDefinition for Label {
     }
 }
 
-impl SymbolDefinition for (TextPosition, Name, Type) {
-    fn get_name(&self) -> &Name {
-        &self.1
-    }
-
-    fn calc_type(&self) -> Type {
-        self.2.clone()
-    }
-}
-
 impl SymbolDefinition for Function {
     fn get_name(&self) -> &Name {
         &self.identifier

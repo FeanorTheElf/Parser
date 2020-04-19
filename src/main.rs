@@ -12,10 +12,14 @@ mod util;
 mod la;
 #[macro_use]
 mod language;
-mod check;
+
 mod lexer;
 mod parser;
+
+mod analysis;
 mod transformation;
+
+mod cuda;
 
 use language::prelude::*;
 use lexer::lexer::lex;

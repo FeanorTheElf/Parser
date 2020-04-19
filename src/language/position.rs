@@ -7,6 +7,7 @@ pub struct TextPosition {
 }
 
 pub const BEGIN: TextPosition = TextPosition { line: 0, column: 0 };
+pub const NONEXISTING: TextPosition = TextPosition { line: u32::max_value(), column: u32::max_value() };
 
 impl TextPosition {
     pub fn create(line: u32, column: u32) -> Self {

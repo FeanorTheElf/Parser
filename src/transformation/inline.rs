@@ -1,5 +1,7 @@
 use super::super::language::prelude::*;
 use super::scope::ScopeStack;
+use super::function_resolution::{DefinedFunctions, FunctionDefinition, find_function_definition};
+use super::extraction::Extractor;
 
 use std::collections::HashMap;
 
@@ -7,12 +9,7 @@ pub struct Inliner<F>
 where
     F: FnMut(&FunctionCall, &Function) -> bool,
 {
-    should_inline: F,
-}
-
-enum FunctionDefinition<'a> {
-    Builtin(BuiltInIdentifier),
-    UserDefined(&'a Function),
+    extractor: Extractor<F>
 }
 
 struct InlineTask<'a> {
@@ -25,160 +22,16 @@ struct InlineTask<'a> {
 trait ExtractFunctionCallFn<'b> =
     FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression;
 
-type DefinedFunctions = [Box<Function>];
-
 impl<F> Inliner<F>
 where
     F: FnMut(&FunctionCall, &Function) -> bool,
 {
-    ///
-    /// Returns a new local variable and inserts statements that initialize this variable with the result value of the
-    /// given call to the given function into `previous_declaration_statements`. The other parameters are as in `inline_calls_in_expression`.
-    ///
-    fn extract_function_call<'a, 'b, G>(
-        &'a mut self,
-        function_call: FunctionCall,
-        function_definition: &'b Function,
-        rename_disjunct: &'a mut G,
-        defined_functions: &'b DefinedFunctions,
-        previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        open_inline_tasks: &mut Vec<InlineTask<'b>>,
-    ) -> Variable
-    where
-        G: FnMut(Name) -> Name,
-        'b: 'a,
+    pub fn new(should_inline: F) -> Self
     {
-        let pos = function_call.pos().clone();
-        let variable_name = (*rename_disjunct)(Name::new("result".to_owned(), 0));
-        if let Some(return_type) = &function_definition.return_type {
-            let declaration = LocalVariableDeclaration {
-                declaration: Declaration {
-                    pos: pos.clone(),
-                    variable: variable_name.clone(),
-                    variable_type: return_type.clone(),
-                },
-                value: None,
-            };
-            previous_declaration_statements.push(Box::new(declaration));
-        }
-        let inline_calls = |expression: Expression| {
-            self.inline_calls_in_expression(
-                expression,
-                rename_disjunct,
-                defined_functions,
-                previous_declaration_statements,
-                open_inline_tasks,
-            )
-        };
-        let mut inline_task = InlineTask {
-            destination_statement_index: 0,
-            result_variable_name: variable_name.clone(),
-            function_definition: function_definition,
-            call_to_inline: FunctionCall {
-                pos: pos.clone(),
-                function: function_call.function,
-                parameters: function_call
-                    .parameters
-                    .into_iter()
-                    .map(inline_calls)
-                    .collect(),
-            },
-        };
-        let value_block = Block {
-            pos: pos.clone(),
-            statements: vec![],
-        };
-        inline_task.destination_statement_index = previous_declaration_statements.len();
-        previous_declaration_statements.push(Box::new(value_block));
-        open_inline_tasks.push(inline_task);
-        return Variable {
-            pos: pos,
-            identifier: Identifier::Name(variable_name),
-        };
-    }
-
-    ///
-    /// Extracts all function calls in the parameters of the given call. Parameter values are as in `inline_calls_in_expression`.
-    ///
-    fn inline_calls_in_function_call_parameters<'a, 'b, G>(
-        &'a mut self,
-        mut call: FunctionCall,
-        rename_disjunct: &'a mut G,
-        defined_functions: &'b DefinedFunctions,
-        previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        open_inline_tasks: &mut Vec<InlineTask<'b>>,
-    ) -> FunctionCall
-    where
-        G: FnMut(Name) -> Name,
-        'b: 'a,
-    {
-        let inline_calls = |expression: Expression| {
-            self.inline_calls_in_expression(
-                expression,
-                rename_disjunct,
-                defined_functions,
-                previous_declaration_statements,
-                open_inline_tasks,
-            )
-        };
-        call.parameters = call.parameters.into_iter().map(inline_calls).collect();
-        return call;
-    }
-
-    ///
-    /// Extracts all function calls in the given expression that match the predicate. A new expression is returned,
-    /// in which the extracted calls are replaced by new local variables. Any statements that have to be made to
-    /// initialize these variables are added to `previous_declaration_statements`. The function execution itself
-    /// is not yet inlined, as the inlining of other calls in the same scope may introduce more variables that can
-    /// again cause name collisions. Instead, the corresponding statements are empty blocks, and a new task is
-    /// added to `open_inline_tasks`. `rename_disjunct` is used to generate names for any new local variables.
-    ///
-    fn inline_calls_in_expression<'a, 'b, G>(
-        &'a mut self,
-        expression: Expression,
-        rename_disjunct: &'a mut G,
-        defined_functions: &'b DefinedFunctions,
-        previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        open_inline_tasks: &mut Vec<InlineTask<'b>>,
-    ) -> Expression
-    where
-        G: FnMut(Name) -> Name,
-        'b: 'a,
-    {
-        match expression {
-            Expression::Call(call) => {
-                match find_function_definition(&call.function, defined_functions).internal_error() {
-                    FunctionDefinition::UserDefined(definition)
-                        if (self.should_inline)(&call, definition) =>
-                    {
-                        Expression::Variable(self.extract_function_call(
-                            *call,
-                            definition,
-                            rename_disjunct,
-                            defined_functions,
-                            previous_declaration_statements,
-                            open_inline_tasks,
-                        ))
-                    }
-                    FunctionDefinition::UserDefined(_) => {
-                        Expression::Call(Box::new(self.inline_calls_in_function_call_parameters(
-                            *call,
-                            rename_disjunct,
-                            defined_functions,
-                            previous_declaration_statements,
-                            open_inline_tasks,
-                        )))
-                    }
-                    _ => Expression::Call(Box::new(self.inline_calls_in_function_call_parameters(
-                        *call,
-                        rename_disjunct,
-                        defined_functions,
-                        previous_declaration_statements,
-                        open_inline_tasks,
-                    ))),
-                }
+        Inliner {
+            extractor: Extractor {
+                should_extract: should_inline
             }
-            expr => expr,
         }
     }
 
@@ -196,44 +49,48 @@ where
         defined_functions: &'b DefinedFunctions,
     ) {
         let mut scopes = parent_scopes.child_stack();
-        let mut inline_tasks: Vec<InlineTask> = vec![];
+        let mut statement_indices_to_inline = Vec::new();
+        let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
+
         scopes.enter(block);
         {
             let mut rename_disjunct = scopes.rename_disjunct();
-            let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
             for mut statement in block.statements.drain(..) {
+                let index_before = result_statements.len();
                 for expression in statement.iter_mut() {
                     take_mut::take(expression, &mut |expr| {
-                        self.inline_calls_in_expression(
-                            expr,
-                            &mut rename_disjunct,
-                            defined_functions,
-                            &mut result_statements,
-                            &mut inline_tasks,
-                        )
+                        self.extractor.extract_calls_in_expr(expr, &mut rename_disjunct, defined_functions, &mut result_statements)
                     });
+                }
+                let index_after = result_statements.len();
+                // already allocate entries for the initialization of the extracted result variables
+                for i in 0..(index_after - index_before) {
+                    let init_block = Block {
+                        pos: position::NONEXISTING,
+                        statements: Vec::new()
+                    };
+                    result_statements.push(Box::new(init_block));
+                    statement_indices_to_inline.push((index_before + i, index_after + i));
                 }
                 result_statements.push(statement);
             }
-            block.statements = result_statements;
         }
 
+        block.statements = result_statements;
+        
         scopes.exit();
         scopes.enter(block);
 
-        for task in inline_tasks.into_iter() {
-            let block_index = task.destination_statement_index;
-            inline_single_function_call(
-                task.call_to_inline,
-                task.function_definition,
-                task.result_variable_name,
-                block.statements[block_index]
+        {
+            for (declaration_index, inline_index) in statement_indices_to_inline.iter() {
+                let init_block = inline_single_function_call(block.statements[*declaration_index]
                     .dynamic_mut()
-                    .downcast_mut::<Block>()
-                    .unwrap(),
-                &scopes,
-            );
+                    .downcast_mut::<LocalVariableDeclaration>()
+                    .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
+                block.statements[*inline_index] = Box::new(init_block);
+            }
         }
+        
 
         for statement in &mut block.statements {
             for subblock in statement.iter_mut() {
@@ -260,44 +117,63 @@ where
     }
 }
 
-fn find_function_definition<'b>(
-    expr: &Expression,
-    all_functions: &'b DefinedFunctions,
-) -> Result<FunctionDefinition<'b>, CompileError> {
-    if let Expression::Variable(identifier) = expr {
-        match &identifier.identifier {
-            Identifier::Name(name) => {
-                let found_function =
-                    all_functions
-                        .iter()
-                        .find(|f| f.identifier == *name)
-                        .ok_or(CompileError::new(
-                            expr.pos(),
-                            format!("Could not find definition of function {}", name),
-                            ErrorType::UndefinedSymbol,
-                        ));
-                Ok(FunctionDefinition::UserDefined(found_function?))
-            }
-            Identifier::BuiltIn(builtin_identifier) => {
-                Ok(FunctionDefinition::Builtin(*builtin_identifier))
-            }
-        }
-    } else {
-        panic!("Cannot inline calls to functions that are the result of an expression");
-    }
-}
-
+///
+/// Accepts a variable declaration of the form `let var: type = func(param1, ..., paramn);`
+/// and inlines the call to `func`. The return value is a block containing the inlined function
+/// including the assignment to `var` instead of a return statement.
+/// 
 fn inline_single_function_call(
-    call: FunctionCall,
-    definition: &Function,
-    result_var: Name,
-    block: &mut Block,
+    declaration: &mut LocalVariableDeclaration,
+    defined_functions: &DefinedFunctions,
     scopes: &ScopeStack,
-) {
-    let pos = call.pos;
+) -> Block {
+    let call = match std::mem::replace(&mut declaration.value, None) {
+        Some(Expression::Call(call)) => call,
+        _ => panic!("Expected extract_calls_in_expr to generate only LocalVariableDeclaration that are initialized with a function call result")
+    };
+    let definition = match find_function_definition(&call.function, defined_functions).internal_error() {
+        FunctionDefinition::UserDefined(def) => def,
+        FunctionDefinition::Builtin(builtin) => panic!("Cannot inline builtin function {}", builtin)
+    };
+    let pos = call.pos().clone();
     let mut rename_disjunct = scopes.rename_disjunct();
     let mut rename_mapping: HashMap<Name, Name> = HashMap::new();
-    for (given_param, formal_param) in call.parameters.into_iter().zip(definition.params.iter()) {
+    
+    let mut result_statements: Vec<Box<dyn Statement>> = inline_parameter_passing(&mut rename_disjunct, &mut rename_mapping, call.parameters.into_iter(), definition.params.iter()).map(to_statement).collect();
+
+    let return_label_name: Name = rename_disjunct(definition.identifier.clone());
+    let mut body = definition
+        .body
+        .as_ref()
+        .expect("Cannot inline native function")
+        .clone();
+    process_inlined_function_body(
+        &mut body,
+        &declaration.declaration.variable,
+        &return_label_name,
+        &mut rename_disjunct,
+        &mut rename_mapping,
+    );
+    let return_label = Label {
+        pos: pos.clone(),
+        label: return_label_name,
+    };
+
+    result_statements.push(Box::new(body));
+    result_statements.push(Box::new(return_label));
+    
+    return Block {
+        pos: pos,
+        statements: result_statements
+    };
+}
+
+fn inline_parameter_passing<'a, F, I, J>(rename_disjunct: &'a mut F, rename_mapping: &'a mut HashMap<Name, Name>, given_params: I, formal_params: J) -> impl 'a + Iterator<Item = LocalVariableDeclaration>
+    where F: FnMut(Name) -> Name + 'a,
+        I: Iterator<Item = Expression> + 'a,
+        J: Iterator<Item = &'a Declaration> + 'a
+{
+    given_params.zip(formal_params).map(move |(given_param, formal_param)|{
         let param_name = rename_disjunct(formal_param.variable.clone());
         rename_mapping.insert(formal_param.variable.clone(), param_name.clone());
         let param_type = formal_param.variable_type.clone();
@@ -310,26 +186,13 @@ fn inline_single_function_call(
             },
             value: Some(param_value),
         };
-        block.statements.push(Box::new(param_decl))
-    }
-    let finish_label: Name = rename_disjunct(definition.identifier.clone());
-    let mut body = definition
-        .body
-        .as_ref()
-        .expect("Cannot inline native function")
-        .clone();
-    process_inlined_function_body(
-        &mut body,
-        &result_var,
-        &finish_label,
-        &mut rename_disjunct,
-        &mut rename_mapping,
-    );
-    block.statements.push(Box::new(body));
-    block.statements.push(Box::new(Label {
-        pos: pos,
-        label: finish_label,
-    }));
+        return param_decl;
+    })
+}
+
+fn to_statement<T: Statement>(value: T) -> Box<dyn Statement>
+{
+    Box::new(value)
 }
 
 fn process_inlined_function_body<F>(
@@ -446,8 +309,6 @@ where
 }
 
 #[cfg(test)]
-use super::super::language::debug_printer::print_debug;
-#[cfg(test)]
 use super::super::lexer::lexer::{fragment_lex, lex};
 #[cfg(test)]
 use super::super::parser::Parser;
@@ -462,9 +323,7 @@ fn test_inline() {
         Name::l("some_func"),
     ];
     scope_stack.enter(&predefined_variables as &[Name]);
-    let mut test = Inliner {
-        should_inline: |_, _| true,
-    };
+    let mut test = Inliner::new(|_, _| true);
 
     let mut block = Block::parse(&mut fragment_lex(
         "
@@ -510,8 +369,8 @@ fn test_inline() {
 
     let expected = Block::parse(&mut fragment_lex(
         "{
-        let result#0: int;
-        let result#1: int;
+        let result_other_func: int;
+        let result_some_func: int;
         {
             let x#1: int = b;
             {
@@ -520,20 +379,20 @@ fn test_inline() {
                     i = i + 1;
                     if ((x#1 / i) * i == x#1) {
                         {
-                            result#1 = i;
+                            result_other_func = i;
                             goto other_func#1;
                         }
                     }
                 }
                 {
-                    result#1 = x#1;
+                    result_other_func = x#1;
                     goto other_func#1;
                 }
             }
             @other_func#1
         }
         {
-            let a#1: int = result#1;
+            let a#1: int = result_other_func;
             let b#1: int = c + b;
             {
                 let c#1: int = a#1;
@@ -541,13 +400,13 @@ fn test_inline() {
                     c#1 = c#1 - b#1;
                 }
                 {
-                    result#0 = c#1;
+                    result_some_func = c#1;
                     goto some_func#1;
                 }
             }
             @some_func#1
         }
-        let a: int = result#0;
+        let a: int = result_some_func;
         let x: int = a + 1;
     }",
     ))
@@ -630,9 +489,7 @@ fn test_process_inline_body() {
 
 #[test]
 fn test_inline_all() {
-    let mut test = Inliner {
-        should_inline: |_, _| true,
-    };
+    let mut test = Inliner::new(|_, _| true);
 
     let mut program = Program::parse(&mut lex("
         fn foo(a: int, ): int {
@@ -652,52 +509,52 @@ fn test_inline_all() {
 
     let expected = Program::parse(&mut lex("
         fn foobar(a: int, b: int, ) {
-            let result: int;
-            let result#1: int;
+            let result_bar: int;
+            let result_foo: int;
             {
                 {
                     {
-                        result#1 = 4;
+                        result_bar = 4;
                         goto bar#1;
                     }
                 }
                 @bar#1
             }
             {
-                let a#1: int = result#1;
+                let a#1: int = result_bar;
                 {
-                    let result#2: int;
+                    let result_bar#1: int;
                     {
                         {
                             {
-                                result#2 = 4;
+                                result_bar#1 = 4;
                                 goto bar#1;
                             }
                         }
                         @bar#1
                     }
                     {
-                        result = a#1 * result#2;
+                        result_foo = a#1 * result_bar#1;
                         goto foo#1;
                     }
                 }
                 @foo#1
             }
-            return result;
+            return result_foo;
         }
 
         fn foo(a: int, ): int {
-            let result: int;
+            let result_bar: int;
             {
                 {
                     {
-                        result = 4;
+                        result_bar = 4;
                         goto bar#1;
                     }
                 }
                 @bar#1
             }
-            return a * result;
+            return a * result_bar;
         }
 
         fn bar(): int {

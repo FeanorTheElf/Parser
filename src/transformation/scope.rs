@@ -108,11 +108,12 @@ impl ScopeNode {
     where
         for<'a> &'a T: EnumerateDefinitions<'a>,
     {
+        let defs = scope
+        .enumerate()
+        .map(|def| def.get_name().clone())
+        .collect();
         ScopeNode {
-            definitions: scope
-                .enumerate()
-                .map(|def| def.get_name().clone())
-                .collect(),
+            definitions: defs,
         }
     }
 }

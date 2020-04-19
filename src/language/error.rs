@@ -15,6 +15,12 @@ pub enum ErrorType {
     IllegalArrayBaseType,
     IncorrectIdentifier,
     IllegalPForIndexExpression,
+    PForAccessCollision,
+    VariableRequired,
+    TypeError,
+    ArrayParameterPerValue,
+    ViewOnView,
+    ViewReturnType
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +41,11 @@ impl CompileError {
 
     pub fn get_position(&self) -> &TextPosition {
         &self.pos
+    }
+
+    pub fn throw(self) -> !
+    {
+        panic!(format!("Error at {}: {}", self.pos, self.msg))
     }
 }
 

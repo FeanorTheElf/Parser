@@ -45,7 +45,7 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
                     if let Some((x, y)) = collision {
                         return Err(CompileError::new(entry1.pos(),
                             format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {} and {}", entry1.pos(), entry2.pos(), x.get(..), y.get(..)),
-                            ErrorType::IllegalPForIndexExpression));
+                            ErrorType::PForAccessCollision));
                     }
                 }
             }
