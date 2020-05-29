@@ -2,7 +2,7 @@ use super::arith::*;
 use super::indexed::{Indexed, IndexedMut};
 use std::mem::swap;
 use std::ops::{
-    Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Range, RangeFull,
+    Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, RangeBounds, Bound, Range, RangeFull,
     Sub, SubAssign,
 };
 
@@ -181,7 +181,7 @@ impl<'a, T> MatRef<'a, T>
 where
     T: Clone,
 {
-    pub fn owned(&self) -> Matrix<T> {
+    pub fn to_owned(&self) -> Matrix<T> {
         let cols = self.cols();
         let data: Vec<T> = (0..(self.rows() * cols))
             .map(|index: usize| self.get(index / cols).get(index % cols).clone())
@@ -213,7 +213,7 @@ where
         let n: usize = self.rows();
 
         let mut result: Matrix<T> = Matrix::identity(n);
-        let mut work: Matrix<T> = self.owned();
+        let mut work: Matrix<T> = self.to_owned();
 
         // just simple gaussian elimination
         for i in 0..n {
@@ -223,20 +223,20 @@ where
                 work.get_mut((.., ..)).swap_rows(i, not_null_index);
             }
             for j in (i + 1)..n {
-                let (row1, mut row2) = work.get_mut((i, j));
+                let (row1, mut row2) = work.get_rows(i, j);
                 let factor = -row2[i].clone() / row1[i].clone();
                 row2.add_product(row1.as_const(), factor.clone());
-                let (res1, mut res2) = result.get_mut((i, j));
+                let (res1, mut res2) = result.get_rows(i, j);
                 res2.add_product(res1.as_const(), factor);
             }
         }
         // now we have an upper triangle matrix
         for i in 1..n {
             for j in 0..i {
-                let (row1, mut row2) = work.get_mut((i, j));
+                let (row1, mut row2) = work.get_rows(i, j);
                 let factor = -row2[i].clone() / row1[i].clone();
                 row2.add_product(row1.as_const(), factor.clone());
-                let (res1, mut res2) = result.get_mut((i, j));
+                let (res1, mut res2) = result.get_rows(i, j);
                 res2.add_product(res1.as_const(), factor);
             }
         }
@@ -263,20 +263,12 @@ impl<T> Vector<T> {
     }
 }
 
-impl Vector<f64> {
+impl<T> Vector<T> 
+    where T: Zero + Clone
+{
     pub fn zero(len: usize) -> Self {
         let mut data = Vec::new();
-        data.resize(len, 0.0);
-        return Vector {
-            data: data.into_boxed_slice(),
-        };
-    }
-}
-
-impl Vector<i32> {
-    pub fn zero(len: usize) -> Self {
-        let mut data = Vec::new();
-        data.resize(len, 0);
+        data.resize(len, T::zero());
         return Vector {
             data: data.into_boxed_slice(),
         };
@@ -343,24 +335,11 @@ impl<'a, T> MatRefMut<'a, T> {
     pub fn swap_rows(&mut self, fst: usize, snd: usize) {
         if fst != snd {
             let cols = self.cols();
-            let (mut fst_row, mut snd_row) = self.get_mut((fst, snd));
+            let (mut fst_row, mut snd_row) = self.get_rows(fst, snd);
             for col in 0..cols {
                 swap(fst_row.get_mut(col), snd_row.get_mut(col));
             }
         }
-    }
-}
-
-impl<'a, T> MatRef<'a, T>
-where
-    T: Copy,
-{
-    pub fn to_owned(&self) -> Matrix<T> {
-        let mut data = Vec::with_capacity(self.rows() * self.cols());
-        for row in 0..self.rows() {
-            data.extend_from_slice(&self[row]);
-        }
-        Matrix::new(data.into_boxed_slice(), self.rows())
     }
 }
 
@@ -529,79 +508,39 @@ where
     }
 }
 
-impl<'a, T: 'a> Indexed<'a, (RangeFull, RangeFull)> for Matrix<T> {
+impl<'a, T: 'a, B, E> Indexed<'a, (B, E)> for Matrix<T> 
+    where B: RangeBounds<usize>, E: RangeBounds<usize>
+{
     type Output = MatRef<'a, T>;
 
-    fn get(&'a self, _: (RangeFull, RangeFull)) -> Self::Output {
-        self.get((0..self.rows(), 0..self.cols()))
-    }
-}
-
-impl<'a, T: 'a> IndexedMut<'a, (RangeFull, RangeFull)> for Matrix<T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, _: (RangeFull, RangeFull)) -> Self::Output {
-        self.get_mut((0..self.rows(), 0..self.cols()))
-    }
-}
-
-impl<'a, T: 'a> Indexed<'a, (RangeFull, Range<usize>)> for Matrix<T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (RangeFull, Range<usize>)) -> Self::Output {
-        self.get((0..self.rows(), index.1))
-    }
-}
-
-impl<'a, T: 'a> Indexed<'a, (Range<usize>, RangeFull)> for Matrix<T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (Range<usize>, RangeFull)) -> Self::Output {
-        self.get((index.0, 0..self.cols()))
-    }
-}
-
-impl<'a, T: 'a> IndexedMut<'a, (RangeFull, Range<usize>)> for Matrix<T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, index: (RangeFull, Range<usize>)) -> Self::Output {
-        self.get_mut((0..self.rows(), index.1))
-    }
-}
-
-impl<'a, T: 'a> IndexedMut<'a, (Range<usize>, RangeFull)> for Matrix<T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, index: (Range<usize>, RangeFull)) -> Self::Output {
-        self.get_mut((index.0, 0..self.cols()))
-    }
-}
-
-impl<'a, T: 'a> Indexed<'a, (Range<usize>, Range<usize>)> for Matrix<T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (Range<usize>, Range<usize>)) -> Self::Output {
-        assert_legal_subrange(self.rows(), &index.0);
-        assert_legal_subrange(self.cols(), &index.1);
+    fn get(&'a self, index: (B, E)) -> Self::Output {
+        let rows = calc_concrete_lower_bound(index.0.start_bound(), 0)..calc_concrete_upper_bound(index.0.end_bound(), self.rows());
+        let cols = calc_concrete_lower_bound(index.1.start_bound(), 0)..calc_concrete_upper_bound(index.1.end_bound(), self.cols());
+        assert_legal_subrange(self.rows(), &rows);
+        assert_legal_subrange(self.cols(), &cols);
         MatRef {
-            rows_begin: index.0.start,
-            rows_end: index.0.end,
-            cols_begin: index.1.start,
-            cols_end: index.1.end,
+            rows_begin: rows.start,
+            rows_end: rows.end,
+            cols_begin: cols.start,
+            cols_end: cols.end,
             matrix: self,
         }
     }
 }
 
-impl<'a, T: 'a> IndexedMut<'a, (Range<usize>, Range<usize>)> for Matrix<T> {
+impl<'a, T: 'a, B, E> IndexedMut<'a, (B, E)> for Matrix<T> 
+    where B: RangeBounds<usize>, E: RangeBounds<usize>
+{
     type Output = MatRefMut<'a, T>;
 
-    fn get_mut(&'a mut self, index: (Range<usize>, Range<usize>)) -> Self::Output {
-        assert_legal_subrange(self.rows(), &index.0);
-        assert_legal_subrange(self.cols(), &index.1);
+    fn get_mut(&'a mut self, index: (B, E)) -> Self::Output {
+        let rows = calc_concrete_lower_bound(index.0.start_bound(), 0)..calc_concrete_upper_bound(index.0.end_bound(), self.rows());
+        let cols = calc_concrete_lower_bound(index.1.start_bound(), 0)..calc_concrete_upper_bound(index.1.end_bound(), self.cols());
+        assert_legal_subrange(self.rows(), &rows);
+        assert_legal_subrange(self.cols(), &cols);
         MatRefMut {
-            rows: index.0,
-            cols: index.1,
+            rows: rows,
+            cols: cols,
             matrix: self,
         }
     }
@@ -632,29 +571,19 @@ impl<'a, T: 'a> IndexedMut<'a, usize> for Matrix<T> {
     }
 }
 
-impl<'a, T: 'a> Indexed<'a, (usize, usize)> for Matrix<T> {
-    type Output = (VecRef<'a, T>, VecRef<'a, T>);
-
-    fn get(&'a self, indices: (usize, usize)) -> Self::Output {
-        (self.get(indices.0), self.get(indices.1))
-    }
-}
-
-impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
-    type Output = (VecRefMut<'a, T>, VecRefMut<'a, T>);
-
-    fn get_mut(&'a mut self, indices: (usize, usize)) -> Self::Output {
-        self.assert_row_in_range(indices.0);
-        self.assert_row_in_range(indices.1);
+impl<T> Matrix<T> {
+    pub fn get_rows<'a>(&'a mut self, fst: usize, snd: usize) -> (VecRefMut<'a, T>, VecRefMut<'a, T>) {
+        self.assert_row_in_range(fst);
+        self.assert_row_in_range(snd);
         assert!(
-            indices.0 != indices.1,
+            fst != snd,
             "When borrowing two rows, their indices must be different, got {}",
-            indices.0
+            fst
         );
 
         let cols = self.cols();
-        if indices.0 < indices.1 {
-            let part: &mut [T] = &mut self.data[(indices.0 * cols)..((indices.1 + 1) * cols)];
+        if fst < snd {
+            let part: &mut [T] = &mut self.data[(fst * cols)..((snd + 1) * cols)];
             let (fst_row, rest) = part.split_at_mut(cols);
             let snd_row_start = rest.len() - cols;
             return (
@@ -664,7 +593,7 @@ impl<'a, T: 'a> IndexedMut<'a, (usize, usize)> for Matrix<T> {
                 },
             );
         } else {
-            let part: &mut [T] = &mut self.data[(indices.1 * cols)..((indices.0 + 1) * cols)];
+            let part: &mut [T] = &mut self.data[(snd * cols)..((fst + 1) * cols)];
             let (snd_row, rest) = part.split_at_mut(cols);
             let fst_row_start = rest.len() - cols;
             return (
@@ -748,7 +677,7 @@ impl<'a, 'b, T> Add<MatRef<'b, T>> for MatRef<'a, T>
     type Output = Matrix<T>;
 
     fn add(self, rhs: MatRef<'b, T>) -> Self::Output {
-        let mut result: Matrix<T> = self.owned();
+        let mut result: Matrix<T> = self.to_owned();
         result.get_mut((.., ..)).add_assign(rhs);
         return result;
     }
@@ -760,7 +689,7 @@ impl<'a, 'b, T> Sub<MatRef<'b, T>> for MatRef<'a, T>
     type Output = Matrix<T>;
 
     fn sub(self, rhs: MatRef<'b, T>) -> Self::Output {
-        let mut result: Matrix<T> = self.owned();
+        let mut result: Matrix<T> = self.to_owned();
         result.get_mut((.., ..)).sub_assign(rhs);
         return result;
     }
@@ -785,48 +714,19 @@ impl<'a, 'b, T: 'b> Indexed<'a, usize> for MatRef<'b, T> {
     }
 }
 
-impl<'a, 'b, T: 'b> Indexed<'a, (usize, usize)> for MatRef<'b, T> {
-    type Output = (VecRef<'b, T>, VecRef<'b, T>);
-
-    fn get(&'a self, index: (usize, usize)) -> Self::Output {
-        self.assert_row_in_range(index.0);
-        self.assert_row_in_range(index.1);
-        (self.get(index.0), self.get(index.1))
-    }
-}
-
-impl<'a, 'b, T: 'b> Indexed<'a, (RangeFull, RangeFull)> for MatRef<'b, T> {
+impl<'a, 'b, T: 'b, B, E> Indexed<'a, (B, E)> for MatRef<'b, T> 
+    where B: RangeBounds<usize>, E: RangeBounds<usize>
+{
     type Output = MatRef<'b, T>;
 
-    fn get(&'a self, _: (RangeFull, RangeFull)) -> Self::Output {
-        *self
-    }
-}
-
-impl<'a, 'b, T: 'b> Indexed<'a, (RangeFull, Range<usize>)> for MatRef<'b, T> {
-    type Output = MatRef<'b, T>;
-
-    fn get(&'a self, index: (RangeFull, Range<usize>)) -> Self::Output {
-        self.matrix.get((.., self.offset_col_range(index.1)))
-    }
-}
-
-impl<'a, 'b, T: 'b> Indexed<'a, (Range<usize>, RangeFull)> for MatRef<'b, T> {
-    type Output = MatRef<'b, T>;
-
-    fn get(&'a self, index: (Range<usize>, RangeFull)) -> Self::Output {
-        self.matrix.get((self.offset_row_range(index.0), ..))
-    }
-}
-
-impl<'a, 'b, T: 'b> Indexed<'a, (Range<usize>, Range<usize>)> for MatRef<'b, T> {
-    type Output = MatRef<'b, T>;
-
-    fn get(&'a self, index: (Range<usize>, Range<usize>)) -> Self::Output {
-        self.matrix.get((
-            self.offset_row_range(index.0),
-            self.offset_col_range(index.1),
-        ))
+    fn get(&'a self, index: (B, E)) -> Self::Output {
+        let rows = calc_concrete_lower_bound(index.0.start_bound(), 0)..calc_concrete_upper_bound(index.0.end_bound(), self.rows());
+        let cols = calc_concrete_lower_bound(index.1.start_bound(), 0)..calc_concrete_upper_bound(index.1.end_bound(), self.cols());
+        assert_legal_subrange(self.rows(), &rows);
+        assert_legal_subrange(self.cols(), &cols);
+        let offset_rows = (rows.start + self.rows_begin)..(rows.end + self.rows_begin);
+        let offset_cols = (cols.start + self.cols_begin)..(cols.end + self.cols_begin);
+        self.matrix.get((offset_rows, offset_cols))
     }
 }
 
@@ -905,97 +805,42 @@ fn map_tuple<T, U, F: FnMut(T) -> U>(tuple: (T, T), mut f: F) -> (U, U) {
     (f(tuple.0), f(tuple.1))
 }
 
-impl<'a, 'b, T: 'a> Indexed<'a, (usize, usize)> for MatRefMut<'b, T> {
-    type Output = (VecRef<'a, T>, VecRef<'a, T>);
+impl<'a, T: 'a> MatRefMut<'a, T> {
 
-    fn get(&'a self, index: (usize, usize)) -> Self::Output {
-        self.as_const().get(index)
-    }
-}
-
-impl<'a, 'b, T: 'a> IndexedMut<'a, (usize, usize)> for MatRefMut<'b, T> {
-    type Output = (VecRefMut<'a, T>, VecRefMut<'a, T>);
-
-    fn get_mut(&'a mut self, index: (usize, usize)) -> Self::Output {
-        self.assert_row_in_range(index.0);
-        self.assert_row_in_range(index.1);
+    fn get_rows<'b>(&'b mut self, fst: usize, snd: usize) -> (VecRefMut<'b, T>, VecRefMut<'b, T>) {
+        self.assert_row_in_range(fst);
+        self.assert_row_in_range(snd);
         let cols = &self.cols;
         map_tuple(
-            self.matrix
-                .get_mut(map_tuple(index, |row_index| row_index + self.rows.start)),
-            |row_ref: VecRefMut<'a, T>| row_ref.sub_range(cols.clone()),
+            self.matrix.get_rows(fst + self.rows.start, snd + self.rows.start),
+            |row_ref: VecRefMut<'b, T>| row_ref.sub_range(cols.clone()),
         )
     }
 }
 
-impl<'a, 'b, T: 'a> Indexed<'a, (RangeFull, RangeFull)> for MatRefMut<'b, T> {
+impl<'a, 'b, T: 'a, B, E> Indexed<'a, (B, E)> for MatRefMut<'b, T> 
+    where B: RangeBounds<usize>, E: RangeBounds<usize>
+{
     type Output = MatRef<'a, T>;
 
-    fn get(&'a self, _: (RangeFull, RangeFull)) -> Self::Output {
-        self.as_const()
-    }
-}
-
-impl<'a, 'b, T: 'a> Indexed<'a, (RangeFull, Range<usize>)> for MatRefMut<'b, T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (RangeFull, Range<usize>)) -> Self::Output {
+    fn get(&'a self, index: (B, E)) -> Self::Output {
         self.as_const().get(index)
     }
 }
 
-impl<'a, 'b, T: 'a> Indexed<'a, (Range<usize>, RangeFull)> for MatRefMut<'b, T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (Range<usize>, RangeFull)) -> Self::Output {
-        self.as_const().get(index)
-    }
-}
-
-impl<'a, 'b, T: 'a> Indexed<'a, (Range<usize>, Range<usize>)> for MatRefMut<'b, T> {
-    type Output = MatRef<'a, T>;
-
-    fn get(&'a self, index: (Range<usize>, Range<usize>)) -> Self::Output {
-        self.as_const().get(index)
-    }
-}
-
-impl<'a, 'b, T: 'a> IndexedMut<'a, (RangeFull, RangeFull)> for MatRefMut<'b, T> {
+impl<'a, 'b, T: 'a, B, E> IndexedMut<'a, (B, E)> for MatRefMut<'b, T> 
+    where B: RangeBounds<usize>, E: RangeBounds<usize>
+{
     type Output = MatRefMut<'a, T>;
 
-    fn get_mut(&'a mut self, _: (RangeFull, RangeFull)) -> Self::Output {
-        MatRefMut {
-            matrix: self.matrix,
-            cols: self.cols.clone(),
-            rows: self.rows.clone(),
-        }
-    }
-}
-
-impl<'a, 'b, T: 'a> IndexedMut<'a, (RangeFull, Range<usize>)> for MatRefMut<'b, T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, index: (RangeFull, Range<usize>)) -> Self::Output {
-        self.matrix.get_mut((.., self.offset_col_range(index.1)))
-    }
-}
-
-impl<'a, 'b, T: 'a> IndexedMut<'a, (Range<usize>, RangeFull)> for MatRefMut<'b, T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, index: (Range<usize>, RangeFull)) -> Self::Output {
-        self.matrix.get_mut((self.offset_row_range(index.0), ..))
-    }
-}
-
-impl<'a, 'b, T: 'a> IndexedMut<'a, (Range<usize>, Range<usize>)> for MatRefMut<'b, T> {
-    type Output = MatRefMut<'a, T>;
-
-    fn get_mut(&'a mut self, index: (Range<usize>, Range<usize>)) -> Self::Output {
-        self.matrix.get_mut((
-            self.offset_row_range(index.0),
-            self.offset_col_range(index.1),
-        ))
+    fn get_mut(&'a mut self, index: (B, E)) -> Self::Output {
+        let rows = calc_concrete_lower_bound(index.0.start_bound(), 0)..calc_concrete_upper_bound(index.0.end_bound(), self.rows());
+        let cols = calc_concrete_lower_bound(index.1.start_bound(), 0)..calc_concrete_upper_bound(index.1.end_bound(), self.cols());
+        assert_legal_subrange(self.rows(), &rows);
+        assert_legal_subrange(self.cols(), &cols);
+        let offset_rows = (rows.start + self.rows.start)..(rows.end + self.rows.start);
+        let offset_cols = (cols.start + self.cols.start)..(cols.end + self.cols.start);
+        self.matrix.get_mut((offset_rows, offset_cols))
     }
 }
 
@@ -1242,6 +1087,22 @@ impl<T> IndexMut<usize> for Vector<T> {
     }
 }
 
+fn calc_concrete_upper_bound(b: Bound<&usize>, max: usize) -> usize {
+    match b {
+        Bound::Excluded(v) => *v,
+        Bound::Included(v) => *v + 1,
+        Bound::Unbounded => max
+    }
+}
+
+fn calc_concrete_lower_bound(b: Bound<&usize>, min: usize) -> usize {
+    match b {
+        Bound::Excluded(v) => *v + 1,
+        Bound::Included(v) => *v,
+        Bound::Unbounded => min
+    }
+}
+
 #[cfg(test)]
 use super::rat::*;
 
@@ -1255,12 +1116,12 @@ fn test_matrix_get_rows() {
     assert_eq!(3, m.cols());
     assert_eq!(4, m.rows());
     {
-        let (fst_row, snd_row) = m.get_mut((0, 2));
+        let (fst_row, snd_row) = m.get_rows(0, 2);
         assert_eq!(&[1, 2, 3], fst_row.into_slice());
         assert_eq!(&[7, 8, 9], snd_row.into_slice());
     }
     {
-        let (fst_row, snd_row) = m.get_mut((3, 2));
+        let (fst_row, snd_row) = m.get_rows(3, 2);
         assert_eq!(&[10, 11, 12], fst_row.into_slice());
         assert_eq!(&[7, 8, 9], snd_row.into_slice());
     }
@@ -1283,7 +1144,7 @@ fn test_matrix_submatrix() {
     assert_eq!(2, n.cols());
 
     {
-        let (mut r1, r2) = n.get_mut((1, 0));
+        let (mut r1, r2) = n.get_rows(1, 0);
         r1 += r2.as_const();
     }
 

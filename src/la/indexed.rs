@@ -1,3 +1,4 @@
+
 pub trait Indexed<'a, T> {
     type Output;
 

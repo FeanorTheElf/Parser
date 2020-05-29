@@ -1,5 +1,6 @@
 #![feature(test)]
 #![feature(trait_alias)]
+#![feature(specialization)]
 
 extern crate itertools;
 extern crate take_mut;
