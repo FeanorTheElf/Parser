@@ -1,5 +1,5 @@
+use super::backend::{Backend, OutputError, Printable};
 use super::prelude::*;
-use super::backend::{Printable, Backend, OutputError};
 
 use std::fmt::{Display, Formatter, Write};
 
@@ -18,7 +18,9 @@ impl<'a, T: ?Sized + Printable> Display for DebugDisplayWrapper<'a, T> {
         match err {
             Ok(()) => Ok(()),
             Err(OutputError::FormatError(e)) => Err(e),
-            Err(OutputError::UnsupportedCode(pos, message)) => panic!("Print error at {}: {}", pos, message)
+            Err(OutputError::UnsupportedCode(pos, message)) => {
+                panic!("Print error at {}: {}", pos, message)
+            }
         }
     }
 }
@@ -152,81 +154,81 @@ impl<'a, 'b> Backend for DebugPrinter<'a, 'b> {
     }
 
     fn print_while_header(&mut self, node: &While) -> Result<(), OutputError> {
-            self.newline()?;
-            self.result.write_str("while (")?;
-            self.print_expr(&node.condition)?;
-            self.result.write_str(") ")?;
-            Ok(())
+        self.newline()?;
+        self.result.write_str("while (")?;
+        self.print_expr(&node.condition)?;
+        self.result.write_str(") ")?;
+        Ok(())
     }
 
     fn print_return(&mut self, node: &Return) -> Result<(), OutputError> {
-            self.newline()?;
-            self.result.write_str("return")?;
-            if let Some(value) = &node.value {
-                self.result.write_str(" ")?;
-                self.print_expr(value)?;
-            }
-            self.result.write_str("; ")?;
-            Ok(())
+        self.newline()?;
+        self.result.write_str("return")?;
+        if let Some(value) = &node.value {
+            self.result.write_str(" ")?;
+            self.print_expr(value)?;
+        }
+        self.result.write_str("; ")?;
+        Ok(())
     }
 
     fn print_expression(&mut self, node: &Expression) -> Result<(), OutputError> {
-            self.newline()?;
-            self.print_expr(node)?;
-            self.result.write_str(";")?;
-            Ok(())
+        self.newline()?;
+        self.print_expr(node)?;
+        self.result.write_str(";")?;
+        Ok(())
     }
 
     fn print_assignment(&mut self, node: &Assignment) -> Result<(), OutputError> {
-            self.newline()?;
-            self.print_expr(&node.assignee)?;
-            self.result.write_str(" = ")?;
-            self.print_expr(&node.value)?;
-            self.result.write_str(";")?;
-            Ok(())
+        self.newline()?;
+        self.print_expr(&node.assignee)?;
+        self.result.write_str(" = ")?;
+        self.print_expr(&node.value)?;
+        self.result.write_str(";")?;
+        Ok(())
     }
 
     fn print_declaration(&mut self, node: &LocalVariableDeclaration) -> Result<(), OutputError> {
-            self.newline()?;
-            self.result.write_str("let ")?;
-            node.declaration.variable.fmt(&mut self.result)?;
-            self.result.write_str(": ")?;
-            node.declaration.variable_type.fmt(&mut self.result)?;
-            if let Some(value) = &node.value {
-                self.result.write_str(" = ")?;
-                self.print_expr(value)?;
-            }
-            self.result.write_str(";")?;
-            Ok(())
+        self.newline()?;
+        self.result.write_str("let ")?;
+        node.declaration.variable.fmt(&mut self.result)?;
+        self.result.write_str(": ")?;
+        node.declaration.variable_type.fmt(&mut self.result)?;
+        if let Some(value) = &node.value {
+            self.result.write_str(" = ")?;
+            self.print_expr(value)?;
+        }
+        self.result.write_str(";")?;
+        Ok(())
     }
 
     fn print_parallel_for_header(&mut self, node: &ParallelFor) -> Result<(), OutputError> {
-            self.newline()?;
-            self.result.write_str("pfor ")?;
-            for index_variable in &node.index_variables {
-                index_variable.variable.fmt(&mut self.result)?;
-                self.result.write_str(": ")?;
-                index_variable.variable_type.fmt(&mut self.result)?;
-                self.result.write_str(", ")?;
-            }
-            for array_access_pattern in &node.access_pattern {
-                self.result.write_str("with ")?;
-                for entry_access in &array_access_pattern.entry_accesses {
-                    self.result.write_str("this[")?;
-                    for index in entry_access.get_indices() {
-                        self.print_expr(index)?;
-                        self.result.write_str(", ")?;
-                    }
-                    self.result.write_str("]")?;
-                    if let Some(alias) = &entry_access.alias {
-                        self.result.write_str(" as ")?;
-                        alias.fmt(&mut self.result)?;
-                    }
+        self.newline()?;
+        self.result.write_str("pfor ")?;
+        for index_variable in &node.index_variables {
+            index_variable.variable.fmt(&mut self.result)?;
+            self.result.write_str(": ")?;
+            index_variable.variable_type.fmt(&mut self.result)?;
+            self.result.write_str(", ")?;
+        }
+        for array_access_pattern in &node.access_pattern {
+            self.result.write_str("with ")?;
+            for entry_access in &array_access_pattern.entry_accesses {
+                self.result.write_str("this[")?;
+                for index in entry_access.get_indices() {
+                    self.print_expr(index)?;
                     self.result.write_str(", ")?;
                 }
-                self.result.write_str("in ")?;
-                self.print_expr(&array_access_pattern.array)?;
+                self.result.write_str("]")?;
+                if let Some(alias) = &entry_access.alias {
+                    self.result.write_str(" as ")?;
+                    alias.fmt(&mut self.result)?;
+                }
+                self.result.write_str(", ")?;
             }
-            Ok(())
+            self.result.write_str("in ")?;
+            self.print_expr(&array_access_pattern.array)?;
+        }
+        Ok(())
     }
 }

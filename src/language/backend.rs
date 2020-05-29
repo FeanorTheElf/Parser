@@ -3,13 +3,11 @@ use super::prelude::*;
 #[derive(Debug)]
 pub enum OutputError {
     FormatError(std::fmt::Error),
-    UnsupportedCode(TextPosition, String)
+    UnsupportedCode(TextPosition, String),
 }
 
-impl From<std::fmt::Error> for OutputError
-{
-    fn from(error: std::fmt::Error) -> Self
-    {
+impl From<std::fmt::Error> for OutputError {
+    fn from(error: std::fmt::Error) -> Self {
         OutputError::FormatError(error)
     }
 }

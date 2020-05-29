@@ -20,7 +20,7 @@ pub enum ErrorType {
     TypeError,
     ArrayParameterPerValue,
     ViewOnView,
-    ViewReturnType
+    ViewReturnType,
 }
 
 #[derive(Debug, Clone)]
@@ -43,8 +43,7 @@ impl CompileError {
         &self.pos
     }
 
-    pub fn throw(self) -> !
-    {
+    pub fn throw(self) -> ! {
         panic!(format!("Error at {}: {}", self.pos, self.msg))
     }
 }

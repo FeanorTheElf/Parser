@@ -25,8 +25,8 @@ fn gcd(a: i32, b: i32) -> i32 {
     return s * a + t * b;
 }
 
-pub fn diophantine_solve<'a>(A: &MatRef<'a, Item>, b: &Vector<Item>) -> Option<Vector<Item>> {
-    let mut smith_A = A.clone();
+pub fn diophantine_solve<'a>(A: MatRef<'a, Item>, b: &Vector<Item>) -> Option<Vector<Item>> {
+    let mut smith_A = A.owned();
     let mut iL = Matrix::<Item>::identity(A.rows());
     let mut iR = Matrix::<Item>::identity(A.cols());
     smith(
@@ -225,7 +225,7 @@ fn test_eea_neg() {
 fn test_diophantine() {
     let A = Matrix::new(Box::new([15, 10, 6, 7]), 2);
     let b = Vector::new(Box::new([195, 87]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert_eq!(&[11, 3], x.unwrap().data());
 }
 
@@ -233,7 +233,7 @@ fn test_diophantine() {
 fn test_diophantine_no_solution() {
     let A = Matrix::new(Box::new([2, -2]), 1);
     let b = Vector::new(Box::new([1]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert!(x.is_none());
 }
 
@@ -244,7 +244,7 @@ fn test_diophantine_no_solution_three_dim() {
                                   1, 0, 2]), 2);
 
     let b = Vector::new(Box::new([2, 1]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert!(x.is_none());
 }
 
@@ -255,7 +255,7 @@ fn test_diophantine_three_dim() {
                                   1, 0, 2]), 2);
 
     let b = Vector::new(Box::new([2, 4]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert_eq!(&[4, -1, 0], x.unwrap().data());
 }
 
@@ -268,7 +268,7 @@ fn test_diophantine_unnecessary_conditions() {
                                   1, 0, 2]), 4);
 
     let b = Vector::new(Box::new([2, 2, 2, 4]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert_eq!(&[4, -1, 0], x.unwrap().data());
 }
 
@@ -280,6 +280,6 @@ fn test_diophantine_no_rational_solutions() {
                                   1, 0, 2]), 3);
 
     let b = Vector::new(Box::new([2, 3, 4]));
-    let x = diophantine_solve(&A.get((.., ..)), &b);
+    let x = diophantine_solve(A.get((.., ..)), &b);
     assert!(x.is_none());
 }

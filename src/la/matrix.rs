@@ -1,21 +1,20 @@
+use super::arith::*;
 use super::indexed::{Indexed, IndexedMut};
 use std::mem::swap;
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Range, RangeFull, SubAssign};
+use std::ops::{
+    Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Range, RangeFull,
+    Sub, SubAssign,
+};
 
+///
+/// Represents a mxn matrix with elements of type T. Typical matrix operations
+/// are not optimized much, so this type is only suitable for small matrices.
+/// Instead, the focus lies on a convenient interface and a generic design.
+///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matrix<T> {
     rows: usize,
     data: Box<[T]>,
-}
-
-#[derive(Debug)]
-pub struct VecRef<'a, T> {
-    data: &'a [T],
-}
-
-#[derive(Debug)]
-pub struct VecRefMut<'a, T> {
-    data: &'a mut [T],
 }
 
 #[derive(Debug)]
@@ -39,6 +38,16 @@ pub struct Vector<T> {
     data: Box<[T]>,
 }
 
+#[derive(Debug)]
+pub struct VecRef<'a, T> {
+    data: &'a [T],
+}
+
+#[derive(Debug)]
+pub struct VecRefMut<'a, T> {
+    data: &'a mut [T],
+}
+
 // ===============================================================================================================
 // Impls
 // ===============================================================================================================
@@ -51,33 +60,25 @@ fn assert_legal_subrange(len: usize, range: &Range<usize>) {
     assert!(range.end <= len, "Subrange must be included in total range");
 }
 
-impl Matrix<f64> {
-    pub fn zero(rows: usize, cols: usize) -> Matrix<f64> {
-        let mut data: Vec<f64> = Vec::new();
-        data.resize(rows * cols, 0.0);
+impl<T> Matrix<T>
+where
+    T: Zero + Clone,
+{
+    pub fn zero(rows: usize, cols: usize) -> Matrix<T> {
+        let mut data: Vec<T> = Vec::new();
+        data.resize(rows * cols, T::zero());
         return Matrix::new(data.into_boxed_slice(), rows);
-    }
-
-    pub fn identity(size: usize) -> Matrix<f64> {
-        let mut result = Matrix::<f64>::zero(size, size);
-        for i in 0..size {
-            result[i][i] = 1.0;
-        }
-        return result;
     }
 }
 
-impl Matrix<i32> {
-    pub fn zero(rows: usize, cols: usize) -> Matrix<i32> {
-        let mut data: Vec<i32> = Vec::new();
-        data.resize(rows * cols, 0);
-        return Matrix::new(data.into_boxed_slice(), rows);
-    }
-
-    pub fn identity(size: usize) -> Matrix<i32> {
-        let mut result = Matrix::<i32>::zero(size, size);
+impl<T> Matrix<T>
+where
+    T: Zero + One + Clone,
+{
+    pub fn identity(size: usize) -> Matrix<T> {
+        let mut result = Matrix::<T>::zero(size, size);
         for i in 0..size {
-            result[i][i] = 1;
+            result[i][i] = T::one();
         }
         return result;
     }
@@ -128,6 +129,23 @@ impl<T> Matrix<T> {
         assert_eq!(1, self.rows());
         Vector { data: self.data }
     }
+
+    pub fn from<U>(value: Matrix<U>) -> Self
+    where
+        T: From<U>,
+    {
+        let rows = value.rows();
+        let data: Vec<T> = value
+            .data
+            .into_vec()
+            .into_iter()
+            .map(|d| T::from(d))
+            .collect();
+        return Matrix {
+            data: data.into_boxed_slice(),
+            rows: rows,
+        };
+    }
 }
 
 impl<'a, T> MatRef<'a, T> {
@@ -163,12 +181,70 @@ impl<'a, T> MatRef<'a, T>
 where
     T: Clone,
 {
-    pub fn clone(&self) -> Matrix<T> {
+    pub fn owned(&self) -> Matrix<T> {
         let cols = self.cols();
         let data: Vec<T> = (0..(self.rows() * cols))
             .map(|index: usize| self.get(index / cols).get(index % cols).clone())
             .collect();
         Matrix::new(data.into_boxed_slice(), self.rows())
+    }
+}
+
+impl<'a, T> MatRef<'a, T>
+where
+    T: Clone
+        + PartialEq<T>
+        + AddAssign<T>
+        + MulAssign<T>
+        + Neg<Output = T>
+        + Zero
+        + One
+        + Div<T, Output = T>
+        + Mul<T, Output = T>,
+    <T as Div<T>>::Output: Clone,
+{
+    ///
+    /// Calculates the inverse of this matrix. Use only for small matrices, this
+    /// is just simple gaussian elimination, and is neither very performant nor
+    /// numerically stable!
+    ///
+    pub fn invert(&self) -> Result<Matrix<T>, ()> {
+        assert_eq!(self.rows(), self.cols());
+        let n: usize = self.rows();
+
+        let mut result: Matrix<T> = Matrix::identity(n);
+        let mut work: Matrix<T> = self.owned();
+
+        // just simple gaussian elimination
+        for i in 0..n {
+            let not_null_index = (i..n).find(|r| work[*r][i] != T::zero()).ok_or(())?;
+            if not_null_index != i {
+                result.get_mut((.., ..)).swap_rows(i, not_null_index);
+                work.get_mut((.., ..)).swap_rows(i, not_null_index);
+            }
+            for j in (i + 1)..n {
+                let (row1, mut row2) = work.get_mut((i, j));
+                let factor = -row2[i].clone() / row1[i].clone();
+                row2.add_product(row1.as_const(), factor.clone());
+                let (res1, mut res2) = result.get_mut((i, j));
+                res2.add_product(res1.as_const(), factor);
+            }
+        }
+        // now we have an upper triangle matrix
+        for i in 1..n {
+            for j in 0..i {
+                let (row1, mut row2) = work.get_mut((i, j));
+                let factor = -row2[i].clone() / row1[i].clone();
+                row2.add_product(row1.as_const(), factor.clone());
+                let (res1, mut res2) = result.get_mut((i, j));
+                res2.add_product(res1.as_const(), factor);
+            }
+        }
+        // now we have a diagonal matrix
+        for i in 0..n {
+            result.get_mut(i).mul_assign(T::one() / work[i][i].clone());
+        }
+        return Ok(result);
     }
 }
 
@@ -403,9 +479,9 @@ impl<'a, T: 'a> VecRefMut<'a, T> {
         }
     }
 
-    pub fn add_multiple<'c, V, U>(&mut self, other: VecRef<'c, U>, mult: V)
+    pub fn add_product<'c, V, U>(&mut self, other: VecRef<'c, U>, mult: V)
     where
-        V: Copy,
+        V: Clone,
         U: Mul<V> + Clone,
         T: AddAssign<<U as Mul<V>>::Output>,
     {
@@ -417,7 +493,7 @@ impl<'a, T: 'a> VecRefMut<'a, T> {
             other.len()
         );
         for i in 0..self.len() {
-            (*self.get_mut(i)).add_assign(other.get(i).clone() * mult);
+            (*self.get_mut(i)).add_assign(other.get(i).clone() * mult.clone());
         }
     }
 }
@@ -433,6 +509,25 @@ impl<'a, T> Clone for VecRef<'a, T> {
 // ===============================================================================================================
 // Traits for Matrix
 // ===============================================================================================================
+
+impl<'a, T, U: 'a> From<MatRef<'a, U>> for Matrix<T>
+where
+    T: From<&'a U>,
+{
+    fn from(value: MatRef<'a, U>) -> Self {
+        let data: Vec<T> = (value.rows_begin..value.rows_end)
+            .flat_map(|row| {
+                (value.cols_begin..value.cols_end)
+                    .map(move |col| &value.matrix[row][col])
+                    .map(|d| T::from(d))
+            })
+            .collect();
+        return Matrix {
+            data: data.into_boxed_slice(),
+            rows: value.rows(),
+        };
+    }
+}
 
 impl<'a, T: 'a> Indexed<'a, (RangeFull, RangeFull)> for Matrix<T> {
     type Output = MatRef<'a, T>;
@@ -647,6 +742,30 @@ where
     }
 }
 
+impl<'a, 'b, T> Add<MatRef<'b, T>> for MatRef<'a, T>
+    where T: Clone + for<'c> AddAssign<&'c T>
+{
+    type Output = Matrix<T>;
+
+    fn add(self, rhs: MatRef<'b, T>) -> Self::Output {
+        let mut result: Matrix<T> = self.owned();
+        result.get_mut((.., ..)).add_assign(rhs);
+        return result;
+    }
+}
+
+impl<'a, 'b, T> Sub<MatRef<'b, T>> for MatRef<'a, T>
+    where T: Clone + for<'c> SubAssign<&'c T>
+{
+    type Output = Matrix<T>;
+
+    fn sub(self, rhs: MatRef<'b, T>) -> Self::Output {
+        let mut result: Matrix<T> = self.owned();
+        result.get_mut((.., ..)).sub_assign(rhs);
+        return result;
+    }
+}
+
 impl<'a, T> Index<usize> for MatRef<'a, T> {
     type Output = [T];
 
@@ -718,11 +837,11 @@ impl<'a, 'b, T: 'b> Indexed<'a, (Range<usize>, Range<usize>)> for MatRef<'b, T> 
 impl<'a, T, U> MulAssign<U> for MatRefMut<'a, T>
 where
     T: MulAssign<U>,
-    U: Copy,
+    U: Clone,
 {
     fn mul_assign(&mut self, rhs: U) {
         for row in self.rows.clone() {
-            self.get_mut(row).mul_assign(rhs);
+            self.get_mut(row).mul_assign(rhs.clone());
         }
     }
 }
@@ -884,6 +1003,15 @@ impl<'a, 'b, T: 'a> IndexedMut<'a, (Range<usize>, Range<usize>)> for MatRefMut<'
 // Traits for VecRef, VecRefMut
 // ===============================================================================================================
 
+impl<'a, T> IntoIterator for VecRef<'a, T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
+}
+
 impl<'a, 'c, T, U> AddAssign<VecRef<'c, U>> for VecRefMut<'a, T>
 where
     T: for<'b> AddAssign<&'b U>,
@@ -923,11 +1051,11 @@ where
 impl<'a, T, U> MulAssign<U> for VecRefMut<'a, T>
 where
     T: MulAssign<U>,
-    U: Copy,
+    U: Clone,
 {
     fn mul_assign(&mut self, other: U) {
         for i in 0..self.len() {
-            (*self.get_mut(i)).mul_assign(other);
+            (*self.get_mut(i)).mul_assign(other.clone());
         }
     }
 }
@@ -1114,6 +1242,9 @@ impl<T> IndexMut<usize> for Vector<T> {
     }
 }
 
+#[cfg(test)]
+use super::rat::*;
+
 #[test]
 fn test_matrix_get_rows() {
     #[rustfmt::skip]
@@ -1201,4 +1332,15 @@ fn test_matmul() {
     #[rustfmt::skip]
     assert_eq!(&[7, 10, 7, 
                  9, 14, 13], (a.get((.., ..)) * b.get((.., ..))).data());
+}
+
+#[test]
+fn test_invert() {
+    #[rustfmt::skip]
+    let a = Matrix::new(Box::new([1., 2.,
+                                  2., 0.]), 2);
+
+    #[rustfmt::skip]
+    assert_eq!(&[0.,  0.5,
+                 0.5, -0.25], a.get((.., ..)).invert().unwrap().data());
 }

@@ -26,19 +26,18 @@ where
 }
 
 fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
-    let index_variables = pfor
-        .index_variables
-        .iter()
-        .map(|var| &var.variable)
-        .collect();
     for access_pattern in &pfor.access_pattern {
         for i in 0..access_pattern.entry_accesses.len() {
             for j in i..access_pattern.entry_accesses.len() {
                 let entry1 = &access_pattern.entry_accesses[i];
                 let entry2 = &access_pattern.entry_accesses[j];
                 let one_write = entry1.write || entry2.write;
-                let transform1 = entry1.get_transformation_matrix(&index_variables)?;
-                let transform2 = entry2.get_transformation_matrix(&index_variables)?;
+                let transform1 = entry1.get_transformation_matrix(
+                    pfor.index_variables.iter().map(|var| &var.variable),
+                )?;
+                let transform2 = entry2.get_transformation_matrix(
+                    pfor.index_variables.iter().map(|var| &var.variable),
+                )?;
                 if one_write {
                     let collision =
                         get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);

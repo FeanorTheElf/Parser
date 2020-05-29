@@ -98,7 +98,7 @@ fn eliminate(table: &mut Tableau, row_index: usize, col_index: usize) {
         if target_row_index != row_index {
             let factor = table[target_row_index][col_index];
             let (mut target_row, base_row) = table.get_mut((target_row_index, row_index));
-            target_row.add_multiple(base_row.as_const(), -factor);
+            target_row.add_product(base_row.as_const(), -factor);
         }
     }
 }
@@ -147,7 +147,7 @@ fn add_artificials(table: &Tableau) -> (Tableau, BasicVars) {
             result.get_mut(row_index).mul_assign(-1.0);
         }
         let (mut dst_row, cnt_row) = result.get_mut((0, row_index));
-        dst_row.add_multiple(cnt_row.as_const(), 1.0);
+        dst_row.add_product(cnt_row.as_const(), 1.0);
     }
     for row_index in 1..rows {
         let basic_var_col = table.cols() + row_index - 1;

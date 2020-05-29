@@ -2,12 +2,10 @@ use std::borrow::Borrow;
 use std::cmp::{Eq, PartialEq};
 use std::convert::From;
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 #[derive(Debug)]
-pub struct Ref<'a, T>
-where
-    T: ?Sized,
-{
+pub struct Ref<'a, T: ?Sized> {
     data: RefEq<'a, T>,
 }
 
@@ -17,6 +15,14 @@ where
     T: ?Sized,
 {
     data: &'a T,
+}
+
+impl<'a, T: ?Sized> Deref for Ref<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data.data
+    }
 }
 
 impl<'a, 'b: 'a, T> Borrow<RefEq<'a, T>> for Ref<'b, T>

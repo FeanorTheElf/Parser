@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+pub mod arith;
 pub mod diophantine;
 pub mod indexed;
 pub mod matrix;

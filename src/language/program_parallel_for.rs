@@ -1,7 +1,7 @@
+use super::backend::{Backend, OutputError, Printable};
 use super::error::*;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
-use super::backend::{ Printable, Backend, OutputError };
 use super::program::*;
 use super::AstNode;
 
@@ -274,15 +274,18 @@ impl ArrayEntryAccess {
         return Ok(());
     }
 
-    fn calculate_transformation_matrix(
+    fn calculate_transformation_matrix<'a, I>(
         &self,
-        index_variables: &Vec<&Name>,
-    ) -> Result<Matrix<i32>, CompileError> {
+        index_variables: I,
+    ) -> Result<Matrix<i32>, CompileError>
+    where
+        I: Iterator<Item = &'a Name>,
+    {
         let mut index_variable_map: HashMap<&Name, usize> = HashMap::new();
-        for (index, var) in index_variables.iter().enumerate() {
+        for (index, var) in index_variables.enumerate() {
             index_variable_map.insert(&var, index);
         }
-        let variables_in = index_variables.len();
+        let variables_in = index_variable_map.len();
         let variables_out = self.indices.len();
         let mut result = Matrix::<i32>::zero(variables_out, variables_in + 1);
         for dimension in 0..variables_out {
@@ -296,10 +299,20 @@ impl ArrayEntryAccess {
         return Ok(result);
     }
 
-    pub fn get_transformation_matrix<'a>(
+    ///
+    /// Returns the matrix that represents the affine linear transform from the index variable vector
+    /// to the array index vector for a given thread. An error is returned, if the expression is not
+    /// an affine linear transform. On success, the result is an array_dimension_count x (index_variable_count + 1)
+    /// matrix A, where the column at ACCESS_MATRIX_AFFINE_COLUMN is the translation part and the
+    /// rest is the linear transformation (columns are in the same order as the index variables).
+    ///
+    pub fn get_transformation_matrix<'a, 'b, I>(
         &'a self,
-        index_variables: &Vec<&Name>,
-    ) -> Result<Ref<'a, Matrix<i32>>, CompileError> {
+        index_variables: I,
+    ) -> Result<Ref<'a, Matrix<i32>>, CompileError>
+    where
+        I: Iterator<Item = &'b Name>,
+    {
         if self.matrix_cache.borrow().is_none() {
             let result = self.calculate_transformation_matrix(index_variables);
             self.matrix_cache.replace(Some(result));
@@ -359,7 +372,9 @@ fn test_get_transformation_matrix() {
     assert_eq!(
         expected,
         *array_entry_access
-            .get_transformation_matrix(&vec![&Name::l("a"), &Name::l("b"), &Name::l("c")])
+            .get_transformation_matrix(
+                vec![&Name::l("a"), &Name::l("b"), &Name::l("c")].into_iter()
+            )
             .unwrap()
     );
 }
@@ -373,7 +388,7 @@ fn test_get_transformation_matrix_non_affine_transform() {
         true,
     );
     assert!(array_entry_access
-        .get_transformation_matrix(&vec![&Name::l("a"), &Name::l("x")])
+        .get_transformation_matrix(vec![&Name::l("a"), &Name::l("x")].into_iter())
         .is_err());
 }
 
@@ -386,6 +401,6 @@ fn test_get_transformation_matrix_non_index_variable() {
         true,
     );
     assert!(array_entry_access
-        .get_transformation_matrix(&vec![&Name::l("i")])
+        .get_transformation_matrix(vec![&Name::l("i")].into_iter())
         .is_err());
 }

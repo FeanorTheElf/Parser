@@ -1,7 +1,7 @@
+use super::backend::{Backend, OutputError, Printable};
+use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
-use super::backend::{Printable, Backend, OutputError};
-use super::error::{CompileError, ErrorType};
 use super::AstNode;
 
 use super::super::util::iterable::{Iterable, LifetimeIterable};
@@ -159,9 +159,17 @@ pub struct Literal {
 impl Expression {
     pub fn expect_identifier(&self) -> Result<&Identifier, CompileError> {
         match self {
-            Expression::Call(_) => Err(CompileError::new(self.pos(), format!("A function call is not allowed here."), ErrorType::VariableRequired)),
+            Expression::Call(_) => Err(CompileError::new(
+                self.pos(),
+                format!("A function call is not allowed here."),
+                ErrorType::VariableRequired,
+            )),
             Expression::Variable(var) => Ok(&var.identifier),
-            Expression::Literal(_) => Err(CompileError::new(self.pos(), format!("A function call is not allowed here."), ErrorType::VariableRequired))
+            Expression::Literal(_) => Err(CompileError::new(
+                self.pos(),
+                format!("A function call is not allowed here."),
+                ErrorType::VariableRequired,
+            )),
         }
     }
 }

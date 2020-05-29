@@ -1,7 +1,7 @@
 use super::super::language::prelude::*;
 use super::symbol::SymbolDefinition;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub trait EnumerateDefinitions<'a> {
     type IntoIter: Iterator<Item = &'a dyn SymbolDefinition>;
@@ -98,32 +98,42 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
     }
 }
 
-#[derive(Debug, Clone)]
-struct ScopeNode {
-    definitions: HashSet<Name>,
-}
+pub struct NoData;
 
-impl ScopeNode {
-    fn create<T: ?Sized>(scope: &T) -> ScopeNode
-    where
-        for<'a> &'a T: EnumerateDefinitions<'a>,
-    {
-        let defs = scope
-        .enumerate()
-        .map(|def| def.get_name().clone())
-        .collect();
-        ScopeNode {
-            definitions: defs,
-        }
+impl<'a> From<&'a dyn SymbolDefinition> for NoData {
+    fn from(_: &'a dyn SymbolDefinition) -> Self {
+        NoData
     }
 }
 
-struct ScopeStackIter<'a> {
-    current: Option<&'a ScopeStack<'a>>,
+pub type NameScopeStack<'a> = ScopeStack<'a, NoData>;
+pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b (dyn 'b + SymbolDefinition)>;
+
+#[derive(Debug, Clone)]
+struct ScopeNode<T> {
+    definitions: HashMap<Name, T>,
 }
 
-impl<'a> Iterator for ScopeStackIter<'a> {
-    type Item = &'a ScopeStack<'a>;
+impl<T> ScopeNode<T> {
+    fn create<'a, S: ?Sized>(scope: &'a S) -> ScopeNode<T>
+    where
+        &'a S: EnumerateDefinitions<'a>,
+        T: From<&'a dyn SymbolDefinition>,
+    {
+        let defs = scope
+            .enumerate()
+            .map(|def| (def.get_name().clone(), T::from(def)))
+            .collect();
+        ScopeNode { definitions: defs }
+    }
+}
+
+struct ScopeStackIter<'a, T> {
+    current: Option<&'a ScopeStack<'a, T>>,
+}
+
+impl<'a, T> Iterator for ScopeStackIter<'a, T> {
+    type Item = &'a ScopeStack<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.current;
@@ -133,29 +143,33 @@ impl<'a> Iterator for ScopeStackIter<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ScopeStack<'a> {
-    parent: Option<&'a ScopeStack<'a>>,
-    scopes: Vec<ScopeNode>,
+pub struct ScopeStack<'a, T> {
+    parent: Option<&'a ScopeStack<'a, T>>,
+    scopes: Vec<ScopeNode<T>>,
 }
 
-impl<'a> ScopeStack<'a> {
-    pub fn new(global: &[Box<Function>]) -> ScopeStack<'a> {
+impl<'a, T> ScopeStack<'a, T> {
+    pub fn new<'b>(global: &'b [Box<Function>]) -> ScopeStack<'a, T>
+    where
+        T: From<&'b dyn SymbolDefinition>,
+    {
         ScopeStack {
             parent: None,
             scopes: vec![ScopeNode::create(global)],
         }
     }
 
-    pub fn child_stack<'b>(&'b self) -> ScopeStack<'b> {
+    pub fn child_stack<'b>(&'b self) -> ScopeStack<'b, T> {
         ScopeStack {
             parent: Some(self),
             scopes: vec![],
         }
     }
 
-    pub fn enter<T: ?Sized>(&mut self, scope: &T)
+    pub fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
     where
-        for<'b> &'b T: EnumerateDefinitions<'b>,
+        &'b S: EnumerateDefinitions<'b>,
+        T: From<&'b dyn SymbolDefinition>,
     {
         self.scopes.push(ScopeNode::create(scope));
     }
@@ -166,14 +180,14 @@ impl<'a> ScopeStack<'a> {
             .expect("Cannot call exit() on empty scope stack");
     }
 
-    fn parent_stacks<'b>(&'b self) -> ScopeStackIter<'b> {
+    fn all_stacks<'b>(&'b self) -> ScopeStackIter<'b, T> {
         ScopeStackIter {
             current: Some(self),
         }
     }
 
-    pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = &'b Name> {
-        self.parent_stacks()
+    pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
+        self.all_stacks()
             .flat_map(|stack| stack.scopes.iter())
             .flat_map(|scope_node| scope_node.definitions.iter())
     }
@@ -187,8 +201,8 @@ impl<'a> ScopeStack<'a> {
             } else {
                 let index: u32 = self
                     .definitions()
-                    .filter(|def| def.name == name.name)
-                    .map(|def| def.id)
+                    .filter(|def| def.0.name == name.name)
+                    .map(|def| def.0.id)
                     .max()
                     .map(|x| x + 1)
                     .unwrap_or(0);
@@ -196,6 +210,15 @@ impl<'a> ScopeStack<'a> {
                 Name::new(name.name, index)
             }
         }
+    }
+
+    pub fn get(&self, name: &Name) -> Option<&T> {
+        self.all_stacks().find_map(|stack| {
+            stack
+                .scopes
+                .iter()
+                .find_map(|scope| scope.definitions.get(name))
+        })
     }
 }
 

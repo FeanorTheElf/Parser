@@ -1,28 +1,26 @@
 #![allow(non_camel_case_types)]
 
+use super::arith::{One, Zero};
+
 use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::convert::From;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-/*
- * Overflow contract: r64 may overflow, if the naive formulas for the
- * computations would cause an overflow, given all participating fractions
- * are completly reduced and i64 is used. Only in this case, the operation
- * may panic, otherwise it has to yield the correct result.
- * The naive formulas are:
- *  - Add: (a.num * b.den + b.num * a.den) / (a.den * b.den)
- *  - Mul: (a.num * b.num) / (a.den * b.den)
- *  - Eq: never overflows
- *
- * Fractions may not be reduced as long as possible for performance reasons,
- * and a debug output may print a non-reduced fraction. Display output will
- * always print a correctly reduced form of this fraction.
- *
- * For some operations that take immutable references and might require a
- * reduction, there is a specialization for Cell<r64> so that a reduction
- * of an immutable fraction can be applied, maybe preventing it to be done twice.
- */
+///
+/// Overflow contract: r64 may overflow, if the naive formulas for the
+/// computations would cause an overflow, given all participating fractions
+/// are completly reduced and i64 is used. Only in this case, the operation
+/// may panic, otherwise it has to yield the correct result.
+/// The naive formulas are:
+///  - Add: (a.num * b.den + b.num * a.den) / (a.den * b.den)
+///  - Mul: (a.num * b.num) / (a.den * b.den)
+///  - Eq: never overflows
+///
+/// Fractions may not be reduced as long as possible for performance reasons,
+/// and a debug output may print a non-reduced fraction. Display output will
+/// always print a correctly reduced form of this fraction.
+///
 #[derive(Clone, Copy)]
 pub struct r64 {
     numerator: i64,
@@ -36,6 +34,14 @@ pub const NAN: r64 = r64 {
 pub const INFINITY: r64 = r64 {
     numerator: 1,
     denominator: 0,
+};
+pub const ZERO: r64 = r64 {
+    numerator: 0,
+    denominator: 1,
+};
+pub const ONE: r64 = r64 {
+    numerator: 1,
+    denominator: 1,
 };
 
 impl r64 {
@@ -83,11 +89,37 @@ impl r64 {
     pub fn is_nan(&self) -> bool {
         self.denominator == 0 && self.numerator == 0
     }
+
+    pub fn num(&self) -> i64 {
+        self.numerator
+    }
+
+    pub fn den(&self) -> i64 {
+        self.denominator
+    }
 }
 
 impl From<i64> for r64 {
     fn from(value: i64) -> Self {
         r64::new(value, 1)
+    }
+}
+
+impl<'a> From<&'a i32> for r64 {
+    fn from(value: &'a i32) -> Self {
+        r64::new(*value as i64, 1)
+    }
+}
+
+impl Zero for r64 {
+    fn zero() -> Self {
+        ZERO
+    }
+}
+
+impl One for r64 {
+    fn one() -> Self {
+        ONE
     }
 }
 
@@ -237,42 +269,6 @@ impl PartialOrd for r64 {
     }
 }
 
-impl Add<&Self> for r64 {
-    type Output = r64;
-
-    fn add(mut self, rhs: &r64) -> r64 {
-        self += *rhs;
-        return self;
-    }
-}
-
-impl Mul<&Self> for r64 {
-    type Output = r64;
-
-    fn mul(mut self, rhs: &r64) -> r64 {
-        self *= *rhs;
-        return self;
-    }
-}
-
-impl Sub<&Self> for r64 {
-    type Output = r64;
-
-    fn sub(mut self, rhs: &r64) -> r64 {
-        self -= *rhs;
-        return self;
-    }
-}
-
-impl Div<&Self> for r64 {
-    type Output = r64;
-
-    fn div(mut self, rhs: &r64) -> r64 {
-        self /= *rhs;
-        return self;
-    }
-}
-
 impl Add<Self> for r64 {
     type Output = r64;
 
@@ -383,10 +379,10 @@ fn test_mul_assign_overflow() {
 
 #[bench]
 fn benchmark_combined_add_mult_eq(bencher: &mut test::Bencher) {
-    let numerator_a = (1 << 62) / 50 /* divisible by 3 */;
+    let numerator_a = (1 << 62) / 50; // divisible by 3
     let numerator_b = (1 << 62) / 81;
     let result_numerator = 44211 * 69540552025927 + 1350;
-    let not_optimized: i64 = (std::time::Instant::now().elapsed().as_secs() / 3600) as i64;
+    let not_optimized: i64 = std::hint::black_box(0);
     bencher.iter(|| {
         let mut a = r64::new(numerator_a + not_optimized, 81);
         let b = r64::new(numerator_b + not_optimized, 50);
