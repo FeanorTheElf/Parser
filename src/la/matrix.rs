@@ -672,26 +672,22 @@ where
 }
 
 impl<'a, 'b, T> Add<MatRef<'b, T>> for MatRef<'a, T>
-    where T: Clone + for<'c> AddAssign<&'c T>
+    where T: Add<T, Output = T> + Copy
 {
     type Output = Matrix<T>;
 
     fn add(self, rhs: MatRef<'b, T>) -> Self::Output {
-        let mut result: Matrix<T> = self.to_owned();
-        result.get_mut((.., ..)).add_assign(rhs);
-        return result;
+        Matrix::new((0..self.rows()).flat_map(|row| (0..self.cols()).map(move |col| *self.get(row).get(col) + *rhs.get(row).get(col))).collect::<Vec<T>>().into_boxed_slice(), self.rows())
     }
 }
 
 impl<'a, 'b, T> Sub<MatRef<'b, T>> for MatRef<'a, T>
-    where T: Clone + for<'c> SubAssign<&'c T>
+    where T: Sub<T, Output = T> + Copy
 {
     type Output = Matrix<T>;
 
     fn sub(self, rhs: MatRef<'b, T>) -> Self::Output {
-        let mut result: Matrix<T> = self.to_owned();
-        result.get_mut((.., ..)).sub_assign(rhs);
-        return result;
+        Matrix::new((0..self.rows()).flat_map(|row| (0..self.cols()).map(move |col| *self.get(row).get(col) - *rhs.get(row).get(col))).collect::<Vec<T>>().into_boxed_slice(), self.rows())
     }
 }
 
