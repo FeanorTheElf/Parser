@@ -23,7 +23,7 @@ pub fn collect_parallel_for_data_in_block<'a>(
             collect_parallel_for_data_in_expr(expr, scopes, add_uses_to);
         }
         if let Some(parallel_for) = statement.dynamic().downcast_ref::<ParallelFor>() {
-            let mut data = ParallelForData {
+            let data = ParallelForData {
                 used_outer_variables: HashSet::new(),
             };
             add_uses_to.push(data);

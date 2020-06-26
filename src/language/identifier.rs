@@ -53,27 +53,33 @@ pub enum BuiltInIdentifier {
     FunctionGt,
 }
 
+impl BuiltInIdentifier {
+    pub fn get_symbol(&self) -> &'static str {
+        match self {
+            BuiltInIdentifier::FunctionIndex => "[]",
+            BuiltInIdentifier::FunctionAdd => "+",
+            BuiltInIdentifier::FunctionMul => "*",
+            BuiltInIdentifier::FunctionUnaryDiv => "/",
+            BuiltInIdentifier::FunctionUnaryNeg => "-",
+            BuiltInIdentifier::FunctionAnd => "&&",
+            BuiltInIdentifier::FunctionOr => "||",
+            BuiltInIdentifier::FunctionLeq => "<=",
+            BuiltInIdentifier::FunctionGeq => ">=",
+            BuiltInIdentifier::FunctionEq => "==",
+            BuiltInIdentifier::FunctionNeq => "!=",
+            BuiltInIdentifier::FunctionLs => "<",
+            BuiltInIdentifier::FunctionGt => ">",
+        }
+    }
+
+    pub fn is_unary_function(&self) -> bool {
+        *self == BuiltInIdentifier::FunctionUnaryDiv || *self == BuiltInIdentifier::FunctionUnaryNeg
+    }
+}
+
 impl std::fmt::Display for BuiltInIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                BuiltInIdentifier::FunctionIndex => "[]",
-                BuiltInIdentifier::FunctionAdd => "+",
-                BuiltInIdentifier::FunctionMul => "*",
-                BuiltInIdentifier::FunctionUnaryDiv => "/",
-                BuiltInIdentifier::FunctionUnaryNeg => "-",
-                BuiltInIdentifier::FunctionAnd => "&&",
-                BuiltInIdentifier::FunctionOr => "||",
-                BuiltInIdentifier::FunctionLeq => "<=",
-                BuiltInIdentifier::FunctionGeq => ">=",
-                BuiltInIdentifier::FunctionEq => "==",
-                BuiltInIdentifier::FunctionNeq => "!=",
-                BuiltInIdentifier::FunctionLs => "<",
-                BuiltInIdentifier::FunctionGt => ">",
-            }
-        )
+        write!(f, "{}", self.get_symbol())
     }
 }
 

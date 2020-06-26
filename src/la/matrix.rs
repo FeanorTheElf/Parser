@@ -632,6 +632,17 @@ impl<'a, T> Clone for MatRef<'a, T> {
 // Traits for MatRef
 // ===============================================================================================================
 
+impl<'a, T> Mul<T> for MatRef<'a, T>
+where
+    T: Copy + Mul<T, Output = T>,
+{
+    type Output = Matrix<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        Matrix::new((0..self.rows()).flat_map(|row| (0..self.cols()).map(move |col| *self.get(row).get(col) * rhs)).collect::<Vec<T>>().into_boxed_slice(), self.rows())
+    }
+}
+
 impl<'a, 'b, T> Mul<VecRef<'b, T>> for MatRef<'a, T>
 where
     T: Add<T, Output = T> + Copy + Mul<T, Output = T>,
@@ -726,6 +737,20 @@ impl<'a, 'b, T: 'b, B, E> Indexed<'a, (B, E)> for MatRef<'b, T>
     }
 }
 
+impl<'a, T> std::fmt::Display for MatRef<'a, T>
+where
+    T: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for row in 0..self.rows() {
+            for col in 0..(self.cols() - 1) {
+                write!(f, "{: >6}  ", self.get(row).get(col))?;
+            }
+            write!(f, "{: >6}\n", self.get(row).get(self.cols() - 1))?;
+        }
+        return Ok(());
+    }
+}
 // ===============================================================================================================
 // Traits for MatRefMut
 // ===============================================================================================================
@@ -843,6 +868,36 @@ impl<'a, 'b, T: 'a, B, E> IndexedMut<'a, (B, E)> for MatRefMut<'b, T>
 // ===============================================================================================================
 // Traits for VecRef, VecRefMut
 // ===============================================================================================================
+
+impl<'a, 'b, T> Add<VecRef<'b, T>> for VecRef<'a, T> 
+    where T: Add<T, Output = T> + Copy
+{
+    type Output = Vector<T>;
+
+    fn add(self, rhs: VecRef<'b, T>) -> Self::Output {
+        Vector::new((0..self.len()).map(|i| *self.get(i) + *rhs.get(i)).collect::<Vec<T>>().into_boxed_slice())
+    }
+}
+
+impl<'a, 'b, T> Sub<VecRef<'b, T>> for VecRef<'a, T> 
+    where T: Sub<T, Output = T> + Copy
+{
+    type Output = Vector<T>;
+
+    fn sub(self, rhs: VecRef<'b, T>) -> Self::Output {
+        Vector::new((0..self.len()).map(|i| *self.get(i) - *rhs.get(i)).collect::<Vec<T>>().into_boxed_slice())
+    }
+}
+
+impl<'a, 'b, T> Mul<T> for VecRef<'a, T> 
+    where T: Mul<T, Output = T> + Copy
+{
+    type Output = Vector<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        Vector::new((0..self.len()).map(|i| *self.get(i) * rhs).collect::<Vec<T>>().into_boxed_slice())
+    }
+}
 
 impl<'a, T> IntoIterator for VecRef<'a, T> {
     type Item = &'a T;
@@ -1098,9 +1153,6 @@ fn calc_concrete_lower_bound(b: Bound<&usize>, min: usize) -> usize {
         Bound::Unbounded => min
     }
 }
-
-#[cfg(test)]
-use super::rat::*;
 
 #[test]
 fn test_matrix_get_rows() {
