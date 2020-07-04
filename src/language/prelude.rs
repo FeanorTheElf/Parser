@@ -4,6 +4,7 @@ pub use super::identifier::*;
 pub use super::position;
 pub use super::position::TextPosition;
 pub use super::program::*;
+pub use super::statements::*;
 pub use super::program_parallel_for::*;
 pub use super::AstNode;
 

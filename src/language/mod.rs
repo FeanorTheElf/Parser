@@ -13,6 +13,7 @@ pub mod error;
 pub mod identifier;
 pub mod prelude;
 pub mod program;
+pub mod statements;
 pub mod program_parallel_for;
 #[cfg(test)]
 #[macro_use]

@@ -76,6 +76,14 @@ impl Statement for ParallelFor {
     fn dyn_clone(&self) -> Box<dyn Statement> {
         Box::new(self.clone())
     }
+
+    fn transform(self: Box<Self>, transformer: &mut dyn StatementTransformer) -> TransformerResult<dyn Statement> {
+        transformer.transform_parallel_for(self)
+    }
+
+    fn transform_children(&mut self, transformer: &mut dyn StatementTransformer) -> Result<(), CompileError> {
+        self.body.transform_children(transformer)
+    }
 }
 
 impl Printable for ParallelFor {
