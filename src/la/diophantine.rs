@@ -25,6 +25,7 @@ fn gcd(a: i32, b: i32) -> i32 {
     return s * a + t * b;
 }
 
+#[allow(unused)]
 pub fn diophantine_solve<'a>(A: MatRef<'a, Item>, b: &Vector<Item>) -> Option<Vector<Item>> {
     let mut smith_A = A.to_owned();
     let mut iL = Matrix::<Item>::identity(A.rows());

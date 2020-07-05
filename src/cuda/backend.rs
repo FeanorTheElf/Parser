@@ -566,7 +566,7 @@ impl<'a> Backend for CudaBackend<'a> {
             acutal_param_string
         )?;
 
-        self.exit_block();
+        self.exit_block()?;
 
         // now we continue in the kernel function
         self.output_threads.push(OutputThread {
@@ -607,7 +607,7 @@ impl<'a> Backend for CudaBackend<'a> {
                 i + 1,
                 QUERIED_ITEMS_BEGIN_PREFIX,
                 i
-            );
+            )?;
             self.newline()?;
             write!(
                 self.out(),
@@ -617,7 +617,7 @@ impl<'a> Backend for CudaBackend<'a> {
                 node.index_variables[i].variable,
                 QUERIED_ITEMS_BEGIN_PREFIX,
                 i
-            );
+            )?;
         }
 
         Ok(())

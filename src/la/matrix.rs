@@ -2,7 +2,7 @@ use super::arith::*;
 use super::indexed::{Indexed, IndexedMut};
 use std::mem::swap;
 use std::ops::{
-    Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, RangeBounds, Bound, Range, RangeFull,
+    Add, AddAssign, Div, Index, IndexMut, Mul, MulAssign, Neg, RangeBounds, Bound, Range, RangeFull,
     Sub, SubAssign,
 };
 

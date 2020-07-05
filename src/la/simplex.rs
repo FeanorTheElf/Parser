@@ -31,6 +31,7 @@ pub fn simplex(table: &mut Tableau, basic_vars: &mut BasicVars) -> Result<(), Sy
  * Find solution of Ax=b with x >= 0
  * table: (b | A)
  */
+#[allow(unused)]
 pub fn solve(table: &Tableau) -> Option<Vec<f64>> {
     let (mut matrix, mut basic_vars) = add_artificials(table);
     simplex(&mut matrix, &mut basic_vars).unwrap();

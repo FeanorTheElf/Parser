@@ -18,7 +18,7 @@ impl<'a, T: ?Sized + Printable> Display for DebugDisplayWrapper<'a, T> {
         match err {
             Ok(()) => Ok(()),
             Err(OutputError::FormatError(e)) => Err(e),
-            Err(OutputError::IOError(e)) => unimplemented!(),
+            Err(OutputError::IOError(_)) => unimplemented!(),
             Err(OutputError::UnsupportedCode(pos, message)) => {
                 panic!("Print error at {}: {}", pos, message)
             }

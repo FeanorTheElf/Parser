@@ -1,16 +1,17 @@
 use super::super::la::prelude::*;
 use super::super::language::prelude::*;
 
+#[allow(unused)]
 pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
     for item in &program.items {
         if let Some(body) = &item.body {
-            for_pfor_in_block(body, &mut check_pfor_data_races)?;
+            call_for_pfor_in_block(body, &mut check_pfor_data_races)?;
         }
     }
     return Ok(());
 }
 
-fn for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileError>
+fn call_for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileError>
 where
     F: FnMut(&ParallelFor) -> Result<(), CompileError>,
 {
@@ -19,7 +20,7 @@ where
             f(pfor)?;
         }
         for block in statement.iter() {
-            for_pfor_in_block(&block, f)?;
+            call_for_pfor_in_block(&block, f)?;
         }
     }
     return Ok(());
@@ -53,6 +54,7 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
     return Ok(());
 }
 
+// The first column is for the translation
 #[allow(non_snake_case)]
 fn get_collision(
     transform1: MatRef<i32>,
@@ -150,6 +152,3 @@ fn test_check_collision_with_collision() {
     .unwrap();
     assert!(check_pfor_data_races(&pfor).is_err());
 }
-
-#[test]
-fn test_get_collision() {}

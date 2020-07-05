@@ -709,7 +709,7 @@ grammar_rule! { BracketExpr := Token#BracketOpen Expression Token#BracketClose }
 impl_parse! { Variable := Name }
 
 #[cfg(test)]
-use super::super::language::position::BEGIN;
+use super::super::language::position::NONEXISTING;
 #[cfg(test)]
 use super::super::lexer::lexer::{lex, fragment_lex};
 
@@ -724,7 +724,7 @@ fn test_parser() {
     assert_eq!(1, ast.items.len());
     assert_eq!(
         Declaration {
-            pos: BEGIN,
+            pos: NONEXISTING,
             variable: Name::l("a"),
             variable_type: Type::Array(PrimitiveType::Int, 1)
         },
@@ -738,7 +738,7 @@ fn test_parser() {
         .unwrap();
     assert_eq!(
         Declaration {
-            pos: BEGIN,
+            pos: NONEXISTING,
             variable: Name::l("c"),
             variable_type: Type::Primitive(PrimitiveType::Int)
         },
@@ -751,7 +751,7 @@ fn test_parser() {
         .unwrap();
     assert_eq!(
         Expression::Variable(Variable {
-            pos: BEGIN,
+            pos: NONEXISTING,
             identifier: Identifier::Name(Name::l("d"))
         }),
         assignment.assignee
@@ -764,18 +764,18 @@ fn test_parse_index_expressions() {
     let expr = Expression::parse(&mut fragment_lex(text)).unwrap();
     assert_eq!(Expression::Call(Box::new(
         FunctionCall {
-            pos: BEGIN,
+            pos: NONEXISTING,
             function: Expression::Variable(Variable { 
-                pos: BEGIN, 
+                pos: NONEXISTING, 
                 identifier: Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) 
             }),
             parameters: vec![
                 Expression::Variable(Variable {
-                    pos: BEGIN,
+                    pos: NONEXISTING,
                     identifier: Identifier::Name(Name::l("a"))
                 }),
                 Expression::Variable(Variable {
-                    pos: BEGIN,
+                    pos: NONEXISTING,
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],
