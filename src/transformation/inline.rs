@@ -431,7 +431,7 @@ fn test_inline() {
     }",
     ))
     .unwrap();
-    assert_ast_eq!(expected, block);
+    assert_ast_eq!(&expected, &block);
 }
 
 #[test]
@@ -493,7 +493,7 @@ fn test_process_inline_body() {
     }",
     ))
     .unwrap();
-    assert_ast_eq!(expected, body);
+    assert_ast_eq!(&expected, &body);
 
     let mut expected_mapping = HashMap::new();
     expected_mapping.insert(
@@ -582,5 +582,5 @@ fn test_inline_all() {
         }
     "))
     .unwrap();
-    assert_ast_eq!(expected, program);
+    assert_ast_eq!(&expected, &program);
 }

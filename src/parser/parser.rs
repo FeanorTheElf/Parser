@@ -560,18 +560,21 @@ impl Build<ExprNodeLevelMul> for Expression {
 
 impl Build<ExprNodeLevelCall> for Expression {
     fn build(pos: TextPosition, param: ExprNodeLevelCall) -> Self::ParseOutputType {
-        (param.1).1.into_iter().fold(
-            Expression::build(pos, (param.1).0),
-            |current, next| match next {
-                FunctionCallOrIndexAccess::IndexAccessParameters(mut node) => {
-                    (node.1).0.push(current);
-                    build_function_call(node.0, BuiltInIdentifier::FunctionIndex, (node.1).0)
+        let call_chain = (param.1).1;
+        let start_expr = (param.1).0;
+        call_chain.into_iter().fold(
+            Expression::build(pos, start_expr),
+            |current, next_call| match next_call {
+                FunctionCallOrIndexAccess::IndexAccessParameters(index_access) => {
+                    let mut indices = (index_access.1).0;
+                    indices.insert(0, current);
+                    build_function_call(index_access.0, BuiltInIdentifier::FunctionIndex, indices)
                 }
-                FunctionCallOrIndexAccess::FunctionCallParameters(node) => {
+                FunctionCallOrIndexAccess::FunctionCallParameters(function_call) => {
                     Expression::Call(Box::new(FunctionCall {
-                        pos: node.0,
+                        pos: function_call.0,
                         function: current,
-                        parameters: (node.1).0,
+                        parameters: (function_call.1).0,
                     }))
                 }
             },
@@ -708,7 +711,7 @@ impl_parse! { Variable := Name }
 #[cfg(test)]
 use super::super::language::position::BEGIN;
 #[cfg(test)]
-use super::super::lexer::lexer::lex;
+use super::super::lexer::lexer::{lex, fragment_lex};
 
 #[test]
 fn test_parser() {
@@ -753,4 +756,29 @@ fn test_parser() {
         }),
         assignment.assignee
     );
+}
+
+#[test]
+fn test_parse_index_expressions() {
+    let text = "a[b,]";
+    let expr = Expression::parse(&mut fragment_lex(text)).unwrap();
+    assert_eq!(Expression::Call(Box::new(
+        FunctionCall {
+            pos: BEGIN,
+            function: Expression::Variable(Variable { 
+                pos: BEGIN, 
+                identifier: Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) 
+            }),
+            parameters: vec![
+                Expression::Variable(Variable {
+                    pos: BEGIN,
+                    identifier: Identifier::Name(Name::l("a"))
+                }),
+                Expression::Variable(Variable {
+                    pos: BEGIN,
+                    identifier: Identifier::Name(Name::l("b"))
+                })
+            ],
+        }
+    )), expr);
 }

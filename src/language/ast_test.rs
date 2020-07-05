@@ -34,8 +34,8 @@ macro_rules! assert_ast_eq {
         assert!(
             expected == actual,
             "Expected two asts to be the same, but got:\n  left: `{}`\n right: `{}`",
-            DebugDisplayWrapper { node: &expected },
-            DebugDisplayWrapper { node: &actual }
+            DebugDisplayWrapper { node: expected },
+            DebugDisplayWrapper { node: actual }
         );
     }};
 }
