@@ -1,6 +1,5 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
-use super::super::analysis::symbol::*;
 use super::declaration::*;
 use super::writer::*;
 
@@ -33,13 +32,47 @@ fn write_op_expression<I>(op: BuiltInIdentifier, operands: I, out: &mut CodeWrit
     out.write_separated(operands, |out| write!(out, " {} ", op.get_symbol()).map_err(OutputError::from))
 }
 
+/// Asserts that the expression is valid in a context that requires a value of a type that is
+/// only representable by multiple variables in the target language. Currently, this are only
+/// variables and not dynamically calculated values.
+fn expect_expression_valid_in_context_complex_type(expr: &Expression) -> Result<&Identifier, OutputError> {
+    match expr  {
+        Expression::Call(call) => panic!("Expecting the function call at {} to yield a value representable as
+            a single value in the target language. The code generator cannot deal with intermediate values that
+            are the result from function calls and require multiple variables to be represented, as these functions
+            cannot return more than one value in the target language. Instead, this function call should have been
+            extracted earlier into one temporary variable (in the source language) that corresponds to multiple
+            temporary variables in the target language.", call.pos()),
+        Expression::Literal(_) => unimplemented!("Up to now, literals could not have types that have complex 
+            representations in the target language, got"),
+        Expression::Variable(variable) => Ok(&variable.identifier)
+    }
+}
+
 /// Writes to out the index expression with the given parameters, i.e. the expression for element 
 /// accessing the first operand, where the indices are all the following operands
 fn write_index_expression(op: BuiltInIdentifier, operands: &Vec<Expression>, out: &mut CodeWriter) -> Result<(), OutputError> {
+    debug_assert_eq!(BuiltInIdentifier::FunctionIndex, op);
     let mut param_iter = operands.iter();
-    write_base_value_context(param_iter.next().unwrap(), out, get_level(op))?;
+    let indexed_array = param_iter.next().unwrap();
+    let indexed_array_name = match expect_expression_valid_in_context_complex_type(indexed_array)? {
+        Identifier::Name(name) => name,
+        Identifier::BuiltIn(_) => unimplemented!("Indexing builtin identifiers is not implemented")
+    };
+    let dimension_count = operands.len() - 1;
+    let indexed_array_name_ref = &indexed_array_name;
+    write_value_context(indexed_array, out, get_level(op))?;
     write!(out, "[")?;
-    out.write_separated(param_iter.map(|index| move |out: &mut CodeWriter| write_base_value_context(index, out, i32::MIN)), |out| write!(out, "][").map_err(OutputError::from))?;
+    out.write_separated(param_iter.enumerate().map( |(dimension, index)| move |out: &mut CodeWriter| {
+            // the length in the last dimension is 1
+            if dimension + 1 < dimension_count {
+                indexed_array_name_ref.write_dim(dimension as u32 + 1, out)?;
+                write!(out, " * ")?;
+            }
+            write_value_context(index, out, get_level(BuiltInIdentifier::FunctionMul))?;
+            Ok(())
+        }), 
+        |out| write!(out, " + ").map_err(OutputError::from))?;
     write!(out, "]")?;
     Ok(())
 }
@@ -50,12 +83,12 @@ fn write_unary_operation_expression(op: BuiltInIdentifier, operand: &Expression,
         BuiltInIdentifier::FunctionUnaryNeg =>  write!(out, "-")?,
         _ => panic!("Not a unary operation: {}", op)
     };
-    write_base_value_context(&operand, out, get_level(op))?;
+    write_value_context(&operand, out, get_level(op))?;
     Ok(())
 }
 
-/// Writes to out the expression resulting from applying the given builtin operator on the given operands.
-/// parent_expr_level is an integer that is the higher the stronger a potential parent operator binds and
+/// Writes to out code in the target language that calculates the expression resulting from applying the given builtin 
+/// operator on the given operands. `parent_expr_level` is an integer that is the higher the stronger a potential parent operator binds and
 /// is used to determine whether brackets are required. If no parent expression exists, this should be i32::MIN 
 fn write_builtin_function_call_value(op: BuiltInIdentifier, operands: &Vec<Expression>, out: &mut CodeWriter, parent_expr_level: i32) -> Result<(), OutputError> {
     let current_level = get_level(op);
@@ -68,7 +101,7 @@ fn write_builtin_function_call_value(op: BuiltInIdentifier, operands: &Vec<Expre
     } else if op == BuiltInIdentifier::FunctionIndex {
         write_index_expression(op, operands, out)?;
     } else {
-        write_op_expression(op, operands.iter().map(|index| move |out: &mut CodeWriter| write_base_value_context(index, out, current_level)), out)?;
+        write_op_expression(op, operands.iter().map(|index| move |out: &mut CodeWriter| write_value_context(index, out, current_level)), out)?;
     }
     if current_level <= parent_expr_level {
         write!(out, ")")?;
@@ -76,20 +109,21 @@ fn write_builtin_function_call_value(op: BuiltInIdentifier, operands: &Vec<Expre
     Ok(())
 }
 
-/// Writes to out the expression resulting from applying the user defined function with the given name
-/// to the given operands.
+/// Writes to out code in the target language that calculates the expression resulting from applying the user defined 
+/// function with the given name to the given operands.
 fn write_defined_function_call_value(func: &Name, operands: &Vec<Expression>, out: &mut CodeWriter) -> Result<(), OutputError> {
     func.write_base(out)?;
     write!(out, "(")?;
-    out.write_comma_separated(operands.iter().map(|o: &Expression| move |out: &mut CodeWriter| write_base_value_context(o, out, i32::MIN)))?;
+    out.write_comma_separated(operands.iter().map(|o: &Expression| move |out: &mut CodeWriter| write_value_context(o, out, i32::MIN)))?;
     write!(out, ")")?;
     Ok(())
 }
 
-/// Writes to out the given expression. For parent_expr_level, see `write_builtin_function_call_value`;
+/// Writes to out code in the target language that calculates the given expression. 
+/// For the parameter parent_expr_level, see `write_builtin_function_call_value`;
 /// This function only makes sense for expressions that have types that can be represented with a single 
 /// variable in the target language. Currently, these are primitive types but not arrays.
-fn write_base_value_context(expr: &Expression, out: &mut CodeWriter, parent_expr_level: i32) -> Result<(), OutputError> {
+fn write_value_context(expr: &Expression, out: &mut CodeWriter, parent_expr_level: i32) -> Result<(), OutputError> {
     match expr {
         Expression::Call(call) => match &call.function {
             Expression::Call(_) => Err(OutputError::UnsupportedCode(expr.pos().clone(), "Calling dynamic expressions is not supported".to_owned())),
@@ -112,7 +146,9 @@ fn write_base_value_context(expr: &Expression, out: &mut CodeWriter, parent_expr
 fn check_complex_expression_as_param(pos: &TextPosition, param_type: &Type) -> Result<(), OutputError> {
     match &param_type {
         Type::Primitive(_) => Ok(()),
-        Type::Array(_, _) => panic!("An expression evaluating to an arry was passed, but it was not extracted earlier. The code generator cannot deal with that, as an array requires multiple variables to be represented: {}", pos),
+        Type::Array(_, _) => panic!("An expression evaluating to an array was passed, 
+            but it was not extracted earlier. The code generator cannot deal with 
+            that, as an array requires multiple variables to be represented: {}", pos),
         Type::Function(_, _) => Err(OutputError::UnsupportedCode(pos.clone(), "Passing functions as parameters is not supported".to_owned()))?,
         Type::JumpLabel => CompileError::new(pos, format!("JumpLabel not passable as parameter"), ErrorType::TypeError).throw(),
         Type::TestType => panic!("TestType"),
@@ -163,7 +199,7 @@ impl CudaWritableExpression for Expression {
             },
             expr => {
                 check_complex_expression_as_param(expr.pos(), param_type)?;
-                write_base_value_context(expr, out, i32::MIN)
+                write_value_context(expr, out, i32::MIN)
             }
         }
     }
@@ -175,11 +211,21 @@ use super::super::lexer::lexer::fragment_lex;
 use super::super::parser::Parser;
 
 #[test]
-fn test_write_base_value_context() {
+fn test_write_value_context_no_unnecessary_brackets() {
     let expr = Expression::parse(&mut fragment_lex("(a + b * c) / d[e,]")).unwrap();
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    write_base_value_context(&expr, &mut writer, i32::MIN).unwrap();
+    write_value_context(&expr, &mut writer, i32::MIN).unwrap();
     assert_eq!("(_a_ + _b_ * _c_) * 1/_d_[_e_]", output);
+}
+
+#[test]
+fn test_write_base_value_function_call() {
+    let expr = Expression::parse(&mut fragment_lex("foo[a(b,), c,]")).unwrap();
+    let mut output = "".to_owned();
+    let mut target = StringWriter::new(&mut output);
+    let mut writer = CodeWriter::new(&mut target);
+    write_value_context(&expr, &mut writer, i32::MIN).unwrap();
+    assert_eq!("_foo_[d1_foo_ * _a_(_b_) + _c_]", output);
 }

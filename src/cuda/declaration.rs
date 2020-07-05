@@ -21,6 +21,12 @@ impl CudaWritableVariable for Name {
         }
     }
 
+    /// Writes the target language variable name that stores a part of the size information
+    /// of this variable (only makes sense for arrays). The convention is that the size variable
+    /// for dimension d contains the product of lengths in all dimensions d, d + 1, ..., n.
+    /// Therefore, the variable for dimension 0 contains the total amount of elements in the array,
+    /// and in a linear array memory representation, the entry at i0, ..., in can be found at
+    /// i0 * dim_var_1 + i1 * dim_var_2 + ... + in
     fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
         if self.id != 0 {
             write!(out, "{}{}{}{}_{}", DIM_PREFIX, dim, VAR_PREFIX, self.name, self.id).map_err(OutputError::from)
