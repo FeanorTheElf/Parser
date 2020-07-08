@@ -1,6 +1,9 @@
 use super::super::language::prelude::*;
 
-pub trait SymbolDefinition {
+use super::super::util::dynamic::Dynamic;
+use std::any::Any;
+
+pub trait SymbolDefinition: Any + Dynamic {
     fn get_name(&self) -> &Name;
     fn calc_type(&self) -> Type;
 }

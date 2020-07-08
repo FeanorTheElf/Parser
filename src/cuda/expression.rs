@@ -13,6 +13,18 @@ pub trait CudaWritableExpression {
     /// language, and therefore expressions yielding these types cannot be written using
     /// this function.
     fn write_value_context(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
+    /// Asserts that the expression is valid in a context that requires a complex type (i.e. a type
+    /// that is represented by multiple values in the target language, as e.g. an array).
+    /// Currently, this are only variables, as function calls can only return a single value
+    /// in the target language. Other return values are therefore returned via output parameter, and
+    /// chaining functions with output parameters is both difficult and hard to understand.
+    /// 
+    /// If this is a variable, the corresponding identifier is returned.
+    fn assert_expression_valid_as_array(&self) -> Result<&Name, OutputError>;
+}
+
+pub enum CudaExpression<'a> {
+    Base(&'a Expression), KernelIndexVariableCalculation(/* kernel id */ u32, /* n-th index variable */ u32, /* total dims */ u32)
 }
 
 fn get_level(op: BuiltInIdentifier) -> i32 {
@@ -40,27 +52,6 @@ fn write_operator_expression<I>(op: BuiltInIdentifier, operands: I, out: &mut Co
     out.write_separated(operands, |out| write!(out, " {} ", op.get_symbol()).map_err(OutputError::from))
 }
 
-/// Asserts that the expression is valid in a context that requires a complex type (i.e. a type
-/// that is represented by multiple values in the target language, as e.g. an array).
-/// Currently, this are only variables, as function calls can only return a single value
-/// in the target language. Other return values are therefore returned via output parameter, and
-/// chaining functions with output parameters is both difficult and hard to understand.
-/// 
-/// If this is a variable, the corresponding identifier is returned.
-fn assert_expression_valid_as_complex_type(expr: &Expression) -> Result<&Identifier, OutputError> {
-    match expr  {
-        Expression::Call(call) => panic!("Expecting the function call at {} to yield a value representable as
-            a single value in the target language. The code generator cannot deal with intermediate values that
-            are the result from function calls and require multiple variables to be represented, as these functions
-            cannot return more than one value in the target language. Instead, this function call should have been
-            extracted earlier into one temporary variable (in the source language) that corresponds to multiple
-            temporary variables in the target language.", call.pos()),
-        Expression::Literal(_) => unimplemented!("Up to now, literals could not have types that have complex 
-            representations in the target language, got"),
-        Expression::Variable(variable) => Ok(&variable.identifier)
-    }
-}
-
 fn write_target_index_calculation<'a, I>(indexed_array_name: &Name, dimension_count: u32, indices: I, out: &mut CodeWriter) -> Result<(), OutputError>
     where I: Iterator<Item = &'a Expression>
 {
@@ -71,7 +62,7 @@ fn write_target_index_calculation<'a, I>(indexed_array_name: &Name, dimension_co
                 indexed_array_name.write_dim(dimension as u32 + 1, out)?;
                 write!(out, " * ")?;
             }
-            write_value_context(index, out, get_level(BuiltInIdentifier::FunctionMul))?;
+            write_value_context(&CudaExpression::Base(index), out, get_level(BuiltInIdentifier::FunctionMul))?;
             Ok(())
         }), 
         |out| write!(out, " + ").map_err(OutputError::from))
@@ -83,11 +74,8 @@ fn write_index_expression(op: BuiltInIdentifier, operands: &Vec<Expression>, out
     debug_assert_eq!(BuiltInIdentifier::FunctionIndex, op);
     let mut param_iter = operands.iter();
     let indexed_array = param_iter.next().unwrap();
-    let indexed_array_name = match assert_expression_valid_as_complex_type(indexed_array)? {
-        Identifier::Name(name) => name,
-        Identifier::BuiltIn(_) => unimplemented!("Indexing builtin identifiers is not implemented")
-    };
-    write_value_context(indexed_array, out, get_level(op))?;
+    let indexed_array_name = indexed_array.assert_expression_valid_as_array()?;
+    write_value_context(&CudaExpression::Base(indexed_array), out, get_level(op))?;
     write!(out, "[")?;
     write_target_index_calculation(indexed_array_name, operands.len() as u32 - 1, param_iter, out)?;
     write!(out, "]")?;
@@ -100,7 +88,7 @@ fn write_unary_operation_expression(op: BuiltInIdentifier, operand: &Expression,
         BuiltInIdentifier::FunctionUnaryNeg =>  write!(out, "-")?,
         _ => panic!("Not a unary operation: {}", op)
     };
-    write_value_context(&operand, out, get_level(op))?;
+    write_value_context(&CudaExpression::Base(operand), out, get_level(op))?;
     Ok(())
 }
 
@@ -118,7 +106,7 @@ fn write_builtin_function_call_value(op: BuiltInIdentifier, operands: &Vec<Expre
     } else if op == BuiltInIdentifier::FunctionIndex {
         write_index_expression(op, operands, out)?;
     } else {
-        write_operator_expression(op, operands.iter().map(|index| move |out: &mut CodeWriter| write_value_context(index, out, current_level)), out)?;
+        write_operator_expression(op, operands.iter().map(|index| move |out: &mut CodeWriter| write_value_context(&CudaExpression::Base(index), out, current_level)), out)?;
     }
     if current_level <= parent_expr_level {
         write!(out, ")")?;
@@ -131,7 +119,7 @@ fn write_builtin_function_call_value(op: BuiltInIdentifier, operands: &Vec<Expre
 fn write_defined_function_call_value(func: &Name, operands: &Vec<Expression>, out: &mut CodeWriter) -> Result<(), OutputError> {
     func.write_base(out)?;
     write!(out, "(")?;
-    out.write_comma_separated(operands.iter().map(|o: &Expression| move |out: &mut CodeWriter| write_value_context(o, out, i32::MIN)))?;
+    out.write_comma_separated(operands.iter().map(|o: &Expression| move |out: &mut CodeWriter| write_value_context(&CudaExpression::Base(o), out, i32::MIN)))?;
     write!(out, ")")?;
     Ok(())
 }
@@ -140,20 +128,38 @@ fn write_defined_function_call_value(func: &Name, operands: &Vec<Expression>, ou
 /// For the parameter parent_expr_level, see `write_builtin_function_call_value`;
 /// This function only makes sense for expressions that have types that can be represented with a single 
 /// variable in the target language. Currently, these are primitive types but not arrays.
-fn write_value_context(expr: &Expression, out: &mut CodeWriter, parent_expr_level: i32) -> Result<(), OutputError> {
+fn write_value_context(expr: &CudaExpression, out: &mut CodeWriter, parent_expr_level: i32) -> Result<(), OutputError> {
     match expr {
-        Expression::Call(call) => match &call.function {
-            Expression::Call(_) => Err(OutputError::UnsupportedCode(expr.pos().clone(), "Calling dynamic expressions is not supported".to_owned())),
-            Expression::Literal(_) => CompileError::new(expr.pos(), "Literal not callable".to_owned(), ErrorType::TypeError).throw(),
+        CudaExpression::Base(Expression::Call(call)) => match &call.function {
+            Expression::Call(_) => Err(OutputError::UnsupportedCode(call.pos().clone(), "Calling dynamic expressions is not supported".to_owned())),
+            Expression::Literal(literal) => CompileError::new(literal.pos(), "Literal not callable".to_owned(), ErrorType::TypeError).throw(),
             Expression::Variable(var) => match &var.identifier {
                 Identifier::BuiltIn(op) => write_builtin_function_call_value(*op, &call.parameters, out, parent_expr_level),
                 Identifier::Name(name) => write_defined_function_call_value(&name, &call.parameters, out)
             }
         },
-        Expression::Literal(literal) => write!(out, "{}", literal.value).map_err(OutputError::from),
-        Expression::Variable(variable) => match &variable.identifier {
+        CudaExpression::Base(Expression::Literal(literal)) => write!(out, "{}", literal.value).map_err(OutputError::from),
+        CudaExpression::Base(Expression::Variable(variable)) => match &variable.identifier {
             Identifier::BuiltIn(_) => unimplemented!(),
             Identifier::Name(name) => name.write_base(out)
+        },
+        CudaExpression::KernelIndexVariableCalculation(kernel_id, dim, total_dim_count) => {
+            // calculate the coordinates as queued thread from the one-dimension threadIdx.x
+            if *dim > 0 {
+                write!(out, "(static_cast<int>(threadIdx.x) % ")?;
+                Name::write_thread_acc_count(*kernel_id, *dim, out)?;
+                write!(out, ")");
+            } else {
+                write!(out, "static_cast<int>(threadIdx.x)")?;
+            }
+            if *dim + 1 != *total_dim_count {
+                write!(out, " / ")?;
+                Name::write_thread_acc_count(*kernel_id, *dim + 1, out)?;
+            }
+            // add the offset
+            write!(out, " + ")?;
+            Name::write_thread_offset(*kernel_id, *dim, out)?;
+            Ok(())
         }
     }
 }
@@ -206,15 +212,37 @@ fn write_variable_parameter_context(pos: &TextPosition, variable: &Name, param_t
     }
 }
 
-impl CudaWritableExpression for Expression {
+fn assert_expression_valid_as_array<'a>(expr: &CudaExpression<'a>) -> Result<&'a Name, OutputError> {
+    let identifier = match expr {
+        CudaExpression::Base(Expression::Call(call)) => panic!("Expecting the function call at {} to yield a value representable as
+            a single value in the target language. The code generator cannot deal with intermediate values that
+            are the result from function calls and require multiple variables to be represented, as these functions
+            cannot return more than one value in the target language. Instead, this function call should have been
+            extracted earlier into one temporary variable (in the source language) that corresponds to multiple
+            temporary variables in the target language.", call.pos()),
+        CudaExpression::Base(Expression::Literal(_)) => unimplemented!("Up to now, literals could not have types that have complex 
+            representations in the target language, got"),
+        CudaExpression::Base(Expression::Variable(variable)) => &variable.identifier,
+        CudaExpression::KernelIndexVariableCalculation(_, _, _) => panic!("index variable expressions are not valid in places where an array is expected")
+    };
+    return match &identifier {
+        Identifier::Name(name) => Ok(name),
+        Identifier::BuiltIn(builtin) => panic!("Currently, no builtin identifiers that yield arrays exist, but got {}", builtin)
+    };
+}
+
+impl<'a> CudaWritableExpression for CudaExpression<'a> {
     fn write_parameter_context(&self, param_type: &Type, out: &mut CodeWriter) -> Result<(), OutputError> {
         match self {
-            Expression::Variable(variable) => match &variable.identifier {
+            CudaExpression::Base(Expression::Variable(variable)) => match &variable.identifier {
                 Identifier::BuiltIn(_) => unimplemented!(),
-                Identifier::Name(name) => write_variable_parameter_context(self.pos(), name, param_type, out)
+                Identifier::Name(name) => write_variable_parameter_context(variable.pos(), name, param_type, out)
             },
-            expr => {
+            CudaExpression::Base(expr) => {
                 check_complex_expression_as_param(expr.pos(), param_type)?;
+                self.write_value_context(out)
+            },
+            CudaExpression::KernelIndexVariableCalculation(_, _, _) => {
                 self.write_value_context(out)
             }
         }
@@ -224,6 +252,23 @@ impl CudaWritableExpression for Expression {
         write_value_context(self, out, i32::MIN)
     }
     
+    fn assert_expression_valid_as_array(&self) -> Result<&Name, OutputError> {
+        assert_expression_valid_as_array(self)
+    }
+}
+
+impl CudaWritableExpression for Expression {
+    fn write_parameter_context(&self, param_type: &Type, out: &mut CodeWriter) -> Result<(), OutputError> {
+        CudaExpression::Base(self).write_parameter_context(param_type, out)
+    }
+
+    fn write_value_context(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        CudaExpression::Base(self).write_value_context(out)
+    }
+
+    fn assert_expression_valid_as_array(&self) -> Result<&Name, OutputError> {
+        assert_expression_valid_as_array(&CudaExpression::Base(self))
+    }
 }
 
 #[cfg(test)]
@@ -237,7 +282,7 @@ fn test_write_value_context_no_unnecessary_brackets() {
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    write_value_context(&expr, &mut writer, i32::MIN).unwrap();
+    expr.write_value_context(&mut writer).unwrap();
     assert_eq!("(_a_ + _b_ * _c_) * 1/_d_[_e_]", output);
 }
 

@@ -44,17 +44,33 @@ impl<'a> CodeWriter<'a> {
     }
 
     pub fn enter_indented_level(&mut self) -> Result<()> {
-        self.indent.push('\t');
+        self.indent.push(' ');
+        self.indent.push(' ');
+        self.indent.push(' ');
+        self.indent.push(' ');
         self.newline()
     }
 
     pub fn exit_indented_level(&mut self) -> Result<()> {
         self.indent.pop();
+        self.indent.pop();
+        self.indent.pop();
+        self.indent.pop();
         self.newline()
     }
 
     pub fn newline(&mut self) -> Result<()> {
-        write!(self.out, "\r\n{}", self.indent)
+        write!(self.out, "\n{}", self.indent)
+    }
+
+    pub fn enter_block(&mut self) -> Result<()> {
+        write!(self.out, "{{")?;
+        self.enter_indented_level()
+    }
+
+    pub fn exit_block(&mut self) -> Result<()> {
+        write!(self.out, "\n}}")?;
+        self.exit_indented_level()
     }
 
     pub fn write_separated<I, G, E>(&mut self, mut it: I, mut separator: G) -> std::prelude::v1::Result<(), E> 

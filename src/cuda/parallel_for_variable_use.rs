@@ -6,17 +6,16 @@ use super::super::util::ref_eq::*;
 use std::collections::{HashMap, HashSet};
 
 pub struct ParallelForData<'a> {
-    pub used_outer_variables: HashSet<Ref<'a, dyn 'a + SymbolDefinition>>,
+    pub used_outer_variables: HashSet<Ref<'a, dyn SymbolDefinition>>,
 }
 
 pub fn collect_parallel_for_data_in_block<'a>(
     block: &'a Block,
     scopes: &DefinitionScopeStack<'_, 'a>,
     result: &mut HashMap<Ref<'a, ParallelFor>, ParallelForData<'a>>,
-    add_uses_to: &mut Vec<ParallelForData<'a>>,
-) {
-    let mut child_scopes = scopes.child_stack();
-    child_scopes.enter(block);
+    add_uses_to: &mut Vec<ParallelForData<'a>>) 
+{
+    let mut child_scopes = scopes.child_scope(block);
 
     for statement in &block.statements {
         for expr in statement.iter() {

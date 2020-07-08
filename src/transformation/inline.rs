@@ -47,11 +47,10 @@ where
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
-        let mut scopes = parent_scopes.child_stack();
+        let mut scopes = parent_scopes.child_scope(block);
         let mut statement_indices_to_inline = Vec::new();
         let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
 
-        scopes.enter(block);
         {
             let mut rename_disjunct = scopes.rename_disjunct();
             for mut statement in block.statements.drain(..) {
@@ -82,8 +81,7 @@ where
 
         block.statements = result_statements;
 
-        scopes.exit();
-        scopes.enter(block);
+        scopes = parent_scopes.child_scope(block);
 
         {
             for (declaration_index, inline_index) in statement_indices_to_inline.iter() {
@@ -107,15 +105,14 @@ where
     ///
     pub fn inline_calls_in_program(&mut self, program: &mut Program) {
         assert_ne!(program.items.len(), 0);
-        let mut scopes = NameScopeStack::new(&program.items[..]);
+        let scopes = NameScopeStack::new(&program.items[..]);
         for i in 0..program.items.len() {
             program.items.swap(0, i);
             let (current, other) = program.items[..].split_at_mut(1);
-            scopes.enter(&*current[0]);
+            let child_scopes = scopes.child_scope(&*current[0]);
             if let Some(body) = &mut current[0].body {
-                self.inline_calls_in_block(body, &scopes, other);
+                self.inline_calls_in_block(body, &child_scopes, other);
             }
-            scopes.exit();
         }
     }
 }
@@ -335,14 +332,14 @@ use super::super::parser::Parser;
 
 #[test]
 fn test_inline() {
-    let mut scope_stack: NameScopeStack = NameScopeStack::new(&[]);
+    let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[]);
     let predefined_variables = [
         Name::l("b"),
         Name::l("c"),
         Name::l("other_func"),
         Name::l("some_func"),
     ];
-    scope_stack.enter(&predefined_variables as &[Name]);
+    let scope_stack = parent_scope_stack.child_scope(&predefined_variables as &[Name]);
     let mut test = Inliner::new(|_, _| true);
 
     let mut block = Block::parse(&mut fragment_lex(
@@ -457,8 +454,8 @@ fn test_process_inline_body() {
     ))
     .unwrap();
     let mut rename_mapping = HashMap::new();
-    let mut scopes = NameScopeStack::new(&[]);
-    scopes.enter(&[Name::l("result")] as &[Name]);
+    let parent_scopes = NameScopeStack::new(&[]);
+    let scopes = parent_scopes.child_scope(&[Name::l("result")] as &[Name]);
     process_inlined_function_body(
         &mut body,
         &Name::l("result"),

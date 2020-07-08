@@ -90,6 +90,16 @@ impl<'a> EnumerateDefinitions<'a> for &'a Function {
     }
 }
 
+impl<'a> EnumerateDefinitions<'a> for &'a ParallelFor {
+    type IntoIter = ParameterDefinitionsIter<'a>;
+
+    fn enumerate(self) -> Self::IntoIter {
+        ParameterDefinitionsIter {
+            iter: self.index_variables.iter(),
+        }
+    }
+}
+
 impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
     type IntoIter = BlockDefinitionsIter<'a>;
 
@@ -166,7 +176,17 @@ impl<'a, T> ScopeStack<'a, T> {
         }
     }
 
-    pub fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
+    pub fn child_scope<'b, 'c, S: ?Sized>(&'b self, scope: &'c S) -> ScopeStack<'b, T>
+    where
+        &'c S: EnumerateDefinitions<'c>,
+        T: From<&'c dyn SymbolDefinition>,
+    {
+        let mut result = self.child_stack();
+        result.enter(scope);
+        return result;
+    }
+
+    fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
     where
         &'b S: EnumerateDefinitions<'b>,
         T: From<&'b dyn SymbolDefinition>,
@@ -174,7 +194,7 @@ impl<'a, T> ScopeStack<'a, T> {
         self.scopes.push(ScopeNode::create(scope));
     }
 
-    pub fn exit(&mut self) {
+    fn exit(&mut self) {
         self.scopes
             .pop()
             .expect("Cannot call exit() on empty scope stack");
@@ -186,8 +206,22 @@ impl<'a, T> ScopeStack<'a, T> {
         }
     }
 
+    pub fn is_global_scope<'b>(self: &'b Self) -> bool {
+        self.parent.is_none()
+    }
+
+    fn non_global_stacks<'b>(&'b self) -> impl 'b + Iterator<Item = &'b ScopeStack<'b, T>> {
+        self.all_stacks().filter(|stack| !stack.is_global_scope())
+    }
+
     pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
         self.all_stacks()
+            .flat_map(|stack| stack.scopes.iter())
+            .flat_map(|scope_node| scope_node.definitions.iter())
+    }
+
+    pub fn non_global_definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
+        self.non_global_stacks()
             .flat_map(|stack| stack.scopes.iter())
             .flat_map(|scope_node| scope_node.definitions.iter())
     }

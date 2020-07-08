@@ -21,6 +21,15 @@ pub enum Type {
     View(Box<Type>),
 }
 
+impl Type {
+    pub fn with_view(self) -> Type {
+        match self {
+            Type::View(ty) => Type::View(ty),
+            ty => Type::View(Box::new(ty))
+        }
+    }
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -154,6 +163,21 @@ pub struct Variable {
 pub struct Literal {
     pub pos: TextPosition,
     pub value: i32,
+}
+
+impl Block {
+    pub fn scan_top_level_expressions<'a, F>(&'a self, f: &mut F)
+        where F: FnMut(&'a Expression)
+    {
+        for statement in &self.statements {
+            for expr in statement.iter() {
+                f(expr);
+            }
+            for sub_block in statement.iter() {
+                (sub_block as &'a Block).scan_top_level_expressions(f);
+            }
+        }
+    }
 }
 
 impl Expression {

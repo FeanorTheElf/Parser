@@ -17,6 +17,22 @@ where
     data: &'a T,
 }
 
+impl<'a, T: ?Sized> Clone for Ref<'a, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, T: ?Sized> Copy for Ref<'a, T> {}
+
+impl<'a, T: ?Sized> Clone for RefEq<'a, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, T: ?Sized> Copy for RefEq<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for Ref<'a, T> {
     type Target = T;
 

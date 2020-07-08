@@ -19,13 +19,24 @@ impl Parseable for Type {
     type ParseOutputType = Self;
 }
 
-impl Build<TypeNode> for Type {
-    fn build(_pos: TextPosition, param: TypeNode) -> Self::ParseOutputType {
+impl Build<TypeNodeNoView> for Type {
+    fn build(_pos: TextPosition, param: TypeNodeNoView) -> Self::ParseOutputType {
         if let Some(dimensions) = (param.1).1 {
             Type::Array(PrimitiveType::Int, (dimensions.1).0)
         } else {
             Type::Primitive(PrimitiveType::Int)
         }
+    }
+}
+
+impl Build<TypeNodeView> for Type {
+    fn build(pos: TextPosition, param: TypeNodeView) -> Self::ParseOutputType {
+        let view_count = (param.1).0 + 1;
+        let mut result = Type::build(pos, (param.1).1);
+        for _i in 0..view_count {
+            result = Type::View(Box::new(result));
+        }
+        return result;
     }
 }
 
@@ -85,11 +96,11 @@ impl Parseable for Declaration {
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, TypeNode)> for Declaration {
-    fn build(pos: TextPosition, param: (Name, TypeNode)) -> Self::ParseOutputType {
+impl Build<(Name, Type)> for Declaration {
+    fn build(pos: TextPosition, param: (Name, Type)) -> Self::ParseOutputType {
         Declaration {
             pos: pos,
-            variable_type: Type::build((param.1).0.clone(), param.1),
+            variable_type: param.1,
             variable: param.0,
         }
     }
@@ -103,7 +114,7 @@ impl
     Build<(
         Name,
         Vec<DeclarationListNode>,
-        Option<TypeNode>,
+        Option<Type>,
         FunctionImpl,
     )> for Function
 {
@@ -112,7 +123,7 @@ impl
         param: (
             Name,
             Vec<DeclarationListNode>,
-            Option<TypeNode>,
+            Option<Type>,
             FunctionImpl,
         ),
     ) -> Self::ParseOutputType {
@@ -129,7 +140,7 @@ impl
                 .into_iter()
                 .map(|p| Declaration::build(p.0, p.1))
                 .collect(),
-            return_type: param.2.map(|p| Type::build(p.0.clone(), p)),
+            return_type: param.2,
             body: block,
         }
     }
@@ -277,7 +288,7 @@ impl Parseable for LocalVariableDeclaration {
 impl
     Build<(
         Name,
-        TypeNode,
+        Type,
         Option<<Expression as Parseable>::ParseOutputType>,
     )> for LocalVariableDeclaration
 {
@@ -285,7 +296,7 @@ impl
         pos: TextPosition,
         param: (
             Name,
-            TypeNode,
+            Type,
             Option<<Expression as Parseable>::ParseOutputType>,
         ),
     ) -> Self::ParseOutputType {
@@ -593,12 +604,14 @@ impl Build<BaseExpr> for Expression {
 }
 
 impl_parse! { Program := Token#BOF { Function } Token#EOF }
-grammar_rule! { TypeNode := PrimitiveTypeNode [ Dimensions ] }
+impl_parse! { Type := TypeNodeView | TypeNodeNoView }
+grammar_rule! { TypeNodeView := Token#View { Token#View } TypeNodeNoView }
+grammar_rule! { TypeNodeNoView := PrimitiveTypeNode [ Dimensions ] }
 grammar_rule! { Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
 grammar_rule! { PrimitiveTypeNode := Token#Int }
 
-impl_parse! { Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon TypeNode ] FunctionImpl }
-grammar_rule! { DeclarationListNode := Name Token#Colon TypeNode Token#Comma }
+impl_parse! { Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon Type ] FunctionImpl }
+grammar_rule! { DeclarationListNode := Name Token#Colon Type Token#Comma }
 grammar_rule! { FunctionImpl := NativeFunction | Block }
 grammar_rule! { NativeFunction := Token#Native Token#Semicolon }
 
@@ -663,7 +676,7 @@ impl_parse! { Return := Token#Return [ Expression ] Token#Semicolon }
 impl_parse! { Label := Token#Target Name }
 impl_parse! { Goto := Token#Goto Name Token#Semicolon }
 grammar_rule! { ExpressionNode := Expression Token#Semicolon }
-impl_parse! { LocalVariableDeclaration := Token#Let Name Token#Colon TypeNode [Token#Assign Expression] Token#Semicolon }
+impl_parse! { LocalVariableDeclaration := Token#Let Name Token#Colon Type [Token#Assign Expression] Token#Semicolon }
 
 grammar_rule! { Alias := Token#As Name }
 impl_parse! { ArrayEntryAccess := [ RWModifier ] Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
