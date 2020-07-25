@@ -54,3 +54,14 @@ impl SymbolDefinition for Name {
         Type::TestType
     }
 }
+
+#[cfg(test)]
+impl SymbolDefinition for (Name, Type) {
+    fn get_name(&self) -> &Name {
+        &self.0
+    }
+
+    fn calc_type(&self) -> Type {
+        self.1.clone()
+    }
+}

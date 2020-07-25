@@ -1,69 +1,10 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::super::analysis::symbol::*;
+use super::expression::*;
 use super::writer::*;
-
-const DIM_PREFIX: &'static str = "d";
-const KERNEL_PREFIX: &'static str = "kernel";
-const THREAD_OFFSET_PREFIX: &'static str = "thread_offset";
-const THREAD_ACC_COUNT_PREFIX: &'static str = "thread_acc_count";
-const INDEX_TYPE: &'static str = "unsigned int";
-
-pub trait CudaWritableVariable {
-
-    fn write_base(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the target language variable name that stores a part of the size information
-    /// of this variable (only makes sense for arrays). The convention is that the size variable
-    /// for dimension d contains the product of lengths in all dimensions d, d + 1, ..., n.
-    /// Therefore, the variable for dimension 0 contains the total amount of elements in the array,
-    /// and in a linear array memory representation, the entry at i0, ..., in can be found at
-    /// i0 * dim_var_1 + i1 * dim_var_2 + ... + in
-    fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    fn write_kernel(id: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the target language name for the variable that contains the offset in the given
-    /// dimension of the index variable (relativly to thread ids given by threadIdx). This is neceessary,
-    /// as the index variables may be negative, the coordinates of the queued threads however cannot be
-    fn write_thread_offset(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the name for dim-th thread count variable for the kernel with id kernel_id; The contract
-    /// is the same as in write_dim: dim 0 contains the total number of queued threads, dim 1 contains
-    /// the number of threads for fixed first coordinate and so on.
-    /// Formally, dim n contains the product thread_dimension(n) * ... * thread_dimension(dims)
-    fn write_thread_acc_count(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-}
-
-impl CudaWritableVariable for Name {
-    fn write_base(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        if self.id != 0 {
-            write!(out, "_{}_{}", self.name, self.id).map_err(OutputError::from)
-        } else {
-            write!(out, "_{}_", self.name).map_err(OutputError::from)
-        }
-    }
-
-    fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        if self.id != 0 {
-            write!(out, "{}{}_{}_{}", DIM_PREFIX, dim, self.name, self.id).map_err(OutputError::from)
-        } else {
-            write!(out, "{}{}_{}_", DIM_PREFIX, dim, self.name).map_err(OutputError::from)
-        }
-    }
-
-    fn write_kernel(id: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}_{}", KERNEL_PREFIX, id).map_err(OutputError::from)
-    }
-
-    fn write_thread_offset(_kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}{}_{}", DIM_PREFIX, dim, THREAD_OFFSET_PREFIX).map_err(OutputError::from)
-    }
-    
-    fn write_thread_acc_count(_kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}{}_{}", DIM_PREFIX, dim, THREAD_ACC_COUNT_PREFIX).map_err(OutputError::from)
-    }
-}
+use super::CudaContext;
+use super::INDEX_TYPE;
 
 pub trait CudaWritableDeclaration {
     fn write_as_param(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
@@ -102,5 +43,74 @@ impl CudaWritableDeclaration for Declaration {
                 Type::View(_) => CompileError::new(self.pos(), format!("Nested views are not allowed"), ErrorType::ViewOnView).throw()
             }
         }
+    }
+}
+
+
+pub trait CudaWritableVariableDeclaration {
+    fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+}
+
+pub struct CudaVariableDeclaration<'a> {
+    declaration: &'a Declaration,
+    value: Option<CudaExpression<'a>>
+}
+
+impl<'a> CudaVariableDeclaration<'a> {
+    pub fn new(decl: &'a Declaration, value: Option<CudaExpression<'a>>) -> Self {
+        CudaVariableDeclaration {
+            declaration: decl,
+            value: value
+        }
+    }
+}
+
+impl<'a> CudaWritableVariableDeclaration for CudaVariableDeclaration<'a> {
+    fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+        match self.declaration.calc_type() {
+            Type::Array(PrimitiveType::Int, dim) => {
+                write!(out, "int* ")?;
+                self.declaration.variable.write_base(out)?;
+                if let Some(value) = &self.value {
+                    write!(out, " = ")?;
+                    value.assert_expression_valid_as_array()?.write_base(out)?;
+                }
+                write!(out, ";");
+                for d in 0..dim {
+                    out.newline()?;
+                    write!(out, "unsigned int ")?;
+                    self.declaration.variable.write_dim(d, out)?;
+                    if let Some(value) = &self.value {
+                        write!(out, " = ")?;
+                        value.assert_expression_valid_as_array()?.write_dim(d, out)?;
+                    }
+                    write!(out, ";");
+                }
+                Ok(())
+            },
+            Type::Function(_, _) => Err(OutputError::UnsupportedCode(self.declaration.pos().clone(), format!("Local variables with function types are not supported"))),
+            Type::JumpLabel => CompileError::new(self.declaration.pos(), format!("Jump labels as local variable types are illegal"), ErrorType::TypeError).throw(),
+            Type::Primitive(PrimitiveType::Int) => {
+                write!(out, "int ")?;
+                self.declaration.variable.write_base(out)?;
+                if let Some(value) = &self.value {
+                    write!(out, " = ")?;
+                    value.write_value_context(out, context)?;
+                }
+                write!(out, ";")?;
+                Ok(())
+            },
+            Type::TestType => panic!("TestType"),
+            Type::View(_) => Err(OutputError::UnsupportedCode(self.declaration.pos().clone(), format!("Local variables with view types are not supported")))
+        }
+    }
+}
+
+impl CudaWritableVariableDeclaration for LocalVariableDeclaration {
+    fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+        CudaVariableDeclaration {
+            declaration: &self.declaration,
+            value: self.value.as_ref().map(CudaExpression::Base)
+        }.write(out, context)
     }
 }

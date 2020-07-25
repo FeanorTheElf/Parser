@@ -21,6 +21,7 @@ pub enum ErrorType {
     ArrayParameterPerValue,
     ViewOnView,
     ViewReturnType,
+    ArrayParameterByValue
 }
 
 #[derive(Debug, Clone)]

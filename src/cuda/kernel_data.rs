@@ -149,6 +149,8 @@ fn add_variable_uses<'a, 'b>(expr: &'a Expression,
 use super::super::lexer::lexer::lex;
 #[cfg(test)]
 use super::super::parser::Parser;
+#[cfg(test)]
+use super::context::CudaContextImpl;
 
 #[test]
 fn test_collect_functions() {
@@ -163,7 +165,9 @@ fn test_collect_functions() {
             return a + 1;
         }
     ")).unwrap();
-    let (mut functions, kernels) = collect_functions(&program, &mut || 1).unwrap();
+    let mut counter: u32 = 0;
+    let mut context = CudaContextImpl::new(&[], &mut counter);
+    let (mut functions, kernels) = collect_functions(&program, &mut context).unwrap();
 
     assert_eq!(2, functions.len());
     assert_eq!(1, kernels.len());

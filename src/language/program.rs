@@ -6,7 +6,7 @@ use super::AstNode;
 
 use super::super::util::iterable::{Iterable, LifetimeIterable};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveType {
     Int,
 }
@@ -26,6 +26,13 @@ impl Type {
         match self {
             Type::View(ty) => Type::View(ty),
             ty => Type::View(Box::new(ty))
+        }
+    }
+
+    pub fn is_assignable_from(&self, value: &Type) -> bool {
+        match self {
+            Type::View(viewn) => value == &**viewn || value == self,
+            _ => value == self
         }
     }
 }
@@ -193,7 +200,24 @@ impl Expression {
                 self.pos(),
                 format!("A function call is not allowed here."),
                 ErrorType::VariableRequired,
-            )),
+            ))
+        }
+    }
+
+    pub fn is_lvalue(&self) -> bool {
+        match self {
+            Expression::Call(call) => match &call.function {
+                Expression::Call(_) => false,
+                Expression::Literal(_) => {
+                    debug_assert!(false);
+                    false
+                },
+                Expression::Variable(var) => {
+                    var.identifier == Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) && call.parameters[0].is_lvalue()
+                }
+            },
+            Expression::Variable(_) => true,
+            Expression::Literal(_) => false,
         }
     }
 }

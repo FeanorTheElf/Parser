@@ -108,6 +108,30 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
     }
 }
 
+#[cfg(test)]
+pub struct TupleDefinitionsIter<'a> {
+    iter: std::slice::Iter<'a, (Name, Type)>
+}
+
+#[cfg(test)]
+impl<'a> Iterator for TupleDefinitionsIter<'a> {
+    type Item = &'a dyn SymbolDefinition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|param| param as &dyn SymbolDefinition)
+    }
+}
+
+#[cfg(test)]
+impl<'a> EnumerateDefinitions<'a> for &'a [(Name, Type)] {
+    type IntoIter = TupleDefinitionsIter<'a>;
+
+    fn enumerate(self) -> Self::IntoIter {
+        TupleDefinitionsIter { iter: self.iter() }
+    }
+}
+
+
 pub struct NoData;
 
 impl<'a> From<&'a dyn SymbolDefinition> for NoData {
@@ -117,7 +141,7 @@ impl<'a> From<&'a dyn SymbolDefinition> for NoData {
 }
 
 pub type NameScopeStack<'a> = ScopeStack<'a, NoData>;
-pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b (dyn 'b + SymbolDefinition)>;
+pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
 
 #[derive(Debug, Clone)]
 struct ScopeNode<T> {

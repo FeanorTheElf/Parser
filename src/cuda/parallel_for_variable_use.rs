@@ -53,7 +53,7 @@ pub fn collect_parallel_for_data_in_expr<'a>(
         Expression::Variable(var) => match &var.identifier {
             Identifier::Name(name) => {
                 for parent_pfor in add_uses_to {
-                    let reference: &'a (dyn 'a + SymbolDefinition) = *scopes.get(&name).unwrap();
+                    let reference: &'a dyn SymbolDefinition = *scopes.get(&name).unwrap();
                     parent_pfor
                         .used_outer_variables
                         .insert(Ref::from(reference));
