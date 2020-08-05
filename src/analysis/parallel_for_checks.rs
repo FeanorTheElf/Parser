@@ -1,4 +1,4 @@
-use super::super::la::prelude::*;
+use feanor_la::prelude::*;
 use super::super::language::prelude::*;
 
 #[allow(unused)]

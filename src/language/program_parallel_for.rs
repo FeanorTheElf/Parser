@@ -5,7 +5,7 @@ use super::position::TextPosition;
 use super::program::*;
 use super::AstNode;
 
-use super::super::la::prelude::*;
+use feanor_la::prelude::*;
 use super::super::util::iterable::LifetimeIterable;
 
 use std::cell::{Ref, RefCell};

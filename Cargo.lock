@@ -6,6 +6,10 @@ version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "feanor_la"
+version = "0.1.0"
+
+[[package]]
 name = "itertools"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -17,6 +21,7 @@ dependencies = [
 name = "parser"
 version = "0.1.0"
 dependencies = [
+ "feanor_la 0.1.0",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

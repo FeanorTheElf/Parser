@@ -1,5 +1,5 @@
-use super::super::la::prelude::*;
-use super::super::la::rat::r64;
+use feanor_la::prelude::*;
+use feanor_la::rat::r64;
 use super::super::language::backend::{Backend, OutputError};
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::Ref;

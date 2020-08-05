@@ -10,7 +10,6 @@ extern crate test;
 
 #[macro_use]
 mod util;
-mod la;
 #[macro_use]
 mod language;
 
