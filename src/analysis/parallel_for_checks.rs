@@ -44,7 +44,7 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
                         get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);
                     if let Some((x, y)) = collision {
                         return Err(CompileError::new(entry1.pos(),
-                            format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {} and {}", entry1.pos(), entry2.pos(), x.get(..), y.get(..)),
+                            format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {:?} and {:?}", entry1.pos(), entry2.pos(), x.get(..), y.get(..)),
                             ErrorType::PForAccessCollision));
                     }
                 }
@@ -57,8 +57,8 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
 // The first column is for the translation
 #[allow(non_snake_case)]
 fn get_collision(
-    transform1: MatRef<i32>,
-    transform2: MatRef<i32>,
+    transform1: MatrixRef<i32>,
+    transform2: MatrixRef<i32>,
     same_index_collides: bool,
 ) -> Option<(Vector<i32>, Vector<i32>)> {
     debug_assert_eq!(transform1.cols(), transform2.cols());
@@ -68,10 +68,10 @@ fn get_collision(
 
     let mut joined_transform = Matrix::<i32>::zero(variables_out, 2 * variables_in);
     let mut left_half = joined_transform.get_mut((.., 0..variables_in));
-    left_half.assign_copy(transform1.get((.., 1..(variables_in + 1))));
+    left_half.assign(Matrix::copy_of(transform1.get((.., 1..(variables_in + 1)))));
     let mut right_half = joined_transform.get_mut((.., variables_in..(2 * variables_in)));
-    right_half.assign_copy(transform2.get((.., 1..variables_in + 1)));
-    right_half *= -1;
+    right_half.assign(Matrix::copy_of(transform2.get((.., 1..variables_in + 1))));
+    right_half.scal(-1);
 
     let mut joined_translate = Matrix::<i32>::zero(variables_out, 1);
     let mut translate = joined_translate.get_mut((.., ..));
@@ -80,14 +80,14 @@ fn get_collision(
 
     let mut iL = Matrix::<i32>::identity(variables_out);
     let mut iR = Matrix::<i32>::identity(2 * variables_in);
-    diophantine::smith(
+    feanor_la::diophantine::smith(
         &mut joined_transform.get_mut((.., ..)),
         &mut iL.get_mut((.., ..)),
         &mut iR.get_mut((.., ..)),
         0,
     );
 
-    let x = iL.get((.., ..)) * joined_translate.into_column().get(..);
+    let x = (iL * joined_translate).into_column_vector();
     let mut y = Vector::<i32>::zero(2 * variables_in);
     let mut free_dimensions: Vec<usize> = Vec::new();
     for i in 0..variables_out.min(2 * variables_in) {
@@ -104,10 +104,10 @@ fn get_collision(
     }
     // We are done, since we found a solution
     if same_index_collides {
-        let result = iR.get((.., ..)) * y.get(..);
+        let result = (iR.as_ref() * y.as_ref()).into_column_vector();
         return Some((
-            result.get(0..variables_in).to_owned(),
-            result.get(variables_in..(2 * variables_in)).to_owned(),
+            Vector::copy_of(result.get(0..variables_in)),
+            Vector::copy_of(result.get(variables_in..(2 * variables_in))),
         ));
     }
     // We have to check whether a solution space looks like (...a... ...a...) * Z^n + ... + (...c... ...c...) * Z^n,
@@ -116,13 +116,11 @@ fn get_collision(
     // check all solution space basis vectors
     for free_dim in free_dimensions {
         y[free_dim] = 1;
-        let basis_vector = iR.get((.., ..)) * y.get(..);
+        let basis_vector = (iR.as_ref() * y.as_ref()).into_column_vector();
         if basis_vector.get(0..variables_in) != basis_vector.get(variables_in..(2 * variables_in)) {
             return Some((
-                basis_vector.get(0..variables_in).to_owned(),
-                basis_vector
-                    .get(variables_in..(2 * variables_in))
-                    .to_owned(),
+                Vector::copy_of(basis_vector.get(0..variables_in)),
+                Vector::copy_of(basis_vector.get(variables_in..(2 * variables_in))),
             ));
         }
         y[free_dim] = 0;

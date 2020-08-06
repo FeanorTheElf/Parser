@@ -162,7 +162,7 @@ impl ArrayEntryAccess {
     fn add_multiplication_transform_to_transformation_matrix<'a, I>(
         factors: I,
         index_variable_map: &HashMap<&Name, usize>,
-        result: &mut VecRefMut<i32>,
+        result: &mut VectorRefMut<i32>,
     ) -> Result<(), CompileError>
     where
         I: Iterator<Item = &'a Expression>,
@@ -203,7 +203,7 @@ impl ArrayEntryAccess {
     fn add_function_application_to_transformation_matrix(
         call: &FunctionCall,
         index_variable_map: &HashMap<&Name, usize>,
-        result: &mut VecRefMut<i32>,
+        result: &mut VectorRefMut<i32>,
     ) -> Result<(), CompileError> {
         if call.function == BuiltInIdentifier::FunctionAdd {
             for param in &call.parameters {
@@ -241,7 +241,7 @@ impl ArrayEntryAccess {
     fn add_expression_transform_to_transformation_matrix(
         expression: &Expression,
         index_variable_map: &HashMap<&Name, usize>,
-        result: &mut VecRefMut<i32>,
+        result: &mut VectorRefMut<i32>,
     ) -> Result<(), CompileError> {
         match expression {
             Expression::Call(call) => {
@@ -366,9 +366,9 @@ fn test_get_transformation_matrix() {
     );
 
     #[rustfmt::skip]
-    let expected: Matrix<i32> = Matrix::new(Box::new([-2, 1, 2, -1, 
-                                                      6, -1, 1,  0, 
-                                                      0,  9, 0, -9]), 3);
+    let expected: Matrix<i32> = Matrix::from_array([[-2, 1, 2, -1], 
+                                                    [6, -1, 1,  0], 
+                                                    [0,  9, 0, -9]]);
     assert_eq!(
         expected,
         *array_entry_access

@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 take_mut = "0.2.2"
 itertools = "0.8.2"
-feanor_la = { path = "../FeanorLA" }
+feanor_la = { git = "https://github.com/feanorTheElf/FeanorLA.git"  }

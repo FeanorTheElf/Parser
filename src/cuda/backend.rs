@@ -369,7 +369,7 @@ impl<'a> Backend for CudaBackend<'a> {
         let worksize_key_access_matrix = node.access_pattern[0].entry_accesses[0]
             .get_transformation_matrix(node.index_variables.iter().map(|v| &v.variable))
             .internal_error();
-        let matrix_linear_part = <Matrix<r64> as From<MatRef<i32>>>::from(
+        let matrix_linear_part = <Matrix<r64> as From<MatrixRef<i32>>>::from(
             worksize_key_access_matrix.get((.., 1..worksize_key_access_matrix.cols())),
         );
 
@@ -379,7 +379,7 @@ impl<'a> Backend for CudaBackend<'a> {
             .expect("First array access is not injective, must be to determine the correct range of threads to start");
 
         let print_dim_linear_combination =
-            |coeffs: VecRef<r64>, translation: VecRef<r64>, array: &Name, use_nonzero_corner: Vec<bool>| {
+            |coeffs: VectorRef<r64>, translation: VectorRef<r64>, array: &Name, use_nonzero_corner: Vec<bool>| {
                 let n = coeffs.len();
                 coeffs
                     .get(0..(n - 1))
@@ -449,7 +449,7 @@ impl<'a> Backend for CudaBackend<'a> {
             Identifier::Name(name) => name,
             Identifier::BuiltIn(_) => panic!(""),
         };
-        let translation = <Matrix<r64> as From<MatRef<i32>>>::from(worksize_key_access_matrix.get((.., 0..1))).into_column();
+        let translation = <Matrix<r64> as From<MatrixRef<i32>>>::from(worksize_key_access_matrix.get((.., 0..1))).into_column_vector();
         for i in 0..workspace_dim {
             // TODO: taking only (0, ..., 0) and (dim_1, ..., dim_n) is not sufficient to estimate the size
             let expr = print_dim_linear_combination(inverse.get(i), translation.get(..), worksize_key_array, std::iter::repeat(true).take(workspace_dim).collect());

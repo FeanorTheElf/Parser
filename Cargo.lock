@@ -8,6 +8,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "feanor_la"
 version = "0.1.0"
+source = "git+https://github.com/feanorTheElf/FeanorLA.git#b8e7eb0a0bb80d2e124044b42171023d2294b3da"
 
 [[package]]
 name = "itertools"
@@ -21,7 +22,7 @@ dependencies = [
 name = "parser"
 version = "0.1.0"
 dependencies = [
- "feanor_la 0.1.0",
+ "feanor_la 0.1.0 (git+https://github.com/feanorTheElf/FeanorLA.git)",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -33,5 +34,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
+"checksum feanor_la 0.1.0 (git+https://github.com/feanorTheElf/FeanorLA.git)" = "<none>"
 "checksum itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
 "checksum take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
