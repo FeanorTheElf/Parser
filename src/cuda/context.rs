@@ -22,7 +22,7 @@ impl<'a, 'b> CudaContextImpl<'a, 'b> {
     #[cfg(test)]
     pub fn in_test_subscope(&'a mut self, defs: &'b [(Name, Type)]) -> CudaContextImpl<'a, 'b> {
         CudaContextImpl {
-            device_context: true,
+            device_context: self.device_context,
             kernel_id_counter: self.kernel_id_counter,
             scopes: self.scopes.child_scope(defs)
         }
@@ -49,7 +49,7 @@ impl<'a, 'b> CudaContext for CudaContextImpl<'a, 'b> {
 
     fn in_scope<'c>(&'c mut self, scopes: ScopeStack<'c, &'c dyn SymbolDefinition>) -> Box<dyn 'c + CudaContext> {
         Box::new(CudaContextImpl {
-            device_context: true,
+            device_context: self.device_context,
             kernel_id_counter: self.kernel_id_counter,
             scopes: scopes
         })

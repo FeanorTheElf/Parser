@@ -2,38 +2,35 @@
 # It is not intended for manual editing.
 [[package]]
 name = "either"
-version = "1.5.3"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd56b59865bce947ac5958779cfa508f6c3b9497cc762b7e24a12d11ccde2c4f"
 
 [[package]]
 name = "feanor_la"
 version = "0.1.0"
-source = "git+https://github.com/feanorTheElf/FeanorLA.git#b8e7eb0a0bb80d2e124044b42171023d2294b3da"
+source = "git+https://github.com/feanorTheElf/FeanorLA.git#c486769231d577ad8e8c1c69b2e5ce0f38c0e3e9"
 
 [[package]]
 name = "itertools"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
 dependencies = [
- "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "either",
 ]
 
 [[package]]
 name = "parser"
 version = "0.1.0"
 dependencies = [
- "feanor_la 0.1.0 (git+https://github.com/feanorTheElf/FeanorLA.git)",
- "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "feanor_la",
+ "itertools",
+ "take_mut",
 ]
 
 [[package]]
 name = "take_mut"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[metadata]
-"checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
-"checksum feanor_la 0.1.0 (git+https://github.com/feanorTheElf/FeanorLA.git)" = "<none>"
-"checksum itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
-"checksum take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
+checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"

@@ -2,117 +2,14 @@ use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::super::language::position::NONEXISTING;
 use super::writer::*;
+use super::variable::*;
 use super::CudaContext;
 use super::INDEX_TYPE;
-
-const DIM_PREFIX: &'static str = "d";
-const KERNEL_PREFIX: &'static str = "kernel";
-const TEMPORARY_ARRAY_RESULT: &'static str = "tmp_result";
-const THREAD_OFFSET_PREFIX: &'static str = "thread_offset";
-const THREAD_ACC_COUNT_PREFIX: &'static str = "thread_acc_count";
-
-pub trait CudaWritableVariable {
-
-    fn write_base(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the target language variable name that stores a part of the size information
-    /// of this variable (only makes sense for arrays). The convention is that the size variable
-    /// for dimension d contains the product of lengths in all dimensions d, d + 1, ..., n.
-    /// Therefore, the variable for dimension 0 contains the total amount of elements in the array,
-    /// and in a linear array memory representation, the entry at i0, ..., in can be found at
-    /// i0 * dim_var_1 + i1 * dim_var_2 + ... + in
-    fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    fn write_kernel(id: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the target language name for the variable that contains the offset in the given
-    /// dimension of the index variable (relativly to thread ids given by threadIdx). This is neceessary,
-    /// as the index variables may be negative, the coordinates of the queued threads however cannot be
-    fn write_thread_offset(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-
-    /// Writes the name for dim-th thread count variable for the kernel with id kernel_id; The contract
-    /// is the same as in write_dim: dim 0 contains the total number of queued threads, dim 1 contains
-    /// the number of threads for fixed first coordinate and so on.
-    /// Formally, dim n contains the product thread_dimension(n) * ... * thread_dimension(dims)
-    fn write_thread_acc_count(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError>;
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum CudaVariable<'a> {
-    Base(&'a Name), TemporaryArrayResult(PrimitiveType, u32)
-}
-
-impl<'a> CudaVariable<'a> {
-    fn calc_type(&self, context: &dyn CudaContext) -> Type {
-        match self {
-            CudaVariable::Base(base) => context.calculate_var_type(base),
-            CudaVariable::TemporaryArrayResult(base, dim) => Type::Array(*base, *dim)
-        }
-    }
-}
-
-impl<'a> CudaWritableVariable for CudaVariable<'a> {
-    fn write_base(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        match self {
-            CudaVariable::Base(name) => if name.id != 0 {
-                write!(out, "_{}_{}", name.name, name.id).map_err(OutputError::from)
-            } else {
-                write!(out, "_{}_", name.name).map_err(OutputError::from)
-            },
-            CudaVariable::TemporaryArrayResult(_, _) => write!(out, "{}", TEMPORARY_ARRAY_RESULT).map_err(OutputError::from)
-        }
-    }
-
-    fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        match self {
-            CudaVariable::Base(name) => if name.id != 0 {
-                write!(out, "{}{}_{}_{}", DIM_PREFIX, dim, name.name, name.id).map_err(OutputError::from)
-            } else {
-                write!(out, "{}{}_{}_", DIM_PREFIX, dim, name.name).map_err(OutputError::from)
-            },
-            CudaVariable::TemporaryArrayResult(_, _) => write!(out, "{}_{}{}", TEMPORARY_ARRAY_RESULT, DIM_PREFIX, dim).map_err(OutputError::from)
-        }
-    }
-
-    fn write_kernel(id: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}_{}", KERNEL_PREFIX, id).map_err(OutputError::from)
-    }
-
-    fn write_thread_offset(_kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}{}_{}", DIM_PREFIX, dim, THREAD_OFFSET_PREFIX).map_err(OutputError::from)
-    }
-    
-    fn write_thread_acc_count(_kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}{}_{}", DIM_PREFIX, dim, THREAD_ACC_COUNT_PREFIX).map_err(OutputError::from)
-    }
-}
-
-impl CudaWritableVariable for Name {
-    fn write_base(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        CudaVariable::Base(self).write_base(out)
-    }
-
-    fn write_dim(&self, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        CudaVariable::Base(self).write_dim(dim, out)
-    }
-
-    fn write_kernel(id: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        CudaVariable::write_kernel(id, out)
-    }
-
-    fn write_thread_offset(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        CudaVariable::write_thread_offset(kernel_id, dim, out)
-    }
-    
-    fn write_thread_acc_count(kernel_id: u32, dim: u32, out: &mut CodeWriter) -> Result<(), OutputError> {
-        CudaVariable::write_thread_acc_count(kernel_id, dim, out)
-    }
-}
 
 pub trait CudaWritableExpression {
     /// Writes code in the target language to out that evaluates this expression and can
     /// be inserted as a parameter in a function call.
-    fn write_parameter_context(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
     /// Writes code in the target language to out that evalutes this expression and assigns
     /// the result to the given target.
     fn write_assignment_to(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
@@ -121,7 +18,7 @@ pub trait CudaWritableExpression {
     /// in the source language can only be represented by multiple variables in the target
     /// language, and therefore expressions yielding these types cannot be written using
     /// this function.
-    fn write_value_context(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
     /// Asserts that the expression is valid in a context that requires a complex type (i.e. a type
     /// that is represented by multiple values in the target language, currently an array).
     /// Currently, this are only variables, as function calls can only return a single value
@@ -248,21 +145,26 @@ fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, ope
 {
     func.write_base(out)?;
     write!(out, "(")?;
-    let param_types = match context.calculate_var_type(func) {
-        Type::Function(params, _) => params,
+    let (param_types, return_type) = match context.calculate_var_type(func) {
+        Type::Function(params, return_type) => (params, return_type),
         ty => CompileError::new(pos, format!("Expression of type {} is not callable", ty), ErrorType::TypeError).throw()
     };
     let mut param_types_iter = param_types.into_iter();
-    out.write_comma_separated(operands.map(|o: CudaExpression<'a>| {
+    out.write_comma_separated(operands.map(|expr: CudaExpression<'a>| {
         let param_type = param_types_iter.next();
+        let return_type_ref = &return_type;
         move |out: &mut CodeWriter| {
-            let ty = o.calc_type(context);
+            let ty = expr.calc_type(context);
             if let Some(param_type) = param_type {
                 if !param_type.is_assignable_from(&ty) {
                     CompileError::new(pos, format!("Type mismatch: Expected {}, got {}", param_type, ty), ErrorType::TypeError).throw();
                 }
+            } else {
+                // in this case, we have an output parameter
+
+
             }
-            o.write_parameter_context(&ty, out, context)
+            expr.write_as_parameter(&ty, out, context)
         }
     }))?;
     write!(out, ")")?;
@@ -334,7 +236,7 @@ fn check_complex_expression_as_param(pos: &TextPosition, param_type: &Type) -> R
 
 /// Writes to out a list of comma-separated expressions that can be used to pass a variable as
 /// parameter to a function. These values will be the content and potential array size parameters.
-fn write_variable_parameter_context(pos: &TextPosition, variable: &CudaVariable, param_type: &Type, out: &mut CodeWriter) -> Result<(), OutputError> {
+fn write_variable_as_parameter(pos: &TextPosition, variable: &CudaVariable, param_type: &Type, out: &mut CodeWriter) -> Result<(), OutputError> {
     let function_param_not_supported = || Err(OutputError::UnsupportedCode(pos.clone(), "Passing functions as parameters is not supported".to_owned())) as Result<(), OutputError>;
     let jump_label_param_illegal = || CompileError::new(pos, format!("JumpLabel not passable as parameter"), ErrorType::TypeError).throw();
     let test_type_illegal = || panic!("TestType");
@@ -481,9 +383,9 @@ fn write_assignment_to(pos: &TextPosition, target_type: &Type, target: &Expressi
         Type::JumpLabel => jump_label_assignment_illegal(),
         Type::TestType => test_type_illegal(),
         Type::Primitive(PrimitiveType::Int) => {
-            target.write_value_context(out, context)?;
+            target.write_as_value(out, context)?;
             write!(out, " = ")?;
-            value.write_value_context(out, context)?;
+            value.write_as_value(out, context)?;
             Ok(())
         },
         Type::View(ty) => match &**ty {
@@ -498,9 +400,9 @@ fn write_assignment_to(pos: &TextPosition, target_type: &Type, target: &Expressi
             },
             Type::Primitive(PrimitiveType::Int) => {
                 write!(out, "*")?;
-                target.write_value_context(out, context)?;
+                target.write_as_value(out, context)?;
                 write!(out, " = ")?;
-                value.write_value_context(out, context)?;
+                value.write_as_value(out, context)?;
                 Ok(())
             },
         }
@@ -528,24 +430,24 @@ fn assert_expression_valid_as_array<'a>(expr: &CudaExpression<'a>) -> Result<Cud
 }
 
 impl<'a> CudaWritableExpression for CudaExpression<'a> {
-    fn write_parameter_context(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
         match self {
             CudaExpression::Base(Expression::Variable(variable)) => match &variable.identifier {
                 Identifier::BuiltIn(_) => unimplemented!(),
-                Identifier::Name(name) => write_variable_parameter_context(variable.pos(), &CudaVariable::Base(name), param_type, out)
+                Identifier::Name(name) => write_variable_as_parameter(variable.pos(), &CudaVariable::Base(name), param_type, out)
             },
             CudaExpression::Base(expr) => {
                 check_complex_expression_as_param(expr.pos(), param_type)?;
-                self.write_value_context(out, context)
+                self.write_as_value(out, context)
             },
             CudaExpression::KernelIndexVariableCalculation(_, _, _) => {
-                self.write_value_context(out, context)
+                self.write_as_value(out, context)
             },
-            CudaExpression::CudaVariable(variable) => write_variable_parameter_context(&NONEXISTING, variable, param_type, out)
+            CudaExpression::CudaVariable(variable) => write_variable_as_parameter(&NONEXISTING, variable, param_type, out)
         }
     }
 
-    fn write_value_context(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
         write_value_context(self, out, context, i32::MIN)
     }
     
@@ -561,9 +463,9 @@ impl<'a> CudaWritableExpression for CudaExpression<'a> {
             },
             CudaExpression::KernelIndexVariableCalculation(_, _, _) => {
                 debug_assert_eq!(&Type::Primitive(PrimitiveType::Int), target_type);
-                target.write_value_context(out, context)?;
+                target.write_as_value(out, context)?;
                 write!(out, " = ")?;
-                self.write_value_context(out, context)?;
+                self.write_as_value(out, context)?;
                 Ok(())
             },
             CudaExpression::CudaVariable(_) => {
@@ -574,12 +476,12 @@ impl<'a> CudaWritableExpression for CudaExpression<'a> {
 }
 
 impl CudaWritableExpression for Expression {
-    fn write_parameter_context(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
-        CudaExpression::Base(self).write_parameter_context(param_type, out, context)
+    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+        CudaExpression::Base(self).write_as_parameter(param_type, out, context)
     }
 
-    fn write_value_context(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
-        CudaExpression::Base(self).write_value_context(out, context)
+    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+        CudaExpression::Base(self).write_as_value(out, context)
     }
 
     fn assert_expression_valid_as_array(&self) -> Result<CudaVariable, OutputError> {
@@ -606,7 +508,7 @@ fn test_write_value_context_no_unnecessary_brackets() {
     let mut writer = CodeWriter::new(&mut target);
     let mut counter: u32 = 0;
     let context = CudaContextImpl::new(&[], &mut counter);
-    expr.write_value_context(&mut writer, &context).unwrap();
+    expr.write_as_value(&mut writer, &context).unwrap();
     assert_eq!("(_a_ + _b_ * _c_) * 1/_d_[_e_]", output);
 }
 
@@ -624,7 +526,7 @@ fn test_write_value_context_function_call() {
         (Name::l("b"), Type::Primitive(PrimitiveType::Int)),
         (Name::l("c"), Type::Primitive(PrimitiveType::Int))
     ];
-    expr.write_value_context(&mut writer, &context.in_test_subscope(&defs)).unwrap();
+    expr.write_as_value(&mut writer, &context.in_test_subscope(&defs)).unwrap();
     assert_eq!("_foo_[d1_foo_ * _a_(_b_) + _c_]", output);
 }
 
@@ -636,7 +538,7 @@ fn test_write_value_parameter_context_array() {
     let mut writer = CodeWriter::new(&mut target);
     let mut counter: u32 = 0;
     let context = CudaContextImpl::new(&[], &mut counter);
-    expr.write_parameter_context(&Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))), &mut writer, &context).unwrap();
+    expr.write_as_parameter(&Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))), &mut writer, &context).unwrap();
     assert_eq!("_a_, d0_a_, d1_a_", output);
 }
 

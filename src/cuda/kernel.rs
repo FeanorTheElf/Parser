@@ -3,6 +3,7 @@ use super::super::analysis::symbol::*;
 use super::super::analysis::scope::*;
 use super::super::util::ref_eq::*;
 use super::super::language::backend::OutputError;
+use super::variable::*;
 use super::declaration::*;
 use super::expression::*;
 use super::kernel_data::*;

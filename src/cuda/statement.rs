@@ -18,7 +18,7 @@ impl CudaWritableStatement for Block {
 impl CudaWritableStatement for If {
     fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
         write!(out, "if (")?;
-        self.condition.write_value_context(out, context)?;
+        self.condition.write_as_value(out, context)?;
         write!(out, ") ")?;
         self.body.write(out, context)?;
         Ok(())
@@ -28,7 +28,7 @@ impl CudaWritableStatement for If {
 impl CudaWritableStatement for While {
     fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
         write!(out, "while (")?;
-        self.condition.write_value_context(out, context)?;
+        self.condition.write_as_value(out, context)?;
         write!(out, ") ")?;
         self.body.write(out, context)?;
         Ok(())
@@ -45,7 +45,7 @@ impl CudaWritableStatement for Return {
     fn write(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
         if let Some(return_value) = &self.value {
             write!(out, "return ")?;
-            return_value.write_value_context(out, context)?;
+            return_value.write_as_value(out, context)?;
         } else {
             write!(out, "return")?;
         }

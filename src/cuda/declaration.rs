@@ -1,8 +1,9 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::super::analysis::symbol::*;
-use super::expression::*;
 use super::writer::*;
+use super::expression::*;
+use super::variable::*;
 use super::CudaContext;
 use super::INDEX_TYPE;
 
@@ -95,7 +96,7 @@ impl<'a> CudaWritableVariableDeclaration for CudaVariableDeclaration<'a> {
                 self.declaration.variable.write_base(out)?;
                 if let Some(value) = &self.value {
                     write!(out, " = ")?;
-                    value.write_value_context(out, context)?;
+                    value.write_as_value(out, context)?;
                 }
                 write!(out, ";")?;
                 Ok(())

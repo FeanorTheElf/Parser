@@ -54,6 +54,7 @@ impl<T: CudaContext> CudaContext for Box<T> {
 const INDEX_TYPE: &'static str = "unsigned int";
 
 mod context;
+mod variable;
 mod declaration;
 mod expression;
 mod statement;
