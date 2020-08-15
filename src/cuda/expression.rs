@@ -152,19 +152,25 @@ fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, ope
     let mut param_types_iter = param_types.into_iter();
     out.write_comma_separated(operands.map(|expr: CudaExpression<'a>| {
         let param_type = param_types_iter.next();
-        let return_type_ref = &return_type;
+        let output_param_type = return_type.clone().map(|t| Type::View(t));
         move |out: &mut CodeWriter| {
             let ty = expr.calc_type(context);
             if let Some(param_type) = param_type {
                 if !param_type.is_assignable_from(&ty) {
                     CompileError::new(pos, format!("Type mismatch: Expected {}, got {}", param_type, ty), ErrorType::TypeError).throw();
                 }
+                expr.write_as_parameter(&param_type, out, context)
             } else {
                 // in this case, we have an output parameter
-
-
+                if let Some(output_param_type) = output_param_type {
+                    if !output_param_type.is_assignable_from(&ty) {
+                        CompileError::new(pos, format!("Type mismatch: Output parameter has type {}, but the assigned to expression has type {}", output_param_type, ty), ErrorType::TypeError).throw();
+                    }
+                    expr.write_as_parameter(&output_param_type, out, context)
+                } else {
+                    CompileError::new(pos, format!("Type mismatch: function call parameter count exceeds parameter count, remaining parameters are considered output parameters, but the function returns no value"), ErrorType::TypeError).throw()
+                }
             }
-            expr.write_as_parameter(&ty, out, context)
         }
     }))?;
     write!(out, ")")?;
@@ -282,6 +288,7 @@ fn write_temporary_call_array_result_variable(call: &FunctionCall, array_base_ty
         out.newline()?;
     }
     write_function_call_value(call, std::iter::once(CudaExpression::CudaVariable(CudaVariable::TemporaryArrayResult(array_base_type, array_dim))), out, context, i32::MIN)?;
+    write!(out, ";")?;
     Ok(())
 }
 
@@ -578,11 +585,13 @@ fn test_write_assignment_to_array_call() {
     expr.write_assignment_to(&Type::Array(PrimitiveType::Int, 2), &assignee, &mut writer, &context.in_test_subscope(&defs)).unwrap();
     assert_eq!("{
     int* tmp_result = nullptr;
-    unsigned int tmp_result_d0 = 0;
-    unsigned int tmp_result_d1 = 0;
-    _foo_(_a_, d0_a_, _c_, tmp_result, tmp_result_d0, tmp_result_d1);
-    assert(tmp_result_d0 == d0_b_);
-    assert(tmp_result_d1 == d1_b_);
-    checkCudaStatus(cudaMemcpy(_b_, _a_, d0_a_ * sizeof(int), cudaMemcpyDeviceToDevice));
-}", output);
+    unsigned int d0_tmp_result = 0;
+    unsigned int d1_tmp_result = 0;
+    _foo_(_a_, d0_a_, _c_, tmp_result, d0_tmp_result, d1_tmp_result);
+    assert(d0_tmp_result == d0_b_);
+    assert(d1_tmp_result == d1_b_);
+    checkCudaStatus(cudaMemcpy(_b_, tmp_result, d0_tmp_result * sizeof(int), cudaMemcpyDeviceToDevice));
+    checkCudaStatus(cudaFree(tmp_result));
+}
+", output);
 }
