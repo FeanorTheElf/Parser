@@ -138,6 +138,18 @@ fn write_builtin_function_call_value<'a, I>(op: BuiltInIdentifier, mut operands:
     Ok(())
 }
 
+fn write_output_parameter(pos: &TextPosition, value: &CudaExpression, return_type: Option<&Type>, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    let expr_type = value.calc_type(context);
+    if let Some(output_param_type) = return_type.map(|t| t.clone().with_view()) {
+        if !output_param_type.is_assignable_from(&expr_type) {
+            CompileError::new(pos, format!("Type mismatch: Output parameter has type {}, but the assigned to expression has type {}", output_param_type, expr_type), ErrorType::TypeError).throw();
+        }
+        value.write_as_parameter(&output_param_type, out, context)
+    } else {
+        CompileError::new(pos, format!("Type mismatch: function call parameter count exceeds parameter count, remaining parameters are considered output parameters, but the function returns no value"), ErrorType::TypeError).throw()
+    }
+}
+
 /// Writes to out code in the target language that calculates the expression resulting from applying the user defined 
 /// function with the given name to the given operands.
 fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, operands: I, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> 
@@ -149,27 +161,15 @@ fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, ope
         Type::Function(params, return_type) => (params, return_type),
         ty => CompileError::new(pos, format!("Expression of type {} is not callable", ty), ErrorType::TypeError).throw()
     };
+    let return_type_ref: Option<&Type> = return_type.as_ref().map(|t| &**t);
     let mut param_types_iter = param_types.into_iter();
     out.write_comma_separated(operands.map(|expr: CudaExpression<'a>| {
         let param_type = param_types_iter.next();
-        let output_param_type = return_type.clone().map(|t| Type::View(t));
         move |out: &mut CodeWriter| {
-            let ty = expr.calc_type(context);
             if let Some(param_type) = param_type {
-                if !param_type.is_assignable_from(&ty) {
-                    CompileError::new(pos, format!("Type mismatch: Expected {}, got {}", param_type, ty), ErrorType::TypeError).throw();
-                }
                 expr.write_as_parameter(&param_type, out, context)
             } else {
-                // in this case, we have an output parameter
-                if let Some(output_param_type) = output_param_type {
-                    if !output_param_type.is_assignable_from(&ty) {
-                        CompileError::new(pos, format!("Type mismatch: Output parameter has type {}, but the assigned to expression has type {}", output_param_type, ty), ErrorType::TypeError).throw();
-                    }
-                    expr.write_as_parameter(&output_param_type, out, context)
-                } else {
-                    CompileError::new(pos, format!("Type mismatch: function call parameter count exceeds parameter count, remaining parameters are considered output parameters, but the function returns no value"), ErrorType::TypeError).throw()
-                }
+                write_output_parameter(pos, &expr, return_type_ref, out, context)
             }
         }
     }))?;
@@ -438,6 +438,7 @@ fn assert_expression_valid_as_array<'a>(expr: &CudaExpression<'a>) -> Result<Cud
 
 impl<'a> CudaWritableExpression for CudaExpression<'a> {
     fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+
         match self {
             CudaExpression::Base(Expression::Variable(variable)) => match &variable.identifier {
                 Identifier::BuiltIn(_) => unimplemented!(),

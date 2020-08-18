@@ -30,7 +30,7 @@ impl Typed for Expression {
                 }
                 _ => unimplemented!()
             },
-            Expression::Literal(lit) => Type::Primitive(PrimitiveType::Int),
+            Expression::Literal(_) => Type::Primitive(PrimitiveType::Int),
             Expression::Variable(var) => match &var.identifier {
                 Identifier::Name(name) => name.calculate_type(context),
                 Identifier::BuiltIn(_) => unimplemented!()
