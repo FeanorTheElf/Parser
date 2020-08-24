@@ -16,8 +16,8 @@ fn is_mul_var_type(ty: &Type) -> bool {
     }
 }
 
-fn is_generated_with_output_parameter(return_type: &Option<Box<Type>>) -> bool {
-    return_type.as_ref().map(|ty| &**ty).map(is_mul_var_type).unwrap_or(false)
+fn is_generated_with_output_parameter(return_type: Option<&Box<Type>>) -> bool {
+    return_type.map(|ty| &**ty).map(is_mul_var_type).unwrap_or(false)
 }
 
 pub fn gen_primitive_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
@@ -47,7 +47,7 @@ pub fn gen_variables(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator
             Type::Array(base, dim) => (gen_primitive_type(base, 1), *dim),
             Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
             Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
-            Type::Primitive(base) => (gen_primitive_type(base, 0), 1),
+            Type::Primitive(base) => (gen_primitive_type(base, 0), 0),
             Type::TestType => error_test_type(pos),
             Type::View(_) => error_nested_view(pos).throw()
         }
@@ -59,6 +59,18 @@ pub fn gen_variables(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator
             constant: true,
             base: CudaPrimitiveType::Index
         }, CudaIdentifier::ArraySizeVar(var_copy.clone(), d))))
+}
+
+fn gen_variables_as_view(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator<Item = (CudaType, CudaExpression)> {
+    gen_variables(pos, var, ty).enumerate().map(|(index, (mut ty, var))| {
+        // TODO: make this more beautiful: only the value (not the dimension vars) get promoted to view
+        if index == 0 && ty.ptr_count == 0 {
+            ty.ptr_count = 1;
+            (ty, CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(var))))
+        } else {
+            (ty, CudaExpression::Identifier(var))
+        }
+    })
 }
 
 fn gen_variables_as_output_params(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator<Item = (CudaType, CudaExpression)> {
@@ -78,17 +90,29 @@ fn gen_defined_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, funct
         Type::Function(param_types, return_type) => (param_types, return_type),
         _ => panic!("gen_defined_function_call() expected to get function type")
     };
-    if !is_generated_with_output_parameter(return_type) {
+    if !is_generated_with_output_parameter(return_type.as_ref()) {
         assert!(output_params.next().is_none());
     }
     let params = call.parameters.iter().zip(param_types.iter()).flat_map(|(param, formal_param)| match param {
-        Expression::Call(subcall) => Box::new(std::iter::once(gen_function_call(subcall, std::iter::empty(), context))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>,
+        Expression::Call(subcall) => {
+            assert!(!is_generated_with_output_parameter(Some(formal_param)));
+            let result = gen_function_call(subcall, std::iter::empty(), context);
+            if formal_param.is_view() {
+                Box::new(std::iter::once(result.map(Box::new).map(CudaExpression::AddressOf))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+            } else {
+                Box::new(std::iter::once(result)) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+            }
+        },
         Expression::Literal(_lit) => unimplemented!(),
         Expression::Variable(var) => match &var.identifier {
-            Identifier::Name(name) => Box::new(gen_variables(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(CudaExpression::Identifier(p)))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>,
+            Identifier::Name(name) => if formal_param.is_view() {
+                Box::new(gen_variables_as_view(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(p))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+            } else {
+                Box::new(gen_variables(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(CudaExpression::Identifier(p)))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+            },
             Identifier::BuiltIn(_) => unimplemented!()
         }
-    }).chain(output_params.map(|o| Ok(o)));
+    }).chain(output_params.map(|expr| Ok(expr)));
     Ok(CudaExpression::Call(CudaIdentifier::ValueVar(function_name.clone()), params.collect::<Result<Vec<CudaExpression>, OutputError>>()?))
 }
 
@@ -208,7 +232,6 @@ fn gen_array_copy_assignment_size_assertion<'stack, 'ast: 'stack, I>(assignee: &
         Ok(Box::new(CudaAssert { expr: CudaExpression::Comparison(Cmp::Eq, Box::new(CudaExpression::Identifier(assignee_size)), Box::new(value_size)) }) as Box<dyn CudaStatement>)
     })
 }
-
 
 fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &FunctionCall, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
     let ty = context.calculate_var_type(assignee, pos);
