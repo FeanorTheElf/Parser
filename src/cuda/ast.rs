@@ -509,3 +509,17 @@ impl Writable for CudaVarDeclaration {
     }
 }
 impl CudaStatement for CudaVarDeclaration {}
+
+pub struct CudaAssert {
+    pub expr: CudaExpression
+}
+
+impl Writable for CudaAssert {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "assert(")?;
+        self.expr.write(out)?;
+        write!(out, ")")?;
+        Ok(())
+    }
+}
+impl CudaStatement for CudaAssert {}

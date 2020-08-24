@@ -177,11 +177,12 @@ pub fn gen_expression<'stack, 'ast: 'stack>(expr: &Expression, context: &mut dyn
             Identifier::Name(name) => {
                 let mut result = gen_variables(expr.pos(), name, &context.calculate_var_type(name, expr.pos()));
                 let r = result.next().unwrap();
+                // if result contains more values, it is a multi-var-type, and should have been extracted earlier
                 assert!(result.next().is_none());
                 Ok(CudaExpression::Identifier(r.1))
             }
         },
-        Expression::Literal(_) => unimplemented!()
+        Expression::Literal(lit) => Ok(CudaExpression::Literal(lit.value))
     }
 }
 
@@ -196,6 +197,18 @@ fn gen_array_copy_assignment<'stack, 'ast: 'stack>(assignee: &Name, assignee_typ
         base_type: gen_primitive_type(&base_type, 0)
     }))
 }
+
+fn gen_array_copy_assignment_size_assertion<'stack, 'ast: 'stack, I>(assignee: &Name, assignee_type: &Type, value_sizes: I, _context: &mut dyn CudaContext<'stack, 'ast>) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> 
+    where I: Iterator<Item = CudaExpression>
+{
+    let (_, dim) = expect_array_type(&assignee_type.clone().without_view());
+    let assignee_copy = assignee.clone();
+    (0..dim).zip(value_sizes).map(move |(d, value_size)| {
+        let assignee_size = CudaIdentifier::ArraySizeVar(assignee_copy.clone(), d);
+        Ok(Box::new(CudaAssert { expr: CudaExpression::Comparison(Cmp::Eq, Box::new(CudaExpression::Identifier(assignee_size)), Box::new(value_size)) }) as Box<dyn CudaStatement>)
+    })
+}
+
 
 fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &FunctionCall, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
     let ty = context.calculate_var_type(assignee, pos);
@@ -248,19 +261,32 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(_pos: &TextPositio
     declarations.chain(std::iter::once(gen_function_call(call, output_params, context).map(|d| Box::new(d) as Box<dyn CudaStatement>)))
 }
 
+pub fn gen_array_checked_copy_assignment_from_var<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, assignee_type: &Type, value: &Name, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
+    let array_type = assignee_type.clone().without_view();
+    let (_, dim_count) = expect_array_type(&array_type);
+    let size_check = gen_array_copy_assignment_size_assertion(assignee, assignee_type, (0..dim_count).map(|d| CudaIdentifier::ArraySizeVar(value.clone(), d)).map(CudaExpression::Identifier), context);
+    let copy = gen_array_copy_assignment(assignee, assignee_type, CudaExpression::Identifier(CudaIdentifier::ValueVar(value.clone())), context);
+    Ok(Box::new(CudaBlock {
+        statements: size_check.chain(std::iter::once(copy)).collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?
+    }))
+}
+
 pub fn gen_array_assignment<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, assignee_type: &Type, value: &Expression, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
+    let array_type = assignee_type.clone().without_view();
+    let (_, dim_count) = expect_array_type(&array_type);
     if assignee_type.is_view() {
         match value {
             Expression::Call(call) => {
-                let tmp_var_init = gen_call_array_result_in_tmp_var(pos, &assignee_type.clone().without_view(), call, context);
+                let tmp_var_init = gen_call_array_result_in_tmp_var(pos, &array_type, call, context);
+                let size_check = gen_array_copy_assignment_size_assertion(assignee, assignee_type, (0..dim_count).map(|d| CudaIdentifier::TmpSizeVar(d)).map(CudaExpression::Identifier), context);
                 let copy = gen_array_copy_assignment(assignee, assignee_type, CudaExpression::Identifier(CudaIdentifier::TmpVar), context);
                 Ok(Box::new(CudaBlock {
-                    statements: tmp_var_init.chain(std::iter::once(copy)).collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?
+                    statements: tmp_var_init.chain(size_check).chain(std::iter::once(copy)).collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?
                 }))
             },
             Expression::Variable(var) => match &var.identifier {
                 Identifier::BuiltIn(_) => unimplemented!(),
-                Identifier::Name(val_name) =>  gen_array_copy_assignment(assignee, assignee_type, CudaExpression::Identifier(CudaIdentifier::ValueVar(val_name.clone())), context)
+                Identifier::Name(val_name) =>  gen_array_checked_copy_assignment_from_var(pos, assignee, assignee_type, val_name, context)
             },
             Expression::Literal(_) => unimplemented!()
         }
@@ -269,7 +295,7 @@ pub fn gen_array_assignment<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: 
             Expression::Call(call) => gen_array_move_assignment_from_call(pos, assignee, call, context),
             Expression::Variable(var) => match &var.identifier {
                 Identifier::BuiltIn(_) => unimplemented!(),
-                Identifier::Name(value_name) => gen_array_copy_assignment(assignee, assignee_type, CudaExpression::Identifier(CudaIdentifier::ValueVar(value_name.clone())), context)
+                Identifier::Name(val_name) => gen_array_checked_copy_assignment_from_var(pos, assignee, assignee_type, val_name, context)
             },
             Expression::Literal(_) => unimplemented!()
         }
@@ -315,9 +341,17 @@ fn test_gen_expression() {
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
     let program = Program { items: vec![] };
-    let mut context = CudaContextImpl::build_for_program(&program).unwrap();
-    gen_expression(&expr, &mut context).unwrap().write(&mut writer).unwrap();
-    assert_eq!("(a_ + b_ * c_) * 1/d_[e_]", output);
+    let defs = [
+        (Name::l("a"), Type::Primitive(PrimitiveType::Int)),
+        (Name::l("b"), Type::Primitive(PrimitiveType::Int,)),
+        (Name::l("c"), Type::Primitive(PrimitiveType::Int)),
+        (Name::l("d"), Type::Array(PrimitiveType::Int, 1)),
+        (Name::l("e"), Type::Primitive(PrimitiveType::Int))
+    ];
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    context.enter_scope(&defs[..]);
+    gen_expression(&expr, &mut *context).unwrap().write(&mut writer).unwrap();
+    assert_eq!("(a_ + b_ * c_) / d_[e_]", output);
 }
 
 #[test]
@@ -418,10 +452,8 @@ fn test_gen_assignment_call_result_to_array_view() {
     unsigned int tmpd0 = 0;
     unsigned int tmpd1 = 0;
     foo_(a_, a_d0, c_, &tmp, &tmpd0, &tmpd1);
-    assert(tmpd0 == b_d0);
-    assert(tmpd1 == b_d1);
-    checkCudaStatus(cudaMemcpy(b_, tmp, sizeof(int) b_d0, cudaMemcpyDeviceToDevice));
-    checkCudaStatus(cudaFree(tmp));
-}
-", output);
+    assert(b_d0 == tmpd0);
+    assert(b_d1 == tmpd1);
+    checkCudaStatus(cudaMemcpy(b_, tmp, sizeof(int) * b_d0, cudaMemcpyDeviceToDevice));
+}", output);
 }
