@@ -109,6 +109,5 @@ fn test_write_definition_as_kernel() {
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel0d0) {
         
     };
-    
 }", output);
 }

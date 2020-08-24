@@ -1,7 +1,5 @@
 use super::super::language::prelude::*;
 use super::super::analysis::scope::*;
-use super::super::analysis::symbol::*;
-use super::super::analysis::types::*;
 use super::CudaContext;
 
 pub struct CudaContextImpl<'a, 'b> {

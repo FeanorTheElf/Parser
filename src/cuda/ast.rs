@@ -201,7 +201,7 @@ impl CudaExpression {
             CudaExpression::Call(func, params) => {
                 func.write(out)?;
                 write!(out, "(")?;
-                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)));
+                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)))?;
                 write!(out, ")")?;
             },
             CudaExpression::KernelCall(kernel, grid_size, block_size, shared_mem, params) => {
@@ -213,7 +213,7 @@ impl CudaExpression {
                 write!(out, "), ")?;
                 shared_mem.write_expression(priority, out)?;
                 write!(out, " >>> (")?;
-                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)));
+                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)))?;
                 write!(out, ")")?;
             },
             CudaExpression::Identifier(name) => {
@@ -301,12 +301,11 @@ pub struct CudaBlock {
 impl Writable for CudaBlock {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         out.enter_block()?;
-        out.write_many(self.statements.iter().map(|s: &Box<dyn CudaStatement>| move |out: &mut CodeWriter| -> Result<(), OutputError> {
+        out.write_separated(self.statements.iter().map(|s: &Box<dyn CudaStatement>| move |out: &mut CodeWriter| -> Result<(), OutputError> {
             s.write(out)?;
             write!(out, ";")?;
-            out.newline()?;
             Ok(())
-        }))?;
+        }), |out: &mut CodeWriter| out.newline().map_err(OutputError::from))?;
         out.exit_block()?;
         Ok(())
     }

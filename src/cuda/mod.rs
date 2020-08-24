@@ -1,6 +1,5 @@
 use super::language::prelude::*;
 use super::analysis::scope::*;
-use super::analysis::symbol::*;
 use super::analysis::types::*;
 
 pub mod writer;

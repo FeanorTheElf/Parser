@@ -4,7 +4,7 @@ pub fn error_jump_label_var_type(pos: &TextPosition) -> CompileError {
     CompileError::new(pos, format!("JumpLabel not valid as variable or parameter type"), ErrorType::TypeError)
 }
 
-pub fn error_test_type(pos: &TextPosition) -> ! {
+pub fn error_test_type(_pos: &TextPosition) -> ! {
     panic!("TestType")
 }
 

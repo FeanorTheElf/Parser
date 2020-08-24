@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-use super::symbol::*;
 use super::scope::*;
 
 pub trait Typed {
