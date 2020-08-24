@@ -4,8 +4,7 @@ use super::super::language::backend::OutputError;
 use super::ast::*;
 use super::statement::*;
 use super::kernel_data::*;
-use super::writer::*;
-use super::CudaContext;
+use super::context::CudaContext;
 
 fn gen_kernel<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaKernel, OutputError> {
     let name = CudaIdentifier::Kernel(kernel.kernel_name);
@@ -78,6 +77,8 @@ use super::super::lexer::lexer::fragment_lex;
 use super::super::parser::Parser;
 #[cfg(test)]
 use super::context::CudaContextImpl;
+#[cfg(test)]
+use super::writer::*;
 
 #[test]
 fn test_write_definition_as_kernel() {
@@ -97,11 +98,11 @@ fn test_write_definition_as_kernel() {
         pfor: &pfor,
         used_variables: HashSet::from_iter(vec![Ref::from(&declaration_a as &dyn SymbolDefinition)].into_iter())
     };
+    let program = Program { items: vec![] };
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    let mut counter: u32 = 0;
-    let mut context = CudaContextImpl::new(&[], &mut counter);
+    let mut context = CudaContextImpl::build_for_program(&program).unwrap();
     gen_kernel(&pfor, &kernel_info, &mut context).unwrap().write(&mut writer).unwrap();
     assert_eq!(
 "__global__ void kernel0(int* a_, const unsigned int a_d0, const unsigned int kernel0d0, const int kernel0o0) {

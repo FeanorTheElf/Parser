@@ -3,7 +3,7 @@ use super::super::analysis::symbol::*;
 use super::super::analysis::scope::*;
 use super::super::util::ref_eq::*;
 use super::super::language::backend::OutputError;
-use super::CudaContext;
+use super::context::CudaContext;
 
 use std::borrow::Borrow;
 use std::hash::Hash;
@@ -43,8 +43,9 @@ pub struct FunctionInfo<'a> {
     pub called_from: HashSet<TargetLanguageFunction<'a>>
 }
 
-#[allow(unused)]
-fn collect_functions<'stack, 'ast: 'stack>(program: &'ast Program, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>), OutputError> {
+pub fn collect_functions<'a, 'ast, U>(program: &'ast Program, unique_generator: &'a mut U) -> Result<(HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>), OutputError> 
+    where U: FnMut() -> u32
+{
     let mut functions: HashMap<Ref<'ast, Function>, FunctionInfo<'ast>> = HashMap::new();
     let mut kernels: HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>> = HashMap::new();
     for item in &program.items {
@@ -56,18 +57,20 @@ fn collect_functions<'stack, 'ast: 'stack>(program: &'ast Program, context: &mut
     let scopes: ScopeStack<&'ast dyn SymbolDefinition> = ScopeStack::new(&program.items);
     for item in &program.items {
         if let Some(body) = &item.body {
-            collect_calls_and_kernels(body, TargetLanguageFunction::Function(Ref::from(&**item)), &scopes.child_scope(&**item), &mut functions, &mut kernels, context)?;
+            collect_calls_and_kernels(body, TargetLanguageFunction::Function(Ref::from(&**item)), &scopes.child_scope(&**item), &mut functions, &mut kernels, unique_generator)?;
         }
     }
     return Ok((functions, kernels));
 }
 
-fn collect_calls_and_kernels<'b, 'stack, 'ast: 'stack>(block: &'ast Block, 
+fn collect_calls_and_kernels<'a, 'b, 'ast, U>(block: &'ast Block, 
     parent: TargetLanguageFunction<'ast>, 
     scopes: &ScopeStack<'b, &'ast dyn SymbolDefinition>, 
     functions: &mut HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, 
-    kernels: &mut HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>, 
-    context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>
+    kernels: &mut HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+    unique_generator: &'a mut U
+) -> Result<(), OutputError>
+    where U: FnMut() -> u32
 {
     let this_scopes = scopes.child_scope(block);
     for statement in &block.statements {
@@ -79,14 +82,14 @@ fn collect_calls_and_kernels<'b, 'stack, 'ast: 'stack>(block: &'ast Block,
                 pfor: pfor, 
                 called_from: parent,
                 used_variables: HashSet::new(),
-                kernel_name: context.generate_unique_identifier()
+                kernel_name: unique_generator()
             };
             pfor.body.scan_top_level_expressions(&mut |e| add_variable_uses(e, &mut kernel, &this_scopes));
             kernels.insert(Ref::from(pfor), kernel);
-            collect_calls_and_kernels(&pfor.body, TargetLanguageFunction::Kernel(Ref::from(pfor)), &this_scopes.child_scope(pfor), functions, kernels, context)?;
+            collect_calls_and_kernels(&pfor.body, TargetLanguageFunction::Kernel(Ref::from(pfor)), &this_scopes.child_scope(pfor), functions, kernels, unique_generator)?;
         } else {
             for child_block in statement.iter() {
-                collect_calls_and_kernels(child_block, parent, &this_scopes, functions, kernels, context)?;
+                collect_calls_and_kernels(child_block, parent, &this_scopes, functions, kernels, unique_generator)?;
             }
         }
     }
@@ -165,8 +168,7 @@ fn test_collect_functions() {
         }
     ")).unwrap();
     let mut counter: u32 = 0;
-    let mut context = CudaContextImpl::new(&[], &mut counter);
-    let (mut functions, kernels) = collect_functions(&program, &mut context).unwrap();
+    let (mut functions, kernels) = collect_functions(&program, &mut || { counter += 1; counter }).unwrap();
 
     assert_eq!(2, functions.len());
     assert_eq!(1, kernels.len());

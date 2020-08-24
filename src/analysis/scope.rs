@@ -209,7 +209,7 @@ impl<'a, T> ScopeStack<'a, T> {
         return result;
     }
 
-    fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
+    pub fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
     where
         &'b S: EnumerateDefinitions<'b>,
         T: From<&'b dyn SymbolDefinition>,
@@ -217,7 +217,7 @@ impl<'a, T> ScopeStack<'a, T> {
         self.scopes.push(ScopeNode::create(scope));
     }
 
-    fn exit(&mut self) {
+    pub fn exit(&mut self) {
         self.scopes
             .pop()
             .expect("Cannot call exit() on empty scope stack");

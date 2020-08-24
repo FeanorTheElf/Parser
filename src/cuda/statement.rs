@@ -1,7 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::super::analysis::type_error::*;
-use super::CudaContext;
+use super::context::CudaContext;
 use super::ast::*;
 
 fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
@@ -162,7 +162,7 @@ fn gen_expression<'stack, 'ast: 'stack>(expr: &Expression, context: &mut dyn Cud
         Expression::Variable(var) => match &var.identifier {
             Identifier::BuiltIn(_) => unimplemented!(),
             Identifier::Name(name) => {
-                let mut result = gen_variables(expr.pos(), name, &context.calculate_var_type(name));
+                let mut result = gen_variables(expr.pos(), name, &context.calculate_var_type(name, expr.pos()));
                 let r = result.next().unwrap();
                 assert!(result.next().is_none());
                 Ok(CudaExpression::Identifier(r.1))
@@ -189,12 +189,12 @@ fn gen_array_copy_assignment<'stack, 'ast: 'stack>(assignee: &Name, assignee_typ
 }
 
 fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &FunctionCall, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
-    let ty = context.calculate_var_type(assignee);
+    let ty = context.calculate_var_type(assignee, pos);
     Ok(Box::new(gen_function_call(value, gen_variables_as_output_params(pos, assignee, &ty).map(|(_, v)| v), context)?))
 }
 
-fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(_pos: &TextPosition, assignee: &Name, value: &Name, context: &mut dyn CudaContext<'stack, 'ast>) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> {
-    let ty = context.calculate_var_type(assignee);
+fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &Name, context: &mut dyn CudaContext<'stack, 'ast>) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> {
+    let ty = context.calculate_var_type(assignee, pos);
     let (_base_type, dim) = expect_array_type(&ty);
     let assignee_copy = assignee.clone();
     let value_copy = value.clone();
@@ -280,7 +280,7 @@ pub fn gen_assignment<'stack, 'ast: 'stack>(statement: &Assignment, context: &mu
         Expression::Variable(var) => match &var.identifier {
             Identifier::BuiltIn(_) => error_rvalue_not_assignable(statement.pos()).throw(),
             Identifier::Name(name) => {
-                let ty = context.calculate_var_type(name);
+                let ty = context.calculate_var_type(name, statement.pos());
                 if is_mul_var_type(&ty) {
                     gen_array_assignment(statement.pos(), name, &ty, &statement.value, context)
                 } else {
