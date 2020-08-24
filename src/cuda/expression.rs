@@ -1,6 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::super::language::position::NONEXISTING;
+use super::super::analysis::type_error::*;
 use super::writer::*;
 use super::variable::*;
 use super::CudaContext;
@@ -9,16 +10,16 @@ use super::INDEX_TYPE;
 pub trait CudaWritableExpression {
     /// Writes code in the target language to out that evaluates this expression and can
     /// be inserted as a parameter in a function call.
-    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+    fn write_as_parameter<'stack, 'ast: 'stack>(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>;
     /// Writes code in the target language to out that evalutes this expression and assigns
     /// the result to the given target.
-    fn write_assignment_to(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+    fn write_assignment_to<'stack, 'ast: 'stack>(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>;
     /// Writes code in the target language to out that evaluates this expression and can
     /// be included in a context where the target language requires a value. Some types
     /// in the source language can only be represented by multiple variables in the target
     /// language, and therefore expressions yielding these types cannot be written using
     /// this function.
-    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>;
+    fn write_as_value<'stack, 'ast: 'stack>(&self, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>;
     /// Asserts that the expression is valid in a context that requires a complex type (i.e. a type
     /// that is represented by multiple values in the target language, currently an array).
     /// Currently, this are only variables, as function calls can only return a single value
@@ -26,7 +27,7 @@ pub trait CudaWritableExpression {
     /// chaining functions with output parameters is both difficult and hard to understand.
     /// 
     /// If this is a variable, the corresponding identifier is returned.
-    fn assert_expression_valid_as_array(&self) -> Result<CudaVariable, OutputError>;
+    fn expect_multi_var_representable(&self) -> Result<CudaVariable, OutputError>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,12 +37,19 @@ pub enum CudaExpression<'a> {
 }
 
 impl<'a> CudaExpression<'a> {
-    fn calc_type(&self, context: &dyn CudaContext) -> Type {
+    fn calc_type<'stack, 'ast: 'stack>(&self, context: &dyn CudaContext<'stack, 'ast>) -> Type {
         match self {
             CudaExpression::Base(base) => context.calculate_type(base),
             CudaExpression::KernelIndexVariableCalculation(_, _, _) => Type::Primitive(PrimitiveType::Int),
             CudaExpression::CudaVariable(var) => var.calc_type(context)
         }
+    }
+}
+
+pub fn uses_output_parameter(return_type: &Type) -> bool {
+    match return_type {
+        Type::Array(_, _) => true,
+        _ => false
     }
 }
 
@@ -70,7 +78,7 @@ fn write_operator_expression<I>(op: BuiltInIdentifier, operands: I, out: &mut Co
     out.write_separated(operands, |out| write!(out, " {} ", op.get_symbol()).map_err(OutputError::from))
 }
 
-fn write_target_index_calculation<'a, I>(indexed_array_name: CudaVariable, indices: I, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError>
+fn write_target_index_calculation<'a, 'stack, 'ast: 'stack, I>(indexed_array_name: CudaVariable, indices: I, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>
     where I: Iterator<Item = CudaExpression<'a>>
 {
     let mut peekable_indices = indices.enumerate().peekable();
@@ -90,13 +98,13 @@ fn write_target_index_calculation<'a, I>(indexed_array_name: CudaVariable, indic
 
 /// Writes to out the index expression with the given parameters, i.e. the expression for element 
 /// accessing the first operand, where the indices are all the following operands
-fn write_index_expression<'a, I>(op: BuiltInIdentifier, operands: I, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> 
+fn write_index_expression<'a, 'stack, 'ast: 'stack, I>(op: BuiltInIdentifier, operands: I, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> 
     where I: Iterator<Item = CudaExpression<'a>>
 {
     debug_assert_eq!(BuiltInIdentifier::FunctionIndex, op);
     let mut param_iter = operands;
     let indexed_array = param_iter.next().unwrap();
-    let indexed_array_name = indexed_array.assert_expression_valid_as_array()?;
+    let indexed_array_name = indexed_array.expect_multi_var_representable()?;
     write_value_context(&indexed_array, out, context, get_level(op))?;
     write!(out, "[")?;
     write_target_index_calculation(indexed_array_name, param_iter, out, context)?;
@@ -104,7 +112,7 @@ fn write_index_expression<'a, I>(op: BuiltInIdentifier, operands: I, out: &mut C
     Ok(())
 }
 
-fn write_unary_operation_expression(op: BuiltInIdentifier, operand: CudaExpression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+fn write_unary_operation_expression<'stack, 'ast: 'stack>(op: BuiltInIdentifier, operand: CudaExpression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
     match op {
         BuiltInIdentifier::FunctionUnaryDiv =>  write!(out, "1/")?,
         BuiltInIdentifier::FunctionUnaryNeg =>  write!(out, "-")?,
@@ -117,7 +125,7 @@ fn write_unary_operation_expression(op: BuiltInIdentifier, operand: CudaExpressi
 /// Writes to out code in the target language that calculates the expression resulting from applying the given builtin 
 /// operator on the given operands. `parent_expr_level` is an integer that is the higher the stronger a potential parent operator binds and
 /// is used to determine whether brackets are required. If no parent expression exists, this should be i32::MIN 
-fn write_builtin_function_call_value<'a, I>(op: BuiltInIdentifier, mut operands: I, out: &mut CodeWriter, context: &dyn CudaContext, parent_expr_level: i32) -> Result<(), OutputError> 
+fn write_builtin_function_call_value<'a, 'stack, 'ast: 'stack, I>(op: BuiltInIdentifier, mut operands: I, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>, parent_expr_level: i32) -> Result<(), OutputError> 
     where I: Iterator<Item = CudaExpression<'a>>
 {
     let current_level = get_level(op);
@@ -138,7 +146,7 @@ fn write_builtin_function_call_value<'a, I>(op: BuiltInIdentifier, mut operands:
     Ok(())
 }
 
-fn write_output_parameter(pos: &TextPosition, value: &CudaExpression, return_type: Option<&Type>, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+fn write_output_parameter<'stack, 'ast: 'stack>(pos: &TextPosition, value: &CudaExpression, return_type: Option<&Type>, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
     let expr_type = value.calc_type(context);
     if let Some(output_param_type) = return_type.map(|t| t.clone().with_view()) {
         if !output_param_type.is_assignable_from(&expr_type) {
@@ -152,7 +160,7 @@ fn write_output_parameter(pos: &TextPosition, value: &CudaExpression, return_typ
 
 /// Writes to out code in the target language that calculates the expression resulting from applying the user defined 
 /// function with the given name to the given operands.
-fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, operands: I, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> 
+fn write_defined_function_call_value<'a, 'stack, 'ast: 'stack, I>(pos: &TextPosition, func: &Name, operands: I, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> 
     where I: Iterator<Item = CudaExpression<'a>>
 {
     func.write_base(out)?;
@@ -177,7 +185,7 @@ fn write_defined_function_call_value<'a, I>(pos: &TextPosition, func: &Name, ope
     Ok(())
 }
 
-fn write_function_call_value<'a, I>(call: &'a FunctionCall, additional_params: I, out: &mut CodeWriter, context: &dyn CudaContext, parent_expr_level: i32) -> Result<(), OutputError> 
+fn write_function_call_value<'a, 'stack, 'ast: 'stack, I>(call: &'a FunctionCall, additional_params: I, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>, parent_expr_level: i32) -> Result<(), OutputError> 
     where I: Iterator<Item = CudaExpression<'a>>
 {
     let params = call.parameters.iter().map(|e: &'a Expression| CudaExpression::Base(e));
@@ -195,7 +203,7 @@ fn write_function_call_value<'a, I>(call: &'a FunctionCall, additional_params: I
 /// For the parameter parent_expr_level, see `write_builtin_function_call_value`;
 /// This function only makes sense for expressions that have types that can be represented with a single 
 /// variable in the target language. Currently, these are primitive types but not arrays.
-fn write_value_context(expr: &CudaExpression, out: &mut CodeWriter, context: &dyn CudaContext, parent_expr_level: i32) -> Result<(), OutputError> {
+fn write_value_context<'stack, 'ast: 'stack>(expr: &CudaExpression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>, parent_expr_level: i32) -> Result<(), OutputError> {
     match expr {
         CudaExpression::Base(Expression::Call(call)) => write_function_call_value(call, std::iter::empty(), out, context, parent_expr_level),
         CudaExpression::Base(Expression::Literal(literal)) => write!(out, "{}", literal.value).map_err(OutputError::from),
@@ -209,7 +217,7 @@ fn write_value_context(expr: &CudaExpression, out: &mut CodeWriter, context: &dy
             if *dim > 0 {
                 write!(out, "(static_cast<int>(threadIdx.x) % ")?;
                 Name::write_thread_acc_count(*kernel_id, *dim, out)?;
-                write!(out, ")");
+                write!(out, ")")?;
             } else {
                 write!(out, "static_cast<int>(threadIdx.x)")?;
             }
@@ -227,7 +235,7 @@ fn write_value_context(expr: &CudaExpression, out: &mut CodeWriter, context: &dy
 
 /// Asserts that a rvalue expression (i.e. not a single variable/literal, but the result of a 
 /// builtin/defined function) may be passed to a parameter of the given type.
-fn check_complex_expression_as_param(pos: &TextPosition, param_type: &Type) -> Result<(), OutputError> {
+fn check_rvalue_expression_as_param(pos: &TextPosition, param_type: &Type) -> Result<(), OutputError> {
     match &param_type {
         Type::Primitive(_) => Ok(()),
         Type::Array(_, _) => panic!("An expression evaluating to an array was passed, 
@@ -244,22 +252,18 @@ fn check_complex_expression_as_param(pos: &TextPosition, param_type: &Type) -> R
 /// parameter to a function. These values will be the content and potential array size parameters.
 fn write_variable_as_parameter(pos: &TextPosition, variable: &CudaVariable, param_type: &Type, out: &mut CodeWriter) -> Result<(), OutputError> {
     let function_param_not_supported = || Err(OutputError::UnsupportedCode(pos.clone(), "Passing functions as parameters is not supported".to_owned())) as Result<(), OutputError>;
-    let jump_label_param_illegal = || CompileError::new(pos, format!("JumpLabel not passable as parameter"), ErrorType::TypeError).throw();
-    let test_type_illegal = || panic!("TestType");
-    let nested_views_illegal = || CompileError::new(pos, format!("Nested views are illegal"), ErrorType::TypeError).throw();
-    let arrays_by_val_not_supported = || CompileError::new(pos, format!("Passing arrays by value is not supported"), ErrorType::ArrayParameterByValue).throw();
 
     match &param_type {
-        Type::Array(_, _) => arrays_by_val_not_supported(),
+        Type::Array(_, _) => error_array_value_parameter(pos).throw(),
         Type::Function(_, _) => function_param_not_supported(),
-        Type::JumpLabel => jump_label_param_illegal(),
-        Type::TestType => test_type_illegal(),
+        Type::JumpLabel => error_jump_label_var_type(pos).throw(),
+        Type::TestType => error_test_type(pos),
         Type::Primitive(_) => variable.write_base(out).map_err(OutputError::from),
         Type::View(ty) => match &**ty {
-            Type::View(_) => nested_views_illegal(),
-            Type::JumpLabel => jump_label_param_illegal(),
+            Type::View(_) => error_nested_view(pos).throw(),
+            Type::JumpLabel => error_jump_label_var_type(pos).throw(),
             Type::Function(_, _) => function_param_not_supported(),
-            Type::TestType => test_type_illegal(),
+            Type::TestType => error_test_type(pos),
             Type::Array(PrimitiveType::Int, dim) => {
                 variable.write_base(out)?;
                 write!(out, ", ")?;
@@ -275,7 +279,7 @@ fn write_variable_as_parameter(pos: &TextPosition, variable: &CudaVariable, para
     }
 }
 
-fn write_temporary_call_array_result_variable(call: &FunctionCall, array_base_type: PrimitiveType, array_dim: u32, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+pub fn write_temporary_call_array_result_variable<'stack, 'ast: 'stack>(call: &FunctionCall, array_base_type: PrimitiveType, array_dim: u32, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
     debug_assert_eq!(PrimitiveType::Int, array_base_type);
     write!(out, "int* ")?;
     CudaVariable::TemporaryArrayResult(array_base_type, array_dim).write_base(out)?;
@@ -332,7 +336,8 @@ fn write_host_memcpy(from: &CudaVariable, to: &CudaVariable, array_base_type: Pr
     Ok(())
 }
 
-fn write_call_to_array_assignment(call: &FunctionCall, target: &Expression, array_base_type: PrimitiveType, array_dim: u32, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+fn write_call_to_array_assignment<'stack, 'ast: 'stack>(call: &FunctionCall, target: &Expression, array_base_type: PrimitiveType, array_dim: u32, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
+    debug_assert!(uses_output_parameter(&Type::Array(array_base_type, array_dim)));
     out.enter_block()?;
     write_temporary_call_array_result_variable(call, array_base_type, array_dim, out, context)?;
     out.newline()?;
@@ -374,11 +379,8 @@ fn write_var_to_array_assignment(var: &Variable, target: &Expression, array_dim:
     Ok(())
 }
 
-fn write_assignment_to(pos: &TextPosition, target_type: &Type, target: &Expression, value: &Expression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+fn write_assignment_to<'stack, 'ast: 'stack>(pos: &TextPosition, target_type: &Type, target: &Expression, value: &Expression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
     let function_assignment_not_supported = || Err(OutputError::UnsupportedCode(pos.clone(), "Assigning to function variables is not supported".to_owned())) as Result<(), OutputError>;
-    let jump_label_assignment_illegal = || CompileError::new(pos, format!("JumpLabels cannot be assigned to"), ErrorType::TypeError).throw();
-    let test_type_illegal = || panic!("TestType");
-    let nested_views_illegal = || CompileError::new(pos, format!("Nested views are illegal"), ErrorType::TypeError).throw();
 
     match &target_type {
         Type::Array(PrimitiveType::Int, dim) => match value {
@@ -387,25 +389,27 @@ fn write_assignment_to(pos: &TextPosition, target_type: &Type, target: &Expressi
             Expression::Literal(_) => unimplemented!()
         },
         Type::Function(_, _) => function_assignment_not_supported(),
-        Type::JumpLabel => jump_label_assignment_illegal(),
-        Type::TestType => test_type_illegal(),
+        Type::JumpLabel => error_jump_label_var_type(pos).throw(),
+        Type::TestType => error_test_type(pos),
         Type::Primitive(PrimitiveType::Int) => {
+            debug_assert!(!uses_output_parameter(target_type));
             target.write_as_value(out, context)?;
             write!(out, " = ")?;
             value.write_as_value(out, context)?;
             Ok(())
         },
         Type::View(ty) => match &**ty {
-            Type::View(_) => nested_views_illegal(),
-            Type::JumpLabel => jump_label_assignment_illegal(),
+            Type::View(_) => error_nested_view(pos).throw(),
+            Type::JumpLabel => error_jump_label_var_type(pos).throw(),
             Type::Function(_, _) => function_assignment_not_supported(),
-            Type::TestType => test_type_illegal(),
+            Type::TestType => error_test_type(pos),
             Type::Array(PrimitiveType::Int, dim) => match value {
                 Expression::Call(call) => write_call_to_array_assignment(call, target, PrimitiveType::Int, *dim, out, context),
                 Expression::Variable(var) => write_var_to_array_assignment(var, target, *dim, PrimitiveType::Int, out, context.is_device_context()),
                 Expression::Literal(_) => unimplemented!()
             },
             Type::Primitive(PrimitiveType::Int) => {
+                debug_assert!(!uses_output_parameter(target_type));
                 write!(out, "*")?;
                 target.write_as_value(out, context)?;
                 write!(out, " = ")?;
@@ -437,7 +441,7 @@ fn assert_expression_valid_as_array<'a>(expr: &CudaExpression<'a>) -> Result<Cud
 }
 
 impl<'a> CudaWritableExpression for CudaExpression<'a> {
-    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_parameter<'stack, 'ast: 'stack>(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
 
         match self {
             CudaExpression::Base(Expression::Variable(variable)) => match &variable.identifier {
@@ -445,7 +449,7 @@ impl<'a> CudaWritableExpression for CudaExpression<'a> {
                 Identifier::Name(name) => write_variable_as_parameter(variable.pos(), &CudaVariable::Base(name), param_type, out)
             },
             CudaExpression::Base(expr) => {
-                check_complex_expression_as_param(expr.pos(), param_type)?;
+                check_rvalue_expression_as_param(expr.pos(), param_type)?;
                 self.write_as_value(out, context)
             },
             CudaExpression::KernelIndexVariableCalculation(_, _, _) => {
@@ -455,15 +459,15 @@ impl<'a> CudaWritableExpression for CudaExpression<'a> {
         }
     }
 
-    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_value<'stack, 'ast: 'stack>(&self, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         write_value_context(self, out, context, i32::MIN)
     }
     
-    fn assert_expression_valid_as_array(&self) -> Result<CudaVariable, OutputError> {
+    fn expect_multi_var_representable(&self) -> Result<CudaVariable, OutputError> {
         assert_expression_valid_as_array(self)
     }
     
-    fn write_assignment_to(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_assignment_to<'stack, 'ast: 'stack>(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         debug_assert!(target.is_lvalue());
         match self {
             CudaExpression::Base(base) => {
@@ -484,19 +488,19 @@ impl<'a> CudaWritableExpression for CudaExpression<'a> {
 }
 
 impl CudaWritableExpression for Expression {
-    fn write_as_parameter(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_parameter<'stack, 'ast: 'stack>(&self, param_type: &Type, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         CudaExpression::Base(self).write_as_parameter(param_type, out, context)
     }
 
-    fn write_as_value(&self, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_as_value<'stack, 'ast: 'stack>(&self, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         CudaExpression::Base(self).write_as_value(out, context)
     }
 
-    fn assert_expression_valid_as_array(&self) -> Result<CudaVariable, OutputError> {
+    fn expect_multi_var_representable(&self) -> Result<CudaVariable, OutputError> {
         assert_expression_valid_as_array(&CudaExpression::Base(self))
     }
 
-    fn write_assignment_to(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext) -> Result<(), OutputError> {
+    fn write_assignment_to<'stack, 'ast: 'stack>(&self, target_type: &Type, target: &Expression, out: &mut CodeWriter, context: &dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         CudaExpression::Base(self).write_assignment_to(target_type, target, out, context)
     }
 }
@@ -548,6 +552,30 @@ fn test_write_value_parameter_context_array() {
     let context = CudaContextImpl::new(&[], &mut counter);
     expr.write_as_parameter(&Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))), &mut writer, &context).unwrap();
     assert_eq!("_a_, d0_a_, d1_a_", output);
+}
+
+#[test]
+fn test_write_as_parameter_index_expression_as_view() {
+    let expr = Expression::parse(&mut fragment_lex("a[0,]")).unwrap();
+    let mut output = "".to_owned();
+    let mut target = StringWriter::new(&mut output);
+    let mut writer = CodeWriter::new(&mut target);
+    let mut counter: u32 = 0;
+    let context = CudaContextImpl::new(&[], &mut counter);
+    expr.write_as_parameter(&Type::View(Box::new(Type::Primitive(PrimitiveType::Int))), &mut writer, &context).unwrap();
+    assert_eq!("&_a_[0]", output);
+}
+
+#[test]
+fn test_write_as_parameter_index_expression_as_value() {
+    let expr = Expression::parse(&mut fragment_lex("a[0,]")).unwrap();
+    let mut output = "".to_owned();
+    let mut target = StringWriter::new(&mut output);
+    let mut writer = CodeWriter::new(&mut target);
+    let mut counter: u32 = 0;
+    let context = CudaContextImpl::new(&[], &mut counter);
+    expr.write_as_parameter(&Type::Primitive(PrimitiveType::Int), &mut writer, &context).unwrap();
+    assert_eq!("_a_[0]", output);
 }
 
 #[test]

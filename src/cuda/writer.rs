@@ -112,7 +112,7 @@ impl<'a> Write for CodeWriter<'a> {
         self.out.flush()
     }
 
-    fn write_all(&mut self, mut buf: &[u8]) -> Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> Result<()> {
         self.out.write_all(buf)
     }
 

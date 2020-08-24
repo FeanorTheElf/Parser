@@ -5,12 +5,15 @@ use super::analysis::types::*;
 
 pub mod writer;
 
-pub trait CudaContext {
+pub trait CudaContext<'stack, 'ast: 'stack> {
     fn generate_unique_identifier(&mut self) -> u32;
     fn is_device_context(&self) -> bool;
-    fn in_device<'a>(&'a mut self) -> Box<dyn 'a + CudaContext>;
-    fn in_scope<'a>(&'a mut self, scopes: DefinitionScopeStack<'a, 'a>) -> Box<dyn 'a + CudaContext>;
-    fn get_scopes(&self) -> &DefinitionScopeStack;
+    fn set_device(&mut self);
+    fn set_host(&mut self);
+    fn set_scope(&mut self, scopes: DefinitionScopeStack<'stack, 'ast>);
+    fn get_scopes(&self) -> &DefinitionScopeStack<'stack, 'ast>;
+    fn get_current_function(&self) -> &Function;
+    fn set_current_function(&mut self, function: &'ast Function);
 
     fn calculate_type(&self, expr: &Expression) -> Type {
         expr.calculate_type(self.get_scopes())
@@ -21,33 +24,45 @@ pub trait CudaContext {
     }
 }
 
-impl<T: CudaContext> CudaContext for Box<T> {
+impl<'stack, 'ast: 'stack, T: CudaContext<'stack, 'ast>> CudaContext<'stack, 'ast> for Box<T> {
     fn generate_unique_identifier(&mut self) -> u32 {
-        self.generate_unique_identifier()
+        (**self).generate_unique_identifier()
     }
 
     fn is_device_context(&self) -> bool {
-        self.is_device_context()
+        (**self).is_device_context()
     }
 
-    fn in_device<'a>(&'a mut self) -> Box<dyn 'a + CudaContext> {
-        self.in_device()
+    fn set_device(&mut self) {
+        (**self).set_device()
+    }
+
+    fn set_host(&mut self) {
+        (**self).set_host()
     }
     
-    fn in_scope<'a>(&'a mut self, scopes: ScopeStack<'a, &'a dyn SymbolDefinition>) -> Box<dyn 'a + CudaContext> {
-        self.in_scope(scopes)
+    fn set_scope(&mut self, scopes: DefinitionScopeStack<'stack, 'ast>) {
+        (**self).set_scope(scopes)
     }
 
-    fn get_scopes(&self) -> &ScopeStack<&dyn SymbolDefinition> {
-        self.get_scopes()
+    fn get_scopes(&self) -> &DefinitionScopeStack<'stack, 'ast> {
+        (**self).get_scopes()
     }
 
     fn calculate_var_type(&self, variable: &Name) -> Type {
-        self.calculate_var_type(variable)
+        (**self).calculate_var_type(variable)
     }
 
     fn calculate_type(&self, expr: &Expression) -> Type {
-        self.calculate_type(expr)
+        (**self).calculate_type(expr)
+    }
+
+    fn get_current_function(&self) -> &Function {
+        (**self).get_current_function()
+    }
+
+    fn set_current_function(&mut self, function: &'ast Function) {
+        (**self).set_current_function(function)
     }
 }
 

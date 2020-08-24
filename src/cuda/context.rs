@@ -7,7 +7,8 @@ use super::CudaContext;
 pub struct CudaContextImpl<'a, 'b> {
     device_context: bool,
     kernel_id_counter: &'a mut u32,
-    scopes: DefinitionScopeStack<'a, 'b>
+    scopes: DefinitionScopeStack<'a, 'b>,
+    function: Option<&'b Function>
 }
 
 impl<'a, 'b> CudaContextImpl<'a, 'b> {
@@ -15,7 +16,8 @@ impl<'a, 'b> CudaContextImpl<'a, 'b> {
         CudaContextImpl {
             device_context: false,
             kernel_id_counter: counter,
-            scopes: ScopeStack::new(global)
+            scopes: ScopeStack::new(global),
+            function: None
         }
     }
 
@@ -24,12 +26,13 @@ impl<'a, 'b> CudaContextImpl<'a, 'b> {
         CudaContextImpl {
             device_context: self.device_context,
             kernel_id_counter: self.kernel_id_counter,
-            scopes: self.scopes.child_scope(defs)
+            scopes: self.scopes.child_scope(defs),
+            function: None
         }
     }
 }
 
-impl<'a, 'b> CudaContext for CudaContextImpl<'a, 'b> {
+impl<'a, 'b> CudaContext<'a, 'b> for CudaContextImpl<'a, 'b> {
     fn generate_unique_identifier(&mut self) -> u32 {
         *self.kernel_id_counter += 1;
         *self.kernel_id_counter
@@ -39,23 +42,27 @@ impl<'a, 'b> CudaContext for CudaContextImpl<'a, 'b> {
         self.device_context
     }
 
-    fn in_device<'c>(&'c mut self) -> Box<dyn 'c + CudaContext> {
-        Box::new(CudaContextImpl {
-            device_context: true,
-            kernel_id_counter: self.kernel_id_counter,
-            scopes: self.scopes.child_stack()
-        })
+    fn set_device(&mut self) {
+        self.device_context = true;
     }
 
-    fn in_scope<'c>(&'c mut self, scopes: ScopeStack<'c, &'c dyn SymbolDefinition>) -> Box<dyn 'c + CudaContext> {
-        Box::new(CudaContextImpl {
-            device_context: self.device_context,
-            kernel_id_counter: self.kernel_id_counter,
-            scopes: scopes
-        })
+    fn set_host(&mut self) {
+        self.device_context = false;
     }
 
-    fn get_scopes(&self) -> &ScopeStack<&dyn SymbolDefinition> {
+    fn set_scope(&mut self, scopes: DefinitionScopeStack<'a, 'b>) {
+        self.scopes = scopes
+    }
+
+    fn get_scopes(&self) -> &DefinitionScopeStack<'a, 'b> {
         &self.scopes
+    }
+
+    fn get_current_function(&self) -> &Function {
+        self.function.unwrap()
+    }
+
+    fn set_current_function(&mut self, func: &'b Function) {
+        self.function = Some(func);
     }
 }

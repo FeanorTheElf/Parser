@@ -79,7 +79,7 @@ impl Statement for ParallelFor {
 }
 
 impl Printable for ParallelFor {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_parallel_for_header(self)?;
         self.body.print(printer)?;
         Ok(())

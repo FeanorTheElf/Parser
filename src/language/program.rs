@@ -412,7 +412,7 @@ impl AstNode for Literal {
 }
 
 impl Printable for Program {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         for item in &self.items {
             item.print(printer)?;
         }
@@ -421,7 +421,7 @@ impl Printable for Program {
 }
 
 impl Printable for Function {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_function_header(self)?;
         if let Some(ref body) = self.body {
             body.print(printer)?;
@@ -431,24 +431,24 @@ impl Printable for Function {
 }
 
 impl Printable for Block {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
-        printer.enter_block()?;
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
+        printer.enter_block(self)?;
         for statement in self.statements.iter() {
             statement.print(printer)?;
         }
-        printer.exit_block()?;
+        printer.exit_block(self)?;
         Ok(())
     }
 }
 
 impl Printable for Expression {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_expression(self)
     }
 }
 
 impl Printable for If {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_if_header(self)?;
         self.body.print(printer)?;
         Ok(())
@@ -456,7 +456,7 @@ impl Printable for If {
 }
 
 impl Printable for While {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_while_header(self)?;
         self.body.print(printer)?;
         Ok(())
@@ -464,31 +464,31 @@ impl Printable for While {
 }
 
 impl Printable for LocalVariableDeclaration {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_declaration(self)
     }
 }
 
 impl Printable for Return {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_return(self)
     }
 }
 
 impl Printable for Assignment {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_assignment(self)
     }
 }
 
 impl Printable for Label {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_label(self)
     }
 }
 
 impl Printable for Goto {
-    fn print<'a>(&self, printer: &mut (dyn Backend + 'a)) -> Result<(), OutputError> {
+    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
         printer.print_goto(self)
     }
 }

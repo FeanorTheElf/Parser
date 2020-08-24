@@ -50,7 +50,7 @@ pub enum CudaVariable<'a> {
 }
 
 impl<'a> CudaVariable<'a> {
-    pub fn calc_type(&self, context: &dyn CudaContext) -> Type {
+    pub fn calc_type<'stack, 'ast: 'stack>(&self, context: &dyn CudaContext<'stack, 'ast>) -> Type {
         match self {
             CudaVariable::Base(base) => context.calculate_var_type(base),
             CudaVariable::TemporaryArrayResult(base, dim) => Type::Array(*base, *dim)

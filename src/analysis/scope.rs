@@ -131,7 +131,6 @@ impl<'a> EnumerateDefinitions<'a> for &'a [(Name, Type)] {
     }
 }
 
-
 pub struct NoData;
 
 impl<'a> From<&'a dyn SymbolDefinition> for NoData {

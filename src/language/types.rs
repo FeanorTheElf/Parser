@@ -1,3 +1,5 @@
+use super::error::*;
+use super::position::{TextPosition, NONEXISTING};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveType {
@@ -26,6 +28,17 @@ impl Type {
         match self {
             Type::View(viewn) => value == &**viewn || value == self,
             _ => value == self
+        }
+    }
+
+    pub fn is_callable(&self) -> bool {
+        self.expect_callable(&NONEXISTING).is_ok()
+    }
+
+    pub fn expect_callable(&self, pos: &TextPosition) -> Result<(&Vec<Box<Type>>, &Option<Box<Type>>), CompileError> {
+        match self {
+            Type::Function(param_types, return_type) => Ok((param_types, return_type)),
+            ty => Err(CompileError::new(pos, format!("Expression of type {} is not callable", ty), ErrorType::TypeError))
         }
     }
 }

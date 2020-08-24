@@ -45,16 +45,16 @@ pub struct FunctionInfo<'a> {
 }
 
 #[allow(unused)]
-fn collect_functions<'a>(program: &'a Program, context: &mut dyn CudaContext) -> Result<(HashMap<Ref<'a, Function>, FunctionInfo<'a>>, HashMap<Ref<'a, ParallelFor>, KernelInfo<'a>>), OutputError> {
-    let mut functions: HashMap<Ref<'a, Function>, FunctionInfo<'a>> = HashMap::new();
-    let mut kernels: HashMap<Ref<'a, ParallelFor>, KernelInfo<'a>> = HashMap::new();
+fn collect_functions<'stack, 'ast: 'stack>(program: &'ast Program, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>), OutputError> {
+    let mut functions: HashMap<Ref<'ast, Function>, FunctionInfo<'ast>> = HashMap::new();
+    let mut kernels: HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>> = HashMap::new();
     for item in &program.items {
         functions.insert(Ref::from(&**item), FunctionInfo {
             function: item,
             called_from: HashSet::new()
         });
     }
-    let scopes: ScopeStack<&'a dyn SymbolDefinition> = ScopeStack::new(&program.items);
+    let scopes: ScopeStack<&'ast dyn SymbolDefinition> = ScopeStack::new(&program.items);
     for item in &program.items {
         if let Some(body) = &item.body {
             collect_calls_and_kernels(body, TargetLanguageFunction::Function(Ref::from(&**item)), &scopes.child_scope(&**item), &mut functions, &mut kernels, context)?;
@@ -63,12 +63,12 @@ fn collect_functions<'a>(program: &'a Program, context: &mut dyn CudaContext) ->
     return Ok((functions, kernels));
 }
 
-fn collect_calls_and_kernels<'a, 'b>(block: &'a Block, 
-    parent: TargetLanguageFunction<'a>, 
-    scopes: &ScopeStack<'b, &'a dyn SymbolDefinition>, 
-    functions: &mut HashMap<Ref<'a, Function>, FunctionInfo<'a>>, 
-    kernels: &mut HashMap<Ref<'a, ParallelFor>, KernelInfo<'a>>, 
-    context: &mut dyn CudaContext) -> Result<(), OutputError>
+fn collect_calls_and_kernels<'b, 'stack, 'ast: 'stack>(block: &'ast Block, 
+    parent: TargetLanguageFunction<'ast>, 
+    scopes: &ScopeStack<'b, &'ast dyn SymbolDefinition>, 
+    functions: &mut HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, 
+    kernels: &mut HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>, 
+    context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>
 {
     let this_scopes = scopes.child_scope(block);
     for statement in &block.statements {

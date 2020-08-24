@@ -5,6 +5,7 @@ use super::super::language::prelude::*;
 use super::super::util::ref_eq::Ref;
 use super::function_use_analyser::FunctionUse;
 use super::parallel_for_variable_use::ParallelForData;
+use super::CudaContext;
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -28,10 +29,11 @@ struct OutputThread {
     block_level: usize,
 }
 
-pub struct CudaBackend<'a> {
+pub struct CudaBackend<'a, 'ast> {
     output_threads: Vec<OutputThread>,
-    function_uses: HashMap<&'a Name, FunctionUse>,
-    parallel_for_data: HashMap<Ref<'a, ParallelFor>, ParallelForData<'a>>,
+    function_uses: HashMap<&'ast Name, FunctionUse>,
+    parallel_for_data: HashMap<Ref<'ast, ParallelFor>, ParallelForData<'ast>>,
+    context: &'a mut dyn CudaContext<'a, 'ast>,
     create_dim_checks: bool,
     result: Vec<String>,
     kernel_index: usize,
@@ -57,7 +59,7 @@ fn panic_test_type() -> ! {
     panic!("")
 }
 
-impl<'a> CudaBackend<'a> {
+impl<'a, 'ast> CudaBackend<'a, 'ast> {
     fn out(&mut self) -> &mut impl std::fmt::Write {
         &mut self.output_threads.last_mut().unwrap().out
     }
@@ -176,9 +178,7 @@ impl<'a> CudaBackend<'a> {
             None => {}
         }
         for (param_name, param_type) in params {
-            result.extend(Self::print_parameter_function_definition(
-                pos, param_name, param_type,
-            )?);
+            
         }
         return Ok(result.join(", "));
     }
@@ -291,9 +291,37 @@ impl<'a> CudaBackend<'a> {
         write!(&mut last_entry.out, "\r\n{}", last_entry.indent)?;
         Ok(())
     }
+
+    fn begin_block(&mut self) -> Result<(), OutputError> {
+        write!(self.out(), "{{")?;
+        let mut current_out = self.output_threads.last_mut().unwrap();
+        current_out.indent.push('\t');
+        current_out.block_level += 1;
+        Ok(())
+    }
+
+    fn end_block(&mut self) -> Result<(), OutputError> {
+        self.newline()?;
+        write!(self.out(), "}}")?;
+        let is_device_context = self.is_device_context();
+        let mut current_out = self.output_threads.last_mut().unwrap();
+        current_out.indent.pop();
+        if current_out.block_level > 1 || !is_device_context {
+            current_out.block_level -= 1;
+            return Ok(());
+        } else {
+            current_out.indent.pop();
+            self.newline()?;
+            write!(self.out(), "}}")?;
+            // close current output thread
+            let out = self.output_threads.pop().unwrap();
+            self.result.push(out.out);
+            return Ok(());
+        }
+    }
 }
 
-impl<'a> Backend for CudaBackend<'a> {
+impl<'a, 'ast> Backend<'a> for CudaBackend<'a, 'ast> {
     fn print_function_header(&mut self, node: &Function) -> Result<(), OutputError> {
         let function_use = self.function_uses.get(&node.identifier).unwrap();
         let device_modifier = if function_use.device_called {
@@ -331,36 +359,16 @@ impl<'a> Backend for CudaBackend<'a> {
         Ok(())
     }
 
-    fn enter_block(&mut self) -> Result<(), OutputError> {
-        write!(self.out(), "{{")?;
-        let mut current_out = self.output_threads.last_mut().unwrap();
-        current_out.indent.push('\t');
-        current_out.block_level += 1;
-        Ok(())
+    fn enter_block(&mut self, block: &'a Block) -> Result<(), OutputError> {
+        self.begin_block()
     }
 
-    fn exit_block(&mut self) -> Result<(), OutputError> {
-        self.newline()?;
-        write!(self.out(), "}}")?;
-        let is_device_context = self.is_device_context();
-        let mut current_out = self.output_threads.last_mut().unwrap();
-        current_out.indent.pop();
-        if current_out.block_level > 1 || !is_device_context {
-            current_out.block_level -= 1;
-            return Ok(());
-        } else {
-            current_out.indent.pop();
-            self.newline()?;
-            write!(self.out(), "}}")?;
-            // close current output thread
-            let out = self.output_threads.pop().unwrap();
-            self.result.push(out.out);
-            return Ok(());
-        }
+    fn exit_block(&mut self, block: &'a Block) -> Result<(), OutputError> {
+        self.end_block()
     }
 
     fn print_parallel_for_header(&mut self, node: &ParallelFor) -> Result<(), OutputError> {
-        self.enter_block()?;
+        self.begin_block()?;
         self.newline()?;
 
         // calculate workspace begin and end
@@ -566,7 +574,7 @@ impl<'a> Backend for CudaBackend<'a> {
             acutal_param_string
         )?;
 
-        self.exit_block()?;
+        self.end_block()?;
 
         // now we continue in the kernel function
         self.output_threads.push(OutputThread {
@@ -583,7 +591,7 @@ impl<'a> Backend for CudaBackend<'a> {
             kernel_num,
             formal_param_string
         )?;
-        self.enter_block()?;
+        self.begin_block()?;
 
         // initialize index variables
         self.newline()?;

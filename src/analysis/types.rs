@@ -3,17 +3,17 @@ use super::symbol::*;
 use super::scope::*;
 
 pub trait Typed {
-    fn calculate_type(&self, context: &ScopeStack<&dyn SymbolDefinition>) -> Type;
+    fn calculate_type<'a, 'b>(&self, context: &DefinitionScopeStack<'a, 'b>) -> Type;
 }
 
 impl Typed for Name {
-    fn calculate_type(&self, context: &ScopeStack<&dyn SymbolDefinition>) -> Type {
+    fn calculate_type(&self, context: &DefinitionScopeStack) -> Type {
         context.get(self).expect(format!("Expect {} to be defined", self).as_str()).calc_type()
     }
 }
 
 impl Typed for Expression {
-    fn calculate_type(&self, context: &ScopeStack<&dyn SymbolDefinition>) -> Type {
+    fn calculate_type(&self, context: &DefinitionScopeStack) -> Type {
         match self {
             Expression::Call(call) => match &call.function.expect_identifier().unwrap() {
                 Identifier::Name(name) => context.get(name).unwrap().dynamic().downcast_ref::<Function>().unwrap().return_type.as_ref().unwrap().clone(),

@@ -14,14 +14,14 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 
 pub trait CudaWritablePFor {
-    fn write_definition_as_kernel(&self, kernel: &KernelInfo, out: &mut CodeWriter, context: &mut dyn CudaContext) -> Result<(), OutputError>;
+    fn write_definition_as_kernel<'stack, 'ast: 'stack>(&self, kernel: &KernelInfo, out: &mut CodeWriter, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError>;
     fn write_definition_as_device_function(&self, kernel: &KernelInfo, out: &mut CodeWriter) -> Result<(), OutputError>;
     fn write_kernel_call(&self, kernel: &KernelInfo, out: &mut CodeWriter) -> Result<(), OutputError>;
 }
 
 impl CudaWritablePFor for ParallelFor {
 
-    fn write_definition_as_kernel(&self, kernel: &KernelInfo, out: &mut CodeWriter, context: &mut dyn CudaContext) -> Result<(), OutputError> {
+    fn write_definition_as_kernel<'stack, 'ast: 'stack>(&self, kernel: &KernelInfo, out: &mut CodeWriter, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<(), OutputError> {
         write!(out, "__global__ void ")?;
         Name::write_kernel(kernel.kernel_name, out)?;
         write!(out, "(")?;
@@ -50,21 +50,21 @@ impl CudaWritablePFor for ParallelFor {
         }))?;
         write!(out, ") ")?;
 
-        let device_context = context.in_device();
-
+        context.set_device();
         out.enter_block()?;
-
-        let device_context_ref = &*device_context;
+        let context_ref = &context;
         // Initialize index variables
         out.write_separated(kernel.pfor.index_variables.iter().enumerate().map(|(dim, var)| move |out: &mut CodeWriter| {
             let declaration = CudaVariableDeclaration::new(
                 var, 
                 Some(CudaExpression::KernelIndexVariableCalculation(kernel_ref.kernel_name, dim as u32, kernel_ref.pfor.index_variables.len() as u32))
             );
-            declaration.write(out, device_context_ref)
+            declaration.write(out, *context_ref)
         }), |out| out.newline().map_err(OutputError::from))?;
 
         out.exit_block()?;
+        context.set_host();
+
         return Ok(());
     }
 

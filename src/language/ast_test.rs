@@ -96,7 +96,7 @@ impl<'a, 'b> DebugPrinter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Backend for DebugPrinter<'a, 'b> {
+impl<'a, 'b, 'c> Backend<'c> for DebugPrinter<'a, 'b> {
     fn print_function_header(&mut self, node: &Function) -> Result<(), OutputError> {
         self.newline()?;
         self.result.write_str("fn ")?;
@@ -117,14 +117,14 @@ impl<'a, 'b> Backend for DebugPrinter<'a, 'b> {
         Ok(())
     }
 
-    fn enter_block(&mut self) -> Result<(), OutputError> {
+    fn enter_block(&mut self, _block: &'c Block) -> Result<(), OutputError> {
         self.newline()?;
         self.indent += 1;
         self.result.write_str("{")?;
         Ok(())
     }
 
-    fn exit_block(&mut self) -> Result<(), OutputError> {
+    fn exit_block(&mut self, _block: &'c Block) -> Result<(), OutputError> {
         self.indent -= 1;
         self.newline()?;
         self.result.write_str("}")?;
