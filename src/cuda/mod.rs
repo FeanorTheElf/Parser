@@ -69,13 +69,7 @@ impl<'stack, 'ast: 'stack, T: CudaContext<'stack, 'ast>> CudaContext<'stack, 'as
 const INDEX_TYPE: &'static str = "unsigned int";
 
 mod context;
-mod variable;
-mod declaration;
-mod expression;
+mod ast;
 mod statement;
 mod kernel_data;
 mod kernel;
-
-mod backend;
-mod function_use_analyser;
-mod parallel_for_variable_use;

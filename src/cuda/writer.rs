@@ -69,8 +69,8 @@ impl<'a> CodeWriter<'a> {
     }
 
     pub fn exit_block(&mut self) -> Result<()> {
-        write!(self.out, "\n}}")?;
-        self.exit_indented_level()
+        self.exit_indented_level()?;
+        write!(self.out, "}}")
     }
 
     pub fn write_separated<I, G, E>(&mut self, mut it: I, mut separator: G) -> std::prelude::v1::Result<(), E> 
@@ -84,6 +84,17 @@ impl<'a> CodeWriter<'a> {
         }
         for value in it {
             separator(self)?;
+            value(self)?;
+        }
+        Ok(())
+    }
+
+    pub fn write_many<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E> 
+        where I: Iterator, 
+            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+            E: From<std::io::Error>
+    {
+        for value in it {
             value(self)?;
         }
         Ok(())

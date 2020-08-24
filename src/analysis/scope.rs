@@ -277,6 +277,10 @@ impl<'a, T> ScopeStack<'a, T> {
                 .find_map(|scope| scope.definitions.get(name))
         })
     }
+
+    pub fn get_defined(&self, name: &Name, pos: &TextPosition) -> Result<&T, CompileError> {
+        self.get(name).ok_or_else(|| CompileError::new(pos, format!("Undefined symbol {}", name), ErrorType::UndefinedSymbol))
+    }
 }
 
 #[cfg(test)]

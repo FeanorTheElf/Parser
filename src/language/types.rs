@@ -23,6 +23,20 @@ impl Type {
             ty => Type::View(Box::new(ty))
         }
     }
+    
+    pub fn without_view(self) -> Type {
+        match self {
+            Type::View(ty) => *ty,
+            ty => ty
+        }
+    }
+
+    pub fn is_view(&self) -> bool {
+        match self {
+            Type::View(_) => true,
+            _ => false
+        }
+    }
 
     pub fn is_assignable_from(&self, value: &Type) -> bool {
         match self {

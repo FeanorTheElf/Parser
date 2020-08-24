@@ -135,13 +135,13 @@ impl Expression {
         match self {
             Expression::Call(_) => Err(CompileError::new(
                 self.pos(),
-                format!("A function call is not allowed here."),
+                format!("Only a variable is allowed here."),
                 ErrorType::VariableRequired,
             )),
             Expression::Variable(var) => Ok(&var.identifier),
             Expression::Literal(_) => Err(CompileError::new(
                 self.pos(),
-                format!("A function call is not allowed here."),
+                format!("Only a variable is allowed here."),
                 ErrorType::VariableRequired,
             ))
         }
@@ -161,6 +161,15 @@ impl Expression {
             },
             Expression::Variable(_) => true,
             Expression::Literal(_) => false,
+        }
+    }
+}
+
+impl PartialEq<Identifier> for Expression {
+    fn eq(&self, rhs: &Identifier) -> bool {
+        match self {
+            Expression::Variable(var) => var.identifier == *rhs,
+            _ => false
         }
     }
 }

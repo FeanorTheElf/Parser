@@ -26,7 +26,7 @@ use lexer::lexer::lex;
 use parser::Parser;
 
 fn main() {
-    let mut program = Program::parse(&mut lex("
+    let program = Program::parse(&mut lex("
 		fn min(a: int, b: int,): int {
 			if a < b {
 				return a;
