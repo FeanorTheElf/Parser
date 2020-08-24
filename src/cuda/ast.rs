@@ -177,7 +177,6 @@ impl CudaExpression {
     fn get_priority(&self) -> i32 {
         match self {
             CudaExpression::KernelCall(_, _, _, _, _) => i32::MIN + 1,
-            CudaExpression::Call(_, _) => i32::MIN + 2,
             CudaExpression::Conjunction(_) => -2,
             CudaExpression::Disjunction(_) => -2, 
             CudaExpression::Comparison(_, _, _) => -1,
@@ -188,7 +187,8 @@ impl CudaExpression {
             CudaExpression::Index(_, _) => 3,
             CudaExpression::Identifier(_) => i32::MAX,
             CudaExpression::Literal(_) => i32::MAX,
-            CudaExpression::Nullptr => i32::MAX
+            CudaExpression::Nullptr => i32::MAX,
+            CudaExpression::Call(_, _) => i32::MAX,
         }
     }
 
@@ -201,7 +201,7 @@ impl CudaExpression {
             CudaExpression::Call(func, params) => {
                 func.write(out)?;
                 write!(out, "(")?;
-                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)))?;
+                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(i32::MIN, out)))?;
                 write!(out, ")")?;
             },
             CudaExpression::KernelCall(kernel, grid_size, block_size, shared_mem, params) => {
@@ -251,7 +251,9 @@ impl CudaExpression {
             }, 
             CudaExpression::Index(array, index) => {
                 array.write(out)?;
+                write!(out, "[")?;
                 index.write_expression(i32::MIN, out)?;
+                write!(out, "]")?;
             },
             CudaExpression::AddressOf(expr) => {
                 write!(out, "&")?;

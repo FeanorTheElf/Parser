@@ -2,7 +2,7 @@ use super::super::language::prelude::*;
 use super::super::analysis::symbol::*;
 use super::super::language::backend::OutputError;
 use super::ast::*;
-use super::statement::*;
+use super::assignment::*;
 use super::kernel_data::*;
 use super::context::CudaContext;
 

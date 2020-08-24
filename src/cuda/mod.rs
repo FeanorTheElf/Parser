@@ -7,6 +7,6 @@ pub mod writer;
 
 mod context;
 mod ast;
-mod statement;
+mod assignment;
 mod kernel_data;
 mod kernel;
