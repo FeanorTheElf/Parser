@@ -1,6 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
 use super::writer::*;
+use std::ops::{Add, Mul, Sub};
 
 pub trait Writable {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
@@ -62,7 +63,11 @@ pub enum CudaIdentifier {
     /// name of the variable containing the postfix product of the sizes of the source thread grid, so
     /// the contract is identical to the one of ArraySizeVar (see there for details). The first parameter
     /// is the kernel id and the second parameter the dimension.
-    ThreadGridSizeVar(u32, u32)
+    ThreadGridSizeVar(u32, u32),
+    /// in some situations, we do not need the postfix product of the array sizes, but the array sizes themselves.
+    /// In this case, use this identifier, but usually, it must be declared and initialized correctly before.
+    /// have local_array_id, dimension
+    TmpArrayShapeVar(u32, u32)
 }
 
 impl Writable for CudaIdentifier {
@@ -87,14 +92,15 @@ impl Writable for CudaIdentifier {
             CudaIdentifier::ThreadGridOffsetVar(kernel_id, dim) => write!(out, "kernel{}o{}", kernel_id, dim).map_err(OutputError::from),
             CudaIdentifier::ThreadGridSizeVar(kernel_id, dim) => write!(out, "kernel{}d{}", kernel_id, dim).map_err(OutputError::from),
             CudaIdentifier::TmpVar => write!(out, "tmp").map_err(OutputError::from),
-            CudaIdentifier::TmpSizeVar(dim) => write!(out, "tmpd{}", dim).map_err(OutputError::from)
+            CudaIdentifier::TmpSizeVar(dim) => write!(out, "tmpd{}", dim).map_err(OutputError::from),
+            CudaIdentifier::TmpArrayShapeVar(array_id, dim) => write!(out, "array{}shape{}", array_id, dim).map_err(OutputError::from)
         }
     }
 }
 
 pub trait CudaStatement : Writable {}
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum AddSub {
     Plus, Minus
 }
@@ -113,9 +119,16 @@ impl AddSub {
             AddSub::Minus => write!(out, "-").map_err(OutputError::from)
         }
     }
+
+    fn toggle(&self) -> AddSub {
+        match self {
+            AddSub::Plus => AddSub::Minus,
+            AddSub::Minus => AddSub::Plus
+        }
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum MulDiv {
     Multiply, Divide
 }
@@ -157,11 +170,11 @@ impl Cmp {
 #[derive(Clone)]
 pub enum CudaExpression {
     Call(CudaIdentifier, Vec<CudaExpression>),
-    /// kernel_name, grid size, block size, shared mem size, parameters
-    KernelCall(CudaIdentifier, Box<CudaExpression>, Box<CudaExpression>, Box<CudaExpression>, Vec<CudaExpression>),
     Sum(Vec<(AddSub, CudaExpression)>), 
     Identifier(CudaIdentifier), 
-    Literal(i32),
+    IntLiteral(i64),
+    FloatLiteral(f64),
+    RatLiteral(i64, u64),
     Product(Vec<(MulDiv, CudaExpression)>),
     Comparison(Cmp, Box<CudaExpression>, Box<CudaExpression>),
     Conjunction(Vec<CudaExpression>),
@@ -170,25 +183,148 @@ pub enum CudaExpression {
     AddressOf(Box<CudaExpression>),
     Nullptr,
     // target index (for given dimension), 1d source index, strides, offsets
-    MultiDimIndexCalculation(u32, Box<CudaExpression>, Vec<CudaExpression>, Vec<CudaExpression>)
+    MultiDimIndexCalculation(u32, Box<CudaExpression>, Vec<CudaExpression>, Vec<CudaExpression>),
+    Min(Vec<CudaExpression>),
+    Round(Box<CudaExpression>),
+    Max(Vec<CudaExpression>),
+    IndexFloorDiv(Box<CudaExpression>, Box<CudaExpression>)
+}
+
+impl CudaExpression {
+    pub fn is_constant_zero(&self) -> bool {
+        match &self {
+            CudaExpression::IntLiteral(x) => *x == 0,
+            CudaExpression::FloatLiteral(x) => *x == 0.,
+            CudaExpression::RatLiteral(num, _) => *num == 0,
+            CudaExpression::Sum(summands) => summands.len() == 0,
+            _ => false
+        }
+    }
+    
+    pub fn is_constant_one(&self) -> bool {
+        match &self {
+            CudaExpression::IntLiteral(x) => *x == 1,
+            CudaExpression::FloatLiteral(x) => *x == 1.,
+            CudaExpression::RatLiteral(num, den) => *num == *den as i64,
+            CudaExpression::Product(factors) => factors.len() == 0,
+            _ => false
+        }
+    }
+}
+
+impl Add for CudaExpression {
+    type Output = CudaExpression;
+
+    fn add(mut self, mut rhs: CudaExpression) -> CudaExpression {
+        if self.is_constant_zero() {
+            return rhs;
+        } else if rhs.is_constant_zero() {
+            return self;
+        }
+        match &mut self {
+            CudaExpression::Sum(summands) => {
+                summands.push((AddSub::Plus, rhs));
+                self
+            },
+            _ => match &mut rhs {
+                CudaExpression::Sum(summands) => {
+                    summands.push((AddSub::Plus, self));
+                    rhs
+                },
+                _ => CudaExpression::Sum(vec![(AddSub::Plus, self), (AddSub::Plus, rhs)])
+            }
+        }
+    }
+}
+
+impl Sub for CudaExpression {
+    type Output = CudaExpression;
+
+    fn sub(mut self, mut rhs: CudaExpression) -> CudaExpression {
+        if rhs.is_constant_zero() {
+            return self;
+        }
+        match &mut self {
+            CudaExpression::Sum(summands) => {
+                summands.push((AddSub::Minus, rhs));
+                self
+            },
+            _ => match &mut rhs {
+                CudaExpression::Sum(summands) => {
+                    for (pm, _) in summands.iter_mut() {
+                        *pm = pm.toggle();
+                    }
+                    summands.insert(0, (AddSub::Plus, self));
+                    rhs
+                },
+                _ => CudaExpression::Sum(vec![(AddSub::Plus, self), (AddSub::Minus, rhs)])
+            }
+        }
+    }
+}
+
+impl Mul for CudaExpression {
+    type Output = CudaExpression;
+
+    fn mul(mut self, mut rhs: CudaExpression) -> CudaExpression {
+        if self.is_constant_zero() {
+            return CudaExpression::IntLiteral(0);
+        } else if rhs.is_constant_zero() {
+            return CudaExpression::IntLiteral(0);
+        } else if self.is_constant_one() {
+            return rhs;
+        } else if rhs.is_constant_one() {
+            return self;
+        }
+        match &mut self {
+            CudaExpression::Product(summands) => {
+                summands.push((MulDiv::Multiply, rhs));
+                self
+            },
+            _ => match &mut rhs {
+                CudaExpression::Product(summands) => {
+                    summands.push((MulDiv::Multiply, self));
+                    rhs
+                },
+                _ => CudaExpression::Product(vec![(MulDiv::Multiply, self), (MulDiv::Multiply, rhs)])
+            }
+        }
+    }
+}
+
+impl From<feanor_la::rat::r64> for CudaExpression {
+    fn from(rhs: feanor_la::rat::r64) -> CudaExpression {
+        CudaExpression::RatLiteral(rhs.num(), rhs.den() as u64)
+    }
+}
+
+impl<'a> From<&'a feanor_la::rat::r64> for CudaExpression {
+    fn from(rhs: &'a feanor_la::rat::r64) -> CudaExpression {
+        CudaExpression::RatLiteral(rhs.num(), rhs.den() as u64)
+    }
 }
 
 impl CudaExpression {
     fn get_priority(&self) -> i32 {
         match self {
-            CudaExpression::KernelCall(_, _, _, _, _) => i32::MIN + 1,
             CudaExpression::Conjunction(_) => -2,
             CudaExpression::Disjunction(_) => -2, 
             CudaExpression::Comparison(_, _, _) => -1,
             CudaExpression::MultiDimIndexCalculation(_, _, _, _) => 0,
             CudaExpression::Sum(_) => 0,
+            CudaExpression::IndexFloorDiv(_, _) => 0,
             CudaExpression::Product(_) => 1,
+            CudaExpression::RatLiteral(_, _) => 1,
             CudaExpression::AddressOf(_) => 2,
             CudaExpression::Index(_, _) => 3,
             CudaExpression::Identifier(_) => i32::MAX,
-            CudaExpression::Literal(_) => i32::MAX,
+            CudaExpression::IntLiteral(_) => i32::MAX,
+            CudaExpression::FloatLiteral(_) => i32::MAX,
             CudaExpression::Nullptr => i32::MAX,
             CudaExpression::Call(_, _) => i32::MAX,
+            CudaExpression::Min(_) => i32::MAX,
+            CudaExpression::Max(_) => i32::MAX,
+            CudaExpression::Round(_) => i32::MAX,
         }
     }
 
@@ -204,40 +340,42 @@ impl CudaExpression {
                 out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(i32::MIN, out)))?;
                 write!(out, ")")?;
             },
-            CudaExpression::KernelCall(kernel, grid_size, block_size, shared_mem, params) => {
-                kernel.write(out)?;
-                write!(out, " <<< dim3(")?;
-                grid_size.write_expression(priority, out)?;
-                write!(out, "), dim3(")?;
-                block_size.write_expression(priority, out)?;
-                write!(out, "), ")?;
-                shared_mem.write_expression(priority, out)?;
-                write!(out, " >>> (")?;
-                out.write_comma_separated(params.iter().map(|p| move |out: &mut CodeWriter| p.write_expression(priority, out)))?;
-                write!(out, ")")?;
-            },
             CudaExpression::Identifier(name) => {
                 name.write(out)?;
             },
-            CudaExpression::Literal(val) => {
+            CudaExpression::IntLiteral(val) => {
                 write!(out, "{}", val)?;
             },
+            CudaExpression::FloatLiteral(val) => {
+                write!(out, "{}.", val)?;
+            },
+            CudaExpression::RatLiteral(num, den) => {
+                write!(out, "{}./{}.", num, den)?;
+            }
             CudaExpression::Sum(summands) =>  
-                out.write_many(summands.iter().enumerate().map(|(index, (operator, value))| move |out: &mut CodeWriter| if index == 0 {
-                    operator.write_unary(out)?;
-                    value.write_expression(priority, out)
+                if summands.len() == 0 {
+                    write!(out, "0")?;
                 } else {
-                    operator.write(out)?;
-                    value.write_expression(priority, out)
-                }))?,
+                    out.write_many(summands.iter().enumerate().map(|(index, (operator, value))| move |out: &mut CodeWriter| if index == 0 {
+                        operator.write_unary(out)?;
+                        value.write_expression(priority, out)
+                    } else {
+                        operator.write(out)?;
+                        value.write_expression(priority, out)
+                    }))?;
+                },
             CudaExpression::Product(factors) =>  
-                out.write_many(factors.iter().enumerate().map(|(index, (operator, value))| move |out: &mut CodeWriter| if index == 0 {
-                    operator.write_unary(out)?;
-                    value.write_expression(priority, out)
+                if factors.len() == 0 {
+                    write!(out, "1")?;
                 } else {
-                    operator.write(out)?;
-                    value.write_expression(priority, out)
-                }))?,
+                    out.write_many(factors.iter().enumerate().map(|(index, (operator, value))| move |out: &mut CodeWriter| if index == 0 {
+                        operator.write_unary(out)?;
+                        value.write_expression(priority, out)
+                    } else {
+                        operator.write(out)?;
+                        value.write_expression(priority, out)
+                    }))?;
+                },
             CudaExpression::Comparison(operator, lhs, rhs) => {
                 lhs.write_expression(priority, out)?;
                 operator.write(out)?;
@@ -280,6 +418,32 @@ impl CudaExpression {
                 // add the offset
                 write!(out, " + ")?;
                 offsets[*dimension as usize].write_expression(CudaExpression::Sum(vec![]).get_priority(), out)?;
+            },
+            CudaExpression::Min(exprs) => {
+                write!(out, "min(")?;
+                out.write_comma_separated(exprs.iter().map(|expr| move |out: &mut CodeWriter| {
+                    expr.write_expression(i32::MIN, out)
+                }))?;
+                write!(out, ")")?;
+            },
+            CudaExpression::Max(exprs) => {
+                write!(out, "max(")?;
+                out.write_comma_separated(exprs.iter().map(|expr| move |out: &mut CodeWriter| {
+                    expr.write_expression(i32::MIN, out)
+                }))?;
+                write!(out, ")")?;
+            },
+            CudaExpression::Round(expr) => {
+                write!(out, "round(")?;
+                expr.write_expression(i32::MIN, out)?;
+                write!(out, ")")?;
+            },
+            CudaExpression::IndexFloorDiv(divident, divisor) => {
+                write!(out, "static_cast<int>((")?;
+                divident.write_expression(priority, out)?;
+                write!(out, " - 1) / ")?;
+                divisor.write_expression(CudaExpression::Product(vec![]).get_priority(), out)?;
+                write!(out, " + 1")?;
             }
         };
         if priority <= parent_priority {
@@ -385,6 +549,22 @@ impl Writable for CudaAssignment {
 }
 impl CudaStatement for CudaAssignment {}
 
+pub struct CudaReturn {
+    pub value: Option<CudaExpression>
+}
+
+impl Writable for CudaReturn {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "return")?;
+        if let Some(val) = &self.value {
+            write!(out, " ")?;
+            val.write(out)?;
+        }
+        Ok(())
+    }
+}
+impl CudaStatement for CudaReturn {}
+
 pub struct CudaLabel {
     pub name: CudaIdentifier
 }
@@ -410,21 +590,6 @@ impl Writable for CudaGoto {
     }
 }
 impl CudaStatement for CudaGoto {}
-
-pub struct CudaReturn {
-    pub value: Option<CudaExpression>
-}
-
-impl Writable for CudaReturn {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "return ")?;
-        if let Some(val) = &self.value {
-            val.write(out)?;
-        }
-        Ok(())
-    }
-}
-impl CudaStatement for CudaReturn {}
 
 pub struct CudaIf {
     pub cond: CudaExpression,
@@ -523,3 +688,29 @@ impl Writable for CudaAssert {
     }
 }
 impl CudaStatement for CudaAssert {}
+
+
+pub struct CudaKernelCall {
+    pub name: CudaIdentifier, 
+    pub grid_size: CudaExpression, 
+    pub block_size: CudaExpression, 
+    pub shared_mem_size: CudaExpression, 
+    pub params: Vec<CudaExpression>
+}
+
+impl Writable for CudaKernelCall {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        self.name.write(out)?;
+        write!(out, " <<< dim3(")?;
+        self.grid_size.write_expression(i32::MIN, out)?;
+        write!(out, "), dim3(")?;
+        self.block_size.write_expression(i32::MIN, out)?;
+        write!(out, "), ")?;
+        self.shared_mem_size.write_expression(i32::MIN, out)?;
+        write!(out, " >>> (")?;
+        out.write_comma_separated(self.params.iter().map(|p| move |out: &mut CodeWriter| p.write(out)))?;
+        write!(out, ")")?;
+        Ok(())
+    }
+}
+impl CudaStatement for CudaKernelCall {}

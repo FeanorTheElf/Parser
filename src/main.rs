@@ -1,5 +1,7 @@
 #![feature(test)]
 #![feature(trait_alias)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 
 extern crate itertools;
 extern crate take_mut;

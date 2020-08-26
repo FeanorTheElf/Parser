@@ -110,7 +110,7 @@ impl<'a> LifetimeIterable<'a, Block> for ParallelFor {
     }
 }
 
-const ACCESS_MATRIX_AFFINE_COLUMN: usize = 0;
+pub const ACCESS_MATRIX_AFFINE_COLUMN: usize = 0;
 
 impl ArrayEntryAccess {
     pub fn new(
@@ -299,19 +299,11 @@ impl ArrayEntryAccess {
         return Ok(result);
     }
 
-    ///
-    /// Returns the matrix that represents the affine linear transform from the index variable vector
-    /// to the array index vector for a given thread. An error is returned, if the expression is not
-    /// an affine linear transform. On success, the result is an array_dimension_count x (index_variable_count + 1)
-    /// matrix A, where the column at ACCESS_MATRIX_AFFINE_COLUMN is the translation part and the
-    /// rest is the linear transformation (columns are in the same order as the index variables).
-    ///
-    pub fn get_transformation_matrix<'a, 'b, I>(
+    fn get_transformation_matrix_iter<'a, 'b, I>(
         &'a self,
         index_variables: I,
     ) -> Result<Ref<'a, Matrix<i32>>, CompileError>
-    where
-        I: Iterator<Item = &'b Name>,
+        where I: Iterator<Item = &'b Name>
     {
         if self.matrix_cache.borrow().is_none() {
             let result = self.calculate_transformation_matrix(index_variables);
@@ -338,6 +330,24 @@ impl ArrayEntryAccess {
                 cache_value.as_ref().unwrap().as_ref().unwrap()
             }));
         }
+    }
+
+    ///
+    /// Returns the matrix that represents the affine linear transform from the index variable vector
+    /// to the array index vector for a given thread. An error is returned, if the expression is not
+    /// an affine linear transform. On success, the result is an array_dimension_count x (index_variable_count + 1)
+    /// matrix A, where the column at ACCESS_MATRIX_AFFINE_COLUMN is the translation part and the
+    /// rest is the linear transformation (columns are in the same order as the index variables).
+    /// 
+    /// Passing a vector that does not contain the index variables of the parallel for (in the correct order)
+    /// will result in a wrong result and possibly caching this wrong result.
+    ///
+    pub fn get_transformation_matrix<'a, 'b>(
+        &'a self,
+        index_variables: &'b Vec<Declaration>,
+    ) -> Result<Ref<'a, Matrix<i32>>, CompileError>
+    {
+        self.get_transformation_matrix_iter(index_variables.iter().map(|d| &d.variable))
     }
 
     pub fn get_indices(&self) -> &Vec<Expression> {
@@ -372,7 +382,7 @@ fn test_get_transformation_matrix() {
     assert_eq!(
         expected,
         *array_entry_access
-            .get_transformation_matrix(
+            .get_transformation_matrix_iter(
                 vec![&Name::l("a"), &Name::l("b"), &Name::l("c")].into_iter()
             )
             .unwrap()
@@ -388,7 +398,7 @@ fn test_get_transformation_matrix_non_affine_transform() {
         true,
     );
     assert!(array_entry_access
-        .get_transformation_matrix(vec![&Name::l("a"), &Name::l("x")].into_iter())
+        .get_transformation_matrix_iter(vec![&Name::l("a"), &Name::l("x")].into_iter())
         .is_err());
 }
 
@@ -401,6 +411,6 @@ fn test_get_transformation_matrix_non_index_variable() {
         true,
     );
     assert!(array_entry_access
-        .get_transformation_matrix(vec![&Name::l("i")].into_iter())
+        .get_transformation_matrix_iter(vec![&Name::l("i")].into_iter())
         .is_err());
 }

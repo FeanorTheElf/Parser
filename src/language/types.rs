@@ -38,6 +38,14 @@ impl Type {
         }
     }
 
+    pub fn is_array(&self) -> bool {
+        match self {
+            Type::Array(_, _) => true,
+            Type::View(ty) => ty.is_array(),
+            _ => false
+        }
+    }
+
     pub fn is_assignable_from(&self, value: &Type) -> bool {
         match self {
             Type::View(viewn) => value == &**viewn || value == self,

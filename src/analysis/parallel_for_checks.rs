@@ -34,10 +34,10 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
                 let entry2 = &access_pattern.entry_accesses[j];
                 let one_write = entry1.write || entry2.write;
                 let transform1 = entry1.get_transformation_matrix(
-                    pfor.index_variables.iter().map(|var| &var.variable),
+                    &pfor.index_variables
                 )?;
                 let transform2 = entry2.get_transformation_matrix(
-                    pfor.index_variables.iter().map(|var| &var.variable),
+                    &pfor.index_variables
                 )?;
                 if one_write {
                     let collision =

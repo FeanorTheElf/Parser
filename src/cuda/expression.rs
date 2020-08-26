@@ -8,7 +8,7 @@ fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
     OutputError::UnsupportedCode(pos.clone(), format!("Calling dynamic expressions is not supported by the Cuda Backend"))
 }
 
-fn is_mul_var_type(ty: &Type) -> bool {
+pub fn is_mul_var_type(ty: &Type) -> bool {
     match ty {
         Type::Array(_, dim) => *dim > 0,
         Type::View(viewn) => is_mul_var_type(viewn),
@@ -16,11 +16,11 @@ fn is_mul_var_type(ty: &Type) -> bool {
     }
 }
 
-fn is_generated_with_output_parameter(return_type: Option<&Box<Type>>) -> bool {
+pub fn is_generated_with_output_parameter(return_type: Option<&Box<Type>>) -> bool {
     return_type.map(|ty| &**ty).map(is_mul_var_type).unwrap_or(false)
 }
 
-pub fn gen_primitive_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
+pub fn gen_primitive_ptr_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
     assert_eq!(*value, PrimitiveType::Int);
     CudaType {
         base: CudaPrimitiveType::Int,
@@ -32,51 +32,109 @@ pub fn gen_primitive_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
 pub fn expect_array_type(value: &Type) -> (PrimitiveType, u32) {
     match value {
         Type::Array(base, dim) => (*base, *dim),
-        _ => panic!("expect_array_type() called for non-array type")
+        Type::View(viewn) => match &**viewn {
+            Type::Array(base, dim) => (*base, *dim),
+            _ => panic!("expect_array_type() called for non-array type {:?}", value)
+        },
+        _ => panic!("expect_array_type() called for non-array type {:?}", value)
     }
 }
 
-pub fn gen_variables(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator<Item = (CudaType, CudaIdentifier)> {
-    let (base, dim_count) = match ty {
-        Type::Array(base, dim) => (gen_primitive_type(base, 1), *dim),
+pub fn gen_array_size_vars<'a>(pos: &TextPosition, name: &'a Name, ty: &Type) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
+    let (_, dim_count) = expect_array_type(ty);
+    (0..dim_count).map(move |d| (CudaType {
+        ptr_count: 0,
+        constant: false,
+        base: CudaPrimitiveType::Index
+    }, CudaIdentifier::ArraySizeVar(name.clone(), d)))
+}
+
+pub fn gen_array_size_exprs<'a>(expr: &'a Expression, ty: &Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
+    match expr {
+        Expression::Call(call) => panic!("gen_array_size_vars() currently accepts no call expressions, as builtin calls do not yield arrays, and user-defined calls should be extracted"),
+        Expression::Literal(lit) => panic!("currently, have no array literals"),
+        Expression::Variable(var) => match &var.identifier {
+            Identifier::BuiltIn(op) => panic!("currently, have no builting identifiers that have array type, got {}", op),
+            Identifier::Name(name) => gen_array_size_vars(expr.pos(), name, ty).map(|(ty, var)| (ty, CudaExpression::Identifier(var)))
+        }
+    }
+}
+
+pub fn gen_value_var(pos: &TextPosition, name: &Name, ty: &Type) -> (CudaType, CudaIdentifier) {
+    match ty {
+        Type::Array(base, dim) => (gen_primitive_ptr_type(base, 1), CudaIdentifier::ValueVar(name.clone())),
         Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
         Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
-        Type::Primitive(base) => (gen_primitive_type(base, 0), 0),
+        Type::Primitive(base) => (gen_primitive_ptr_type(base, 0), CudaIdentifier::ValueVar(name.clone())),
         Type::TestType => error_test_type(pos),
         Type::View(viewn) => match &**viewn {
-            Type::Array(base, dim) => (gen_primitive_type(base, 1), *dim),
+            Type::Array(base, dim) => (gen_primitive_ptr_type(base, 1), CudaIdentifier::ValueVar(name.clone())),
             Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
             Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
-            Type::Primitive(base) => (gen_primitive_type(base, 0), 0),
+            Type::Primitive(base) => (gen_primitive_ptr_type(base, 1), CudaIdentifier::ValueVar(name.clone())),
             Type::TestType => error_test_type(pos),
             Type::View(_) => error_nested_view(pos).throw()
         }
-    };
-    let var_copy = var.clone();
-    std::iter::once((base, CudaIdentifier::ValueVar(var.clone()))).chain(
-        (0..dim_count).map(move |d| (CudaType {
-            ptr_count: 0,
-            constant: true,
-            base: CudaPrimitiveType::Index
-        }, CudaIdentifier::ArraySizeVar(var_copy.clone(), d))))
+    }
 }
 
-fn gen_variables_as_view(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator<Item = (CudaType, CudaExpression)> {
+/// Generates a list of cuda identifiers that contain the data of the given variable with given type. For single-var-types,
+/// only one result item will be yielded. For each result identifier, also the cuda type of this identifier is yielded.
+/// 
+/// The cuda type is usable for e.g. local variables, so primitive types have a non-pointer type, and array size variables
+/// cannot be changed
+pub fn gen_variables<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
+    let value = gen_value_var(pos, var, ty);
+    let size_data = if ty.is_array() { Some(()) } else { None };
+    std::iter::once(value).chain(size_data.into_iter().flat_map(move |_| gen_array_size_vars(pos, var, ty)))
+}
+
+/// Same as gen_variables, except that this function yields only one identifier and throws on multi-var-types
+pub fn gen_variable(pos: &TextPosition, var: &Name, ty: &Type) -> (CudaType, CudaIdentifier) {
+    assert!(!is_mul_var_type(ty));
+    let mut iter = gen_variables(pos, var, ty);
+    let result = iter.next().unwrap();
+    debug_assert!(iter.next().is_none());
+    return result;
+}
+
+/// Generates a list of cuda expressions that evaluate to the data of the given variable. For single-var-types,
+/// only one result item will be yielded. For each result identifier, also the cuda type of this identifier is yielded.
+/// 
+/// The difference to gen_variables() is that here, all expressions evaluate to values that can be used to modify the value of 
+/// original variable, and the yielded types reflect that (i.e. they are pointers). Therefore, this result is usable 
+/// e.g. for parameters that are passed by reference.
+/// Array entries can be modified through the result of this function, but array sizes cannot. For real output parameters,
+/// consider gen_variables_as_output_params() instead.
+pub fn gen_variables_as_view<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
     gen_variables(pos, var, ty).enumerate().map(|(index, (mut ty, var))| {
         // TODO: make this more beautiful: only the value (not the dimension vars) get promoted to view
         if index == 0 && ty.ptr_count == 0 {
             ty.ptr_count = 1;
             (ty, CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(var))))
-        } else {
+        } else if index == 0 {
             (ty, CudaExpression::Identifier(var))
+        } else {
+            debug_assert!(ty.ptr_count == 0);
+            debug_assert!(ty.base == CudaPrimitiveType::Index);
+            (CudaType {
+                ptr_count: ty.ptr_count,
+                constant: true,
+                base: ty.base
+            }, CudaExpression::Identifier(var))
         }
     })
 }
 
-fn gen_variables_as_output_params(pos: &TextPosition, var: &Name, ty: &Type) -> impl Iterator<Item = (CudaType, CudaExpression)> {
+/// Generates a list of cuda expressions that evaluate to pointers on the data of the given variable. For single-var-types,
+/// only one result item will be yielded. For each result identifier, also the cuda type of this identifier is yielded.
+/// 
+/// The difference to gen_variables() is that this function yields expressions that can be used to modify and/or replace the
+/// value of the original variable.
+pub fn gen_variables_as_output_params<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
     gen_variables(pos, var, ty).map(|(ty, var)| (CudaType {
         base: ty.base,
-        constant: ty.constant,
+        constant: false,
         ptr_count: ty.ptr_count + 1
     }, CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(var)))))
 }
@@ -174,7 +232,8 @@ fn gen_builtin_function_call<'stack, 'ast: 'stack>(call: &FunctionCall, func: Bu
     })
 }
 
-fn gen_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, mut output_params: I, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaExpression, OutputError> 
+/// Generates a cuda function call expression matching the given function call, with the output_params optionally passed as output parameters
+pub fn gen_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, mut output_params: I, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaExpression, OutputError> 
     where I: Iterator<Item = CudaExpression>
 {
     match &call.function {
@@ -193,20 +252,22 @@ fn gen_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, mut output_pa
     }
 }
 
+/// Generates a cuda expression matching the given expression. Requires the result of the expression to be of a single-var-type
 pub fn gen_expression<'stack, 'ast: 'stack>(expr: &Expression, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaExpression, OutputError>  {
     match expr {
         Expression::Call(call) => gen_function_call(call, std::iter::empty(), context),
         Expression::Variable(var) => match &var.identifier {
             Identifier::BuiltIn(_) => unimplemented!(),
             Identifier::Name(name) => {
-                let mut result = gen_variables(expr.pos(), name, &context.calculate_var_type(name, expr.pos()));
+                let expr_type = context.calculate_var_type(name, expr.pos());
+                let mut result = gen_variables(expr.pos(), name, &expr_type);
                 let r = result.next().unwrap();
-                // if result contains more values, it is a multi-var-type, and should have been extracted earlier
+                // if result contains more values, it is a multi-var-type
                 assert!(result.next().is_none());
                 Ok(CudaExpression::Identifier(r.1))
             }
         },
-        Expression::Literal(lit) => Ok(CudaExpression::Literal(lit.value))
+        Expression::Literal(lit) => Ok(CudaExpression::IntLiteral(lit.value as i64))
     }
 }
 
@@ -218,7 +279,7 @@ fn gen_array_copy_assignment<'stack, 'ast: 'stack>(assignee: &Name, assignee_typ
         source: value,
         device: context.is_device_context(),
         length: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(assignee.clone(), 0)),
-        base_type: gen_primitive_type(&base_type, 0)
+        base_type: gen_primitive_ptr_type(&base_type, 0)
     }))
 }
 
@@ -265,10 +326,10 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(_pos: &TextPositio
     let declarations = std::iter::once(CudaVarDeclaration {
         var: CudaIdentifier::TmpVar,
         value: Some(CudaExpression::Nullptr),
-        var_type: gen_primitive_type(&base_type, 1)
+        var_type: gen_primitive_ptr_type(&base_type, 1)
     }).chain((0..dim).map(|d| CudaVarDeclaration {
         var: CudaIdentifier::TmpSizeVar(d),
-        value: Some(CudaExpression::Literal(0)),
+        value: Some(CudaExpression::IntLiteral(0)),
         var_type: CudaType {
             base: CudaPrimitiveType::Index,
             constant: false,

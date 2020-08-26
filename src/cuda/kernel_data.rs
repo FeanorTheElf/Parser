@@ -3,12 +3,10 @@ use super::super::analysis::symbol::*;
 use super::super::analysis::scope::*;
 use super::super::util::ref_eq::*;
 use super::super::language::backend::OutputError;
-use super::context::CudaContext;
 
 use std::borrow::Borrow;
 use std::hash::Hash;
-use std::collections::HashSet;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashSet, HashMap};
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum TargetLanguageFunction<'a> {
@@ -31,9 +29,39 @@ impl<'a> TargetLanguageFunction<'a> {
     }
 }
 
+pub struct SortByName;
+
+impl<'a, 'b, 'c> FnOnce<(&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)> for SortByName {
+    type Output = std::cmp::Ordering;
+
+    extern "rust-call" fn call_once(self, values: (&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)) -> std::cmp::Ordering {
+        self.call(values)
+    }
+}
+
+impl<'a, 'b, 'c> FnMut<(&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)> for SortByName {
+    extern "rust-call" fn call_mut(&mut self, values: (&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)) -> std::cmp::Ordering {
+        self.call(values)
+    }
+}
+
+impl<'a, 'b, 'c> Fn<(&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)> for SortByName {
+    extern "rust-call" fn call(&self, (lhs, rhs): (&'b &'a dyn SymbolDefinition, &'c &'a dyn SymbolDefinition)) -> std::cmp::Ordering {
+        lhs.get_name().name.cmp(&rhs.get_name().name)
+    }
+}
+
+impl std::default::Default for SortByName {
+    fn default() -> Self {
+        SortByName
+    }
+}
+
+pub type SortByNameSymbolDefinition<'a> = super::super::util::cmp::Comparing<&'a dyn SymbolDefinition, SortByName>;
+
 pub struct KernelInfo<'a> {
     pub pfor: &'a ParallelFor,
-    pub used_variables: HashSet<Ref<'a, dyn SymbolDefinition>>,
+    pub used_variables: BTreeSet<SortByNameSymbolDefinition<'a>>,
     pub called_from: TargetLanguageFunction<'a>,
     pub kernel_name: u32
 }
@@ -81,7 +109,7 @@ fn collect_calls_and_kernels<'a, 'b, 'ast, U>(block: &'ast Block,
             let mut kernel = KernelInfo {
                 pfor: pfor, 
                 called_from: parent,
-                used_variables: HashSet::new(),
+                used_variables: BTreeSet::new(),
                 kernel_name: unique_generator()
             };
             pfor.body.scan_top_level_expressions(&mut |e| add_variable_uses(e, &mut kernel, &this_scopes));
@@ -139,7 +167,7 @@ fn add_variable_uses<'a, 'b>(expr: &'a Expression,
         Expression::Literal(_) => {},
         Expression::Variable(var) => if let Identifier::Name(name) = &var.identifier {
             if let Some(definition) = out_of_kernel_variables.non_global_definitions().find(|def| def.0 == name) {
-                parent.used_variables.insert(Ref::from(*definition.1));
+                parent.used_variables.insert(SortByNameSymbolDefinition::from(*definition.1));
             } else {
                 // this symbol is defined in the kernel, so no param is required
             }
