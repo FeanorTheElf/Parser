@@ -6,6 +6,7 @@ const INTERNAL_ERROR: &'static str =
     "Compiler error should have been detected earlier, did all checkers run?";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+
 pub enum ErrorType {
     SyntaxError,
     UndefinedSymbol,
@@ -26,6 +27,7 @@ pub enum ErrorType {
 }
 
 #[derive(Debug, Clone)]
+
 pub struct CompileError {
     pos: TextPosition,
     msg: String,
@@ -34,6 +36,7 @@ pub struct CompileError {
 
 impl CompileError {
     pub fn new(pos: &TextPosition, msg: String, error_type: ErrorType) -> Self {
+
         CompileError {
             pos: pos.clone(),
             msg: msg,
@@ -42,16 +45,19 @@ impl CompileError {
     }
 
     pub fn get_position(&self) -> &TextPosition {
+
         &self.pos
     }
 
     pub fn throw(self) -> ! {
+
         panic!(format!("Error at {}: {}", self.pos, self.msg))
     }
 }
 
 impl Display for CompileError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+
         write!(f, "Error at {}: {}", self.pos, self.msg)
     }
 }
@@ -62,6 +68,7 @@ pub trait InternalErrorConvertable<T> {
 
 impl<T> InternalErrorConvertable<T> for Result<T, CompileError> {
     fn internal_error(self) -> T {
+
         self.expect(INTERNAL_ERROR)
     }
 }

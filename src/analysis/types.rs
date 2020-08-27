@@ -11,6 +11,7 @@ pub trait Typed {
 
 impl Typed for Variable {
     fn calculate_type(&self, context: &DefinitionScopeStack) -> Result<Type, CompileError> {
+
         Ok(context
             .get(&self.identifier.unwrap_name())
             .ok_or_else(|| error_undefined_symbol(&self))?
@@ -20,17 +21,22 @@ impl Typed for Variable {
 
 impl Typed for Expression {
     fn calculate_type(&self, context: &DefinitionScopeStack) -> Result<Type, CompileError> {
+
         Ok(match self {
             Expression::Call(call) => {
                 match &call.function.expect_identifier().unwrap().identifier {
                     Identifier::Name(name) => {
+
                         let function = context.get(name).ok_or_else(|| {
+
                             error_undefined_symbol(&call.function.expect_identifier().unwrap())
                         })?;
+
                         let return_type = match function.calc_type() {
                             Type::Function(_, return_type) => return_type,
                             ty => Err(error_not_callable(call.function.pos(), &ty))?,
                         };
+
                         return Ok(*return_type.clone().unwrap());
                     }
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionAdd)
@@ -40,7 +46,9 @@ impl Typed for Expression {
                         call.parameters[0].calculate_type(context)?.without_view()
                     }
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => {
+
                         let array_type = call.parameters[0].calculate_type(context)?;
+
                         match &array_type {
                             Type::Array(base_type, _) => {
                                 Type::View(Box::new(Type::Primitive(*base_type)))

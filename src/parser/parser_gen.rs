@@ -8,6 +8,7 @@ impl<A> Flatten for (A, ()) {
     type Flattened = (A,);
 
     fn flatten(self) -> Self::Flattened {
+
         (self.0,)
     }
 }
@@ -16,6 +17,7 @@ impl<A, B> Flatten for (A, (B,)) {
     type Flattened = (A, B);
 
     fn flatten(self) -> Self::Flattened {
+
         (self.0, (self.1).0)
     }
 }
@@ -24,6 +26,7 @@ impl<A, B, C> Flatten for (A, (B, C)) {
     type Flattened = (A, B, C);
 
     fn flatten(self) -> Self::Flattened {
+
         (self.0, (self.1).0, (self.1).1)
     }
 }
@@ -32,6 +35,7 @@ impl<A, B, C, D> Flatten for (A, (B, C, D)) {
     type Flattened = (A, B, C, D);
 
     fn flatten(self) -> Self::Flattened {
+
         (self.0, (self.1).0, (self.1).1, (self.1).2)
     }
 }
@@ -40,6 +44,7 @@ impl<A, B, C, D, E> Flatten for (A, (B, C, D, E)) {
     type Flattened = (A, B, C, D, E);
 
     fn flatten(self) -> Self::Flattened {
+
         (self.0, (self.1).0, (self.1).1, (self.1).2, (self.1).3)
     }
 }
@@ -191,6 +196,7 @@ macro_rules! impl_grammar_rule_parse_wrapper
  *   where V1, ..., Vn are names of types implementing parse and N is a type implementing
  *         Build<Vi::OutputType> for all Vi
  */
+
 macro_rules! impl_parse
 {
     ($result:ty := $($variant:ident)|*) => {
@@ -371,6 +377,7 @@ macro_rules! generate_grammar_rule_temporary_node
  * - 'N := V1 | ... | Vn'
  *   where V1, ..., Vn are names of types implementing parse
  */
+
 macro_rules! grammar_rule {
     (box $result:ident := $($tail:tt)*) => {
         generate_grammar_rule_temporary_node!(box $result := $($tail)*);

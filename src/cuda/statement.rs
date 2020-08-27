@@ -8,10 +8,13 @@ pub fn gen_return<'stack, 'ast: 'stack>(
     statement: &Return,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
+
     if is_generated_with_output_parameter(
         context.get_current_function().return_type.as_ref().as_ref(),
     ) {
+
         if let Some(return_type) = context.get_current_function().return_type.as_ref() {
+
             let assignments = std::iter::once(CudaAssignment {
                 assignee: CudaExpression::deref(CudaExpression::Identifier(
                     CudaIdentifier::OutputValueVar,
@@ -28,6 +31,7 @@ pub fn gen_return<'stack, 'ast: 'stack>(
                         value: expr,
                     }),
             );
+
             Ok(Box::new(CudaBlock {
                 statements: assignments
                     .map(|a| Box::new(a) as Box<dyn CudaStatement>)
@@ -37,9 +41,11 @@ pub fn gen_return<'stack, 'ast: 'stack>(
                     .collect::<Vec<_>>(),
             }))
         } else {
+
             Ok(Box::new(CudaReturn { value: None }))
         }
     } else {
+
         Ok(Box::new(CudaReturn {
             value: statement
                 .value
@@ -54,20 +60,25 @@ pub fn gen_localvardef<'a, 'stack, 'ast: 'stack>(
     statement: &'a LocalVariableDeclaration,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Box<dyn 'a + Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>>> {
+
     if is_mul_var_type(&statement.declaration.variable_type) {
+
         let declarations = gen_variables(
             statement.pos(),
             &statement.declaration.variable,
             &statement.declaration.variable_type,
         )
         .map(|(var_type, var)| {
+
             Ok(Box::new(CudaVarDeclaration {
                 var,
                 var_type,
                 value: None,
             }) as Box<dyn CudaStatement>)
         });
+
         if let Some(val) = &statement.value {
+
             let assignment = gen_assignment(
                 &Assignment {
                     assignee: Expression::Variable(Variable {
@@ -79,28 +90,34 @@ pub fn gen_localvardef<'a, 'stack, 'ast: 'stack>(
                 },
                 context,
             );
+
             return Box::new(declarations.chain(std::iter::once(assignment)));
         } else {
+
             return Box::new(declarations);
         }
     } else {
+
         let result = statement
             .value
             .as_ref()
             .map(|v| gen_expression(v, context))
             .transpose()
             .map(|value| {
+
                 let (ty, var) = one_variable(gen_variables(
                     statement.pos(),
                     &statement.declaration.variable,
                     &statement.declaration.variable_type,
                 ));
+
                 Box::new(CudaVarDeclaration {
                     var: var,
                     var_type: ty,
                     value: value,
                 }) as Box<dyn CudaStatement>
             });
+
         return Box::new(std::iter::once(result));
     }
 }
@@ -109,6 +126,7 @@ pub fn gen_label<'stack, 'ast: 'stack>(
     statement: &Label,
     _context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
+
     Ok(Box::new(CudaLabel {
         name: CudaIdentifier::ValueVar(statement.label.clone()),
     }))
@@ -118,6 +136,7 @@ pub fn gen_goto<'stack, 'ast: 'stack>(
     statement: &Goto,
     _context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
+
     Ok(Box::new(CudaGoto {
         target: CudaIdentifier::ValueVar(statement.target.clone()),
     }))

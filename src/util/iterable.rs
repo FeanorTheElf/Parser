@@ -1,5 +1,6 @@
 pub trait LifetimeIterable<'a, T: ?Sized + 'a> {
     fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a T> + 'a)>;
+
     fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut T> + 'a)>;
 }
 

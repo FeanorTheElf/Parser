@@ -3,6 +3,7 @@
 #include "device_launch_parameters.h"
 #include <iostream>
 #include <assert.h>
+#include "native.cuh"
 
 inline void validateCudaStatusOk(cudaError_t status, const char* file, int line) {
     if (status != cudaSuccess) {
@@ -45,13 +46,4 @@ __device__ __host__ inline T max(T head, Args... tail)
     } else {
         return tail_max;
     }
-}
-
-__device__ __host__ inline unsigned int len_(int* ptr, int len) {
-    return len;
-}
-
-__host__ inline void allocate1d_(int len, int** out, unsigned int* out_d0) {
-    *out_d0 = len;
-    checkCudaStatus(cudaMalloc(out, len * sizeof(int)));
 }

@@ -5,11 +5,13 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 #[derive(Debug)]
+
 pub struct Ref<'a, T: ?Sized> {
     data: RefEq<'a, T>,
 }
 
 #[derive(Debug)]
+
 pub struct RefEq<'a, T>
 where
     T: ?Sized,
@@ -19,6 +21,7 @@ where
 
 impl<'a, T: ?Sized> Clone for Ref<'a, T> {
     fn clone(&self) -> Self {
+
         *self
     }
 }
@@ -27,6 +30,7 @@ impl<'a, T: ?Sized> Copy for Ref<'a, T> {}
 
 impl<'a, T: ?Sized> Clone for RefEq<'a, T> {
     fn clone(&self) -> Self {
+
         *self
     }
 }
@@ -37,6 +41,7 @@ impl<'a, T: ?Sized> Deref for Ref<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
+
         &self.data.data
     }
 }
@@ -46,6 +51,7 @@ where
     T: ?Sized,
 {
     fn borrow(&self) -> &RefEq<'a, T> {
+
         &self.data
     }
 }
@@ -55,6 +61,7 @@ where
     T: ?Sized,
 {
     fn from(reference: &'a T) -> Self {
+
         Ref {
             data: RefEq { data: reference },
         }
@@ -66,6 +73,7 @@ where
     T: ?Sized,
 {
     fn from(reference: &'a T) -> Self {
+
         RefEq { data: reference }
     }
 }
@@ -75,6 +83,7 @@ where
     T: ?Sized,
 {
     fn eq(&self, other: &RefEq<'b, T>) -> bool {
+
         self.data as *const T as *const () == other.data as *const T as *const ()
     }
 }
@@ -86,14 +95,17 @@ where
     T: ?Sized,
 {
     fn hash<H: Hasher>(&self, h: &mut H) {
+
         (self.data as *const T as *const ()).hash(h);
     }
 }
+
 impl<'a, 'b, T> PartialEq<Ref<'b, T>> for Ref<'a, T>
 where
     T: ?Sized,
 {
     fn eq(&self, other: &Ref<'b, T>) -> bool {
+
         self.data == other.data
     }
 }
@@ -105,6 +117,7 @@ where
     T: ?Sized,
 {
     fn hash<H: Hasher>(&self, h: &mut H) {
+
         self.data.hash(h);
     }
 }

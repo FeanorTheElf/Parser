@@ -24,6 +24,7 @@ where
     F: FnMut(&FunctionCall, &Function) -> bool,
 {
     pub fn new(should_inline: F) -> Self {
+
         Inliner {
             extractor: Extractor::new(should_inline),
         }
@@ -36,30 +37,38 @@ where
     /// `defined_functions` must include any function definition that might be called from within this block
     /// (excluding builtin functions), and is used to retrieve the body to inline.
     ///
+
     fn inline_calls_in_block<'a, 'b>(
         &mut self,
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
+
         let statement_indices_to_inline =
             self.extractor
                 .extract_calls_in_block(block, parent_scopes, defined_functions);
+
         let scopes = parent_scopes.child_scope(block);
 
         {
+
             for extraction in statement_indices_to_inline.iter() {
+
                 let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
                     .dynamic_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
                     .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
+
                 block.statements[extraction.extracted_var_value_assignment_index] =
                     Box::new(init_block);
             }
         }
 
         for statement in &mut block.statements {
+
             for subblock in statement.iter_mut() {
+
                 self.inline_calls_in_block(subblock, &scopes, defined_functions);
             }
         }
@@ -68,14 +77,23 @@ where
     ///
     /// Traverses the program ast and inlines all calls that match the predicate.
     ///
+
     pub fn inline_calls_in_program(&mut self, program: &mut Program) {
+
         assert_ne!(program.items.len(), 0);
+
         let scopes = NameScopeStack::new(&program.items[..]);
+
         for i in 0..program.items.len() {
+
             program.items.swap(0, i);
+
             let (current, other) = program.items[..].split_at_mut(1);
+
             let child_scopes = scopes.child_scope(&*current[0]);
+
             if let Some(body) = &mut current[0].body {
+
                 self.inline_calls_in_block(body, &child_scopes, other);
             }
         }
@@ -87,15 +105,18 @@ where
 /// and inlines the call to `func`. The return value is a block containing the inlined function
 /// including the assignment to `var` instead of a return statement.
 ///
+
 fn inline_single_function_call(
     declaration: &mut LocalVariableDeclaration,
     defined_functions: &DefinedFunctions,
     scopes: &NameScopeStack,
 ) -> Block {
+
     let call = match std::mem::replace(&mut declaration.value, None) {
         Some(Expression::Call(call)) => call,
         _ => panic!("Expected extract_calls_in_expr to generate only LocalVariableDeclaration that are initialized with a function call result")
     };
+
     let definition =
         match find_function_definition(&call.function, defined_functions).internal_error() {
             FunctionDefinition::UserDefined(def) => def,
@@ -103,8 +124,11 @@ fn inline_single_function_call(
                 panic!("Cannot inline builtin function {}", builtin)
             }
         };
+
     let pos = call.pos().clone();
+
     let mut rename_disjunct = scopes.rename_disjunct();
+
     let mut rename_mapping: HashMap<Name, Name> = HashMap::new();
 
     let mut result_statements: Vec<Box<dyn Statement>> = inline_parameter_passing(
@@ -117,11 +141,13 @@ fn inline_single_function_call(
     .collect();
 
     let return_label_name: Name = rename_disjunct(definition.identifier.clone());
+
     let mut body = definition
         .body
         .as_ref()
         .expect("Cannot inline native function")
         .clone();
+
     process_inlined_function_body(
         &mut body,
         &declaration.declaration.variable,
@@ -129,12 +155,14 @@ fn inline_single_function_call(
         &mut rename_disjunct,
         &mut rename_mapping,
     );
+
     let return_label = Label {
         pos: pos.clone(),
         label: return_label_name,
     };
 
     result_statements.push(Box::new(body));
+
     result_statements.push(Box::new(return_label));
 
     return Block {
@@ -154,13 +182,19 @@ where
     I: Iterator<Item = Expression> + 'a,
     J: Iterator<Item = &'a Declaration> + 'a,
 {
+
     given_params
         .zip(formal_params)
         .map(move |(given_param, formal_param)| {
+
             let param_name = rename_disjunct(formal_param.variable.clone());
+
             rename_mapping.insert(formal_param.variable.clone(), param_name.clone());
+
             let param_type = formal_param.variable_type.clone();
+
             let param_value = given_param;
+
             let param_decl = LocalVariableDeclaration {
                 declaration: Declaration {
                     pos: param_value.pos().clone(),
@@ -169,11 +203,13 @@ where
                 },
                 value: Some(param_value),
             };
+
             return param_decl;
         })
 }
 
 fn to_statement<T: Statement>(value: T) -> Box<dyn Statement> {
+
     Box::new(value)
 }
 
@@ -186,8 +222,11 @@ fn process_inlined_function_body<F>(
 ) where
     F: FnMut(Name) -> Name,
 {
+
     for statement in &mut block.statements {
+
         for subblock in statement.iter_mut() {
+
             process_inlined_function_body(
                 subblock,
                 result_variable_name,
@@ -196,25 +235,33 @@ fn process_inlined_function_body<F>(
                 rename_mapping,
             );
         }
+
         for expression in statement.iter_mut() {
+
             recursive_rename_variables(expression, rename_disjunct, rename_mapping);
         }
+
         if statement.dynamic().is::<Return>() {
+
             take_mut::take(statement, |statement| {
+
                 transform_inlined_return_statement(statement, result_variable_name, return_label)
             });
         } else if let Some(declaration) = statement
             .dynamic_mut()
             .downcast_mut::<LocalVariableDeclaration>()
         {
+
             declaration.declaration.variable = rename_identifier(
                 &declaration.declaration.variable,
                 rename_disjunct,
                 rename_mapping,
             );
         } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
+
             goto.target = rename_identifier(&goto.target, rename_disjunct, rename_mapping);
         } else if let Some(label) = statement.dynamic_mut().downcast_mut::<Label>() {
+
             label.label = rename_identifier(&label.label, rename_disjunct, rename_mapping);
         }
     }
@@ -225,13 +272,18 @@ fn transform_inlined_return_statement(
     result_var: &Name,
     return_label: &Name,
 ) -> Box<dyn Statement> {
+
     let return_statement = statement.dynamic_box().downcast::<Return>().unwrap();
+
     let pos = return_statement.pos().clone();
+
     let mut result = Box::new(Block {
         pos: pos.clone(),
         statements: vec![],
     });
+
     if let Some(return_value) = return_statement.value {
+
         let assign_return_value = Assignment {
             pos: pos.clone(),
             assignee: Expression::Variable(Variable {
@@ -240,13 +292,17 @@ fn transform_inlined_return_statement(
             }),
             value: return_value,
         };
+
         result.statements.push(Box::new(assign_return_value));
     }
+
     let jump_out = Goto {
         pos: pos,
         target: return_label.clone(),
     };
+
     result.statements.push(Box::new(jump_out));
+
     return result;
 }
 
@@ -257,16 +313,21 @@ fn recursive_rename_variables<F>(
 ) where
     F: FnMut(Name) -> Name,
 {
+
     match expr {
         Expression::Call(call) => {
+
             recursive_rename_variables(&mut call.function, rename_disjunct, rename_mapping);
+
             for param in &mut call.parameters {
+
                 recursive_rename_variables(param, rename_disjunct, rename_mapping);
             }
         }
         Expression::Literal(_) => {}
         Expression::Variable(var) => {
             if let Identifier::Name(name) = &mut var.identifier {
+
                 *name = rename_identifier(&name, rename_disjunct, rename_mapping);
             }
         }
@@ -281,11 +342,16 @@ fn rename_identifier<F>(
 where
     F: FnMut(Name) -> Name,
 {
+
     if let Some(replace) = rename_mapping.get(&name) {
+
         return replace.clone();
     } else {
+
         let replace = rename_disjunct(name.clone());
+
         rename_mapping.insert(name.clone(), replace.clone());
+
         return replace;
     }
 }
@@ -296,15 +362,20 @@ use super::super::lexer::lexer::{fragment_lex, lex};
 use super::super::parser::Parser;
 
 #[test]
+
 fn test_inline() {
+
     let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[]);
+
     let predefined_variables = [
         Name::l("b"),
         Name::l("c"),
         Name::l("other_func"),
         Name::l("some_func"),
     ];
+
     let scope_stack = parent_scope_stack.child_scope(&predefined_variables as &[Name]);
+
     let mut test = Inliner::new(|_, _| true);
 
     let mut block = Block::parse(&mut fragment_lex(
@@ -393,11 +464,14 @@ fn test_inline() {
     }",
     ))
     .unwrap();
+
     assert!(&expected == &block);
 }
 
 #[test]
+
 fn test_process_inline_body() {
+
     let mut body = Block::parse(&mut fragment_lex(
         "
     {
@@ -418,9 +492,13 @@ fn test_process_inline_body() {
     }",
     ))
     .unwrap();
+
     let mut rename_mapping = HashMap::new();
+
     let parent_scopes = NameScopeStack::new(&[]);
+
     let scopes = parent_scopes.child_scope(&[Name::l("result")] as &[Name]);
+
     process_inlined_function_body(
         &mut body,
         &Name::l("result"),
@@ -455,22 +533,28 @@ fn test_process_inline_body() {
     }",
     ))
     .unwrap();
+
     assert!(&expected == &body);
 
     let mut expected_mapping = HashMap::new();
+
     expected_mapping.insert(
         Name::new("result".to_owned(), 0),
         Name::new("result".to_owned(), 1),
     );
+
     expected_mapping.insert(
         Name::new("result".to_owned(), 1),
         Name::new("result".to_owned(), 2),
     );
+
     assert_eq!(expected_mapping, rename_mapping);
 }
 
 #[test]
+
 fn test_inline_all() {
+
     let mut test = Inliner::new(|_, _| true);
 
     let mut program = Program::parse(&mut lex("
@@ -487,6 +571,7 @@ fn test_inline_all() {
         }
     "))
     .unwrap();
+
     test.inline_calls_in_program(&mut program);
 
     let expected = Program::parse(&mut lex("
@@ -544,5 +629,6 @@ fn test_inline_all() {
         }
     "))
     .unwrap();
+
     assert!(&expected == &program);
 }

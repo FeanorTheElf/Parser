@@ -11,9 +11,12 @@ pub fn find_function_definition<'b>(
     expr: &Expression,
     all_functions: &'b DefinedFunctions,
 ) -> Result<FunctionDefinition<'b>, CompileError> {
+
     if let Expression::Variable(identifier) = expr {
+
         match &identifier.identifier {
             Identifier::Name(name) => {
+
                 let found_function =
                     all_functions
                         .iter()
@@ -23,6 +26,7 @@ pub fn find_function_definition<'b>(
                             format!("Could not find definition of function {}", name),
                             ErrorType::UndefinedSymbol,
                         ));
+
                 Ok(FunctionDefinition::UserDefined(found_function?))
             }
             Identifier::BuiltIn(builtin_identifier) => {
@@ -30,6 +34,7 @@ pub fn find_function_definition<'b>(
             }
         }
     } else {
+
         panic!("Cannot inline calls to functions that are the result of an expression");
     }
 }

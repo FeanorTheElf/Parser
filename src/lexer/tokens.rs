@@ -5,6 +5,7 @@ use std::string::String;
 use std::vec::Vec;
 
 #[derive(Debug, PartialEq, Eq)]
+
 pub enum Token {
     Literal(i32),
     Identifier(String),
@@ -57,6 +58,7 @@ pub enum Token {
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+
         match self {
             Token::Literal(ref literal) => write!(f, "'{}'", literal),
             Token::Identifier(ref identifier) => write!(f, "'{}'", identifier),
@@ -110,6 +112,7 @@ impl std::fmt::Display for Token {
 }
 
 #[derive(Debug)]
+
 pub struct PosToken {
     token: Token,
     pos: TextPosition,
@@ -117,6 +120,7 @@ pub struct PosToken {
 
 impl PosToken {
     pub fn create(token: Token, pos: TextPosition) -> Self {
+
         PosToken {
             token: token,
             pos: pos,
@@ -125,25 +129,31 @@ impl PosToken {
 }
 
 #[derive(Debug)]
+
 pub struct Stream {
     pub data: Vec<PosToken>,
 }
 
 impl Stream {
     pub fn create(tokens: Vec<PosToken>) -> Stream {
+
         Stream { data: tokens }
     }
 
     pub fn peek(&self) -> Option<&Token> {
+
         self.data.last().map(|t| &t.token)
     }
 
     pub fn next(&mut self) -> Token {
+
         self.data.pop().unwrap().token
     }
 
     pub fn next_literal(&mut self) -> Result<i32, CompileError> {
+
         let pos = self.pos().clone();
+
         match self.next() {
             Token::Literal(lit) => Ok(lit),
             _value => Err(CompileError::new(
@@ -155,7 +165,9 @@ impl Stream {
     }
 
     pub fn next_ident(&mut self) -> Result<String, CompileError> {
+
         let pos = self.pos().clone();
+
         match self.next() {
             Token::Identifier(id) => Ok(id),
             _value => Err(CompileError::new(
@@ -167,10 +179,13 @@ impl Stream {
     }
 
     pub fn skip_next(&mut self, token: &Token) -> Result<&mut Self, CompileError> {
+
         let pos = self.pos().clone();
+
         match self.data.pop() {
             Some(value) => {
                 if *token != value.token {
+
                     Err(CompileError::new(
                         &pos,
                         format!(
@@ -180,6 +195,7 @@ impl Stream {
                         ErrorType::SyntaxError,
                     ))
                 } else {
+
                     Ok(self)
                 }
             }
@@ -192,10 +208,12 @@ impl Stream {
     }
 
     pub fn is_next(&self, token: &Token) -> bool {
+
         self.peek().is_some() && self.peek().unwrap() == token
     }
 
     pub fn is_next_literal(&self) -> bool {
+
         match self.peek() {
             Some(Token::Literal(_val)) => true,
             _ => false,
@@ -203,6 +221,7 @@ impl Stream {
     }
 
     pub fn is_next_identifier(&self) -> bool {
+
         match self.peek() {
             Some(Token::Identifier(_name)) => true,
             _ => false,
@@ -210,6 +229,7 @@ impl Stream {
     }
 
     pub fn pos(&self) -> &TextPosition {
+
         &self.data.last().unwrap().pos
     }
 }
@@ -218,6 +238,7 @@ impl Iterator for Stream {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
+
         self.data.pop().map(|t| t.token)
     }
 }

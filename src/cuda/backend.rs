@@ -22,42 +22,59 @@ fn topological_sort<'ast>(
     functions: &HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
     kernels: &HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
 ) {
+
     for _i in 0..(functions.len() + kernels.len()) {
+
         for (func, info) in functions {
+
             // update topological sorting
             let current_index = function_kernels_order
                 .iter()
                 .position(|f| *f == TargetLanguageFunction::Function(*func))
                 .unwrap();
+
             let mut new_index = current_index;
+
             for (index, potential_caller) in function_kernels_order
                 .iter()
                 .enumerate()
                 .skip(current_index)
             {
+
                 if info.called_from.contains(potential_caller) {
+
                     new_index = index;
                 }
             }
+
             function_kernels_order.remove(current_index);
+
             function_kernels_order.insert(new_index, TargetLanguageFunction::Function(*func));
         }
+
         for (kernel, info) in kernels {
+
             let current_index = function_kernels_order
                 .iter()
                 .position(|f| *f == TargetLanguageFunction::Kernel(*kernel))
                 .unwrap();
+
             let mut new_index = current_index;
+
             for (index, potential_caller) in function_kernels_order
                 .iter()
                 .enumerate()
                 .skip(current_index)
             {
+
                 if info.called_from == *potential_caller {
+
                     new_index = index;
                 }
             }
+
             function_kernels_order.remove(current_index);
+
             function_kernels_order.insert(new_index, TargetLanguageFunction::Kernel(*kernel));
         }
     }
@@ -65,6 +82,7 @@ fn topological_sort<'ast>(
 
 impl CudaBackend {
     pub fn new() -> Self {
+
         CudaBackend {
             header_template: None,
         }
@@ -73,15 +91,21 @@ impl CudaBackend {
 
 impl Backend for CudaBackend {
     fn init(&mut self) -> Result<(), OutputError> {
+
         self.header_template = Some(fs::read_to_string("./cuda/template.cuh")?);
+
         Ok(())
     }
 
     fn transform_program(&mut self, program: &mut Program) -> Result<(), OutputError> {
+
         let mut extractor = extraction::Extractor::new(|_, function| {
+
             is_generated_with_output_parameter(function.return_type.as_ref().as_ref())
         });
+
         extractor.extract_calls_in_program(program);
+
         return Ok(());
     }
 
@@ -90,11 +114,16 @@ impl Backend for CudaBackend {
         program: &'ast Program,
         out: &mut CodeWriter,
     ) -> Result<(), OutputError> {
+
         let mut counter: u32 = 0;
+
         let mut kernel_id_generator = || {
+
             counter += 1;
+
             return counter;
         };
+
         let (mut functions, kernels) = collect_functions(program, &mut kernel_id_generator)?;
 
         let exported_function = *functions
@@ -102,6 +131,7 @@ impl Backend for CudaBackend {
             .find(|(func, _)| func.identifier.name.as_str() == "main")
             .unwrap()
             .0;
+
         functions
             .get_mut(&exported_function)
             .unwrap()
@@ -109,16 +139,23 @@ impl Backend for CudaBackend {
 
         // TODO: implement less cheap topological sort
         let mut function_kernels_order: Vec<TargetLanguageFunction<'ast>> = Vec::new();
+
         for (func, _) in functions.iter() {
+
             function_kernels_order.push(TargetLanguageFunction::Function(*func));
         }
+
         for (kernel, _) in kernels.iter() {
+
             function_kernels_order.push(TargetLanguageFunction::Kernel(*kernel));
         }
+
         topological_sort(&mut function_kernels_order, &functions, &kernels);
 
         for func in &function_kernels_order {
+
             if let TargetLanguageFunction::Function(func) = func {
+
                 let called_from_host = functions
                     .get(&RefEq::from(&**func))
                     .unwrap()
@@ -129,6 +166,7 @@ impl Backend for CudaBackend {
                         TargetLanguageFunction::Function(f) => Some(f),
                     })
                     .any(|f| functions.get(&RefEq::from(&**f)).unwrap().called_from_host);
+
                 let called_from_device = functions
                     .get(&RefEq::from(&**func))
                     .unwrap()
@@ -143,8 +181,11 @@ impl Backend for CudaBackend {
                                 .called_from_device
                         }
                     });
+
                 let mut info = functions.get_mut(&RefEq::from(&**func)).unwrap();
+
                 info.called_from_host |= called_from_host;
+
                 info.called_from_device |= called_from_device;
             }
         }
@@ -156,14 +197,19 @@ impl Backend for CudaBackend {
         write!(out, "{}", self.header_template.as_ref().unwrap())?;
 
         let mut funcs = function_kernels_order.iter().peekable();
+
         while let Some(func) = funcs.next() {
+
             match func {
                 TargetLanguageFunction::Function(func) => {
+
                     if let Some(f) = gen_function(&**func, &mut context)? {
+
                         f.write(out)?;
                     }
                 }
                 TargetLanguageFunction::Kernel(kernel) => {
+
                     gen_kernel(
                         &**kernel,
                         kernels.get(&RefEq::from(&**kernel)).unwrap(),
@@ -188,7 +234,9 @@ use super::super::util::ref_eq::*;
 use std::iter::FromIterator;
 
 #[test]
+
 fn test_topological_sort() {
+
     let mut program = Program::parse(&mut lex("
     fn foo(a: int,): int {
         return bar(a,) + 1;
@@ -203,13 +251,21 @@ fn test_topological_sort() {
     }
     "))
     .unwrap();
+
     let mut output = "".to_owned();
+
     let mut target = StringWriter::new(&mut output);
+
     let mut writer = CodeWriter::new(&mut target);
+
     let mut backend = CudaBackend::new();
+
     backend.init().unwrap();
+
     backend.transform_program(&mut program).unwrap();
+
     backend.generate(&program, &mut writer).unwrap();
+
     assert_eq!(
         backend.header_template.unwrap()
             + "
