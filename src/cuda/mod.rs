@@ -6,3 +6,6 @@ mod kernel_data;
 mod function;
 
 pub mod backend;
+
+#[cfg(test)]
+mod integration_tests;

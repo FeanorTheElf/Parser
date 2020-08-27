@@ -1,27 +1,35 @@
 use super::super::language::prelude::*;
+use super::type_error::*;
 use super::scope::*;
 
 pub trait Typed {
-    fn calculate_type<'a, 'b>(&self, context: &DefinitionScopeStack<'a, 'b>) -> Type;
+    fn calculate_type<'a, 'b>(&self, context: &DefinitionScopeStack<'a, 'b>) -> Result<Type, CompileError>;
 }
 
-impl Typed for Name {
-    fn calculate_type(&self, context: &DefinitionScopeStack) -> Type {
-        context.get(self).expect(format!("Expect {} to be defined", self).as_str()).calc_type()
+impl Typed for Variable {
+    fn calculate_type(&self, context: &DefinitionScopeStack) -> Result<Type, CompileError> {
+        Ok(context.get(&self.identifier.unwrap_name()).ok_or_else(|| error_undefined_symbol(&self))?.calc_type())
     }
 }
 
 impl Typed for Expression {
-    fn calculate_type(&self, context: &DefinitionScopeStack) -> Type {
-        match self {
-            Expression::Call(call) => match &call.function.expect_identifier().unwrap() {
-                Identifier::Name(name) => context.get(name).unwrap().dynamic().downcast_ref::<Function>().unwrap().return_type.as_ref().unwrap().clone(),
+    fn calculate_type(&self, context: &DefinitionScopeStack) -> Result<Type, CompileError> {
+        Ok(match self {
+            Expression::Call(call) => match &call.function.expect_identifier().unwrap().identifier {
+                Identifier::Name(name) => {
+                    let function = context.get(name).ok_or_else(|| error_undefined_symbol(&call.function.expect_identifier().unwrap()))?;
+                    let return_type = match function.calc_type() {
+                        Type::Function(_, return_type) => return_type,
+                        ty => Err(error_not_callable(call.function.pos(), &ty))?
+                    };
+                    return Ok(*return_type.clone().unwrap());
+                },
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionAdd)
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionMul) 
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryDiv) 
-                    | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryNeg) => call.parameters[0].calculate_type(context),
+                    | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryNeg) => call.parameters[0].calculate_type(context)?.without_view(),
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => {
-                    let array_type = call.parameters[0].calculate_type(context);
+                    let array_type = call.parameters[0].calculate_type(context)?;
                     match array_type {
                         Type::Array(base_type, _) => Type::View(Box::new(Type::Primitive(base_type))),
                         _ => CompileError::new(call.pos(), format!("Cannot index access on {}", array_type), ErrorType::TypeError).throw()
@@ -30,10 +38,7 @@ impl Typed for Expression {
                 _ => unimplemented!()
             },
             Expression::Literal(_) => Type::Primitive(PrimitiveType::Int),
-            Expression::Variable(var) => match &var.identifier {
-                Identifier::Name(name) => name.calculate_type(context),
-                Identifier::BuiltIn(_) => unimplemented!()
-            }
-        }
+            Expression::Variable(var) => var.calculate_type(context)?
+        })
     }
 }

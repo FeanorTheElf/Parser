@@ -9,10 +9,12 @@ use super::function::*;
 use super::context::{CudaContext, CudaContextImpl};
 use super::super::util::ref_eq::*;
 
+use std::env;
+use std::fs;
 use std::collections::{HashSet, HashMap};
 
 pub struct CudaBackend {
-
+    header_template: Option<String>
 }
 
 fn topological_sort<'ast>(function_kernels_order: &mut Vec<TargetLanguageFunction<'ast>>, functions: &HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, kernels: &HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>) {
@@ -44,9 +46,18 @@ fn topological_sort<'ast>(function_kernels_order: &mut Vec<TargetLanguageFunctio
     }
 }
 
+impl CudaBackend {
+    pub fn new() -> Self {
+        CudaBackend {
+            header_template: None
+        }
+    }
+}
+
 impl Backend for CudaBackend {
     
     fn init(&mut self) -> Result<(), OutputError> {
+        self.header_template = Some(fs::read_to_string("./cuda/template.cuh")?);
         Ok(())
     }
 
@@ -92,6 +103,8 @@ impl Backend for CudaBackend {
         function_kernels_order.reverse();
 
         let mut context = CudaContextImpl::new(program, &functions, &kernels);
+
+        write!(out, "{}", self.header_template.as_ref().unwrap())?;
 
         let mut funcs = function_kernels_order.iter().peekable();
         while let Some(func) = funcs.next() {
@@ -140,20 +153,20 @@ fn test_topological_sort() {
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    let mut backend = CudaBackend{};
+    let mut backend = CudaBackend::new();
     backend.init().unwrap();
     backend.transform_program(&mut program).unwrap();
     backend.generate(&program, &mut writer).unwrap();
-    assert_eq!(
-"__host__ int bar_(int a_) {
+    assert_eq!(backend.header_template.unwrap() + 
+"__host__ inline int bar_(int a_) {
     return a_ + 1;
 }
 
-__host__ int foo_(int a_) {
+__host__ inline int foo_(int a_) {
     return bar_(a_) + 1;
 }
 
-__host__ int main_(int x_) {
+__host__ inline int main_(int x_) {
     return foo_(bar_(x_)) + 1;
 }", output);
 }

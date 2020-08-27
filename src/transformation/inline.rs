@@ -42,7 +42,7 @@ where
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
-        let mut statement_indices_to_inline = self.extractor.extract_calls_in_block(block, parent_scopes, defined_functions);
+        let statement_indices_to_inline = self.extractor.extract_calls_in_block(block, parent_scopes, defined_functions);
         let scopes = parent_scopes.child_scope(block);
 
         {

@@ -183,6 +183,7 @@ pub enum CudaExpression {
     Disjunction(Vec<CudaExpression>),
     Index(CudaIdentifier, Box<CudaExpression>),
     AddressOf(Box<CudaExpression>),
+    Deref(Box<CudaExpression>),
     Nullptr,
     // target index (for given dimension), 1d source index, strides, offsets
     MultiDimIndexCalculation(u32, Box<CudaExpression>, Vec<CudaExpression>, Vec<CudaExpression>),
@@ -210,6 +211,13 @@ impl CudaExpression {
             CudaExpression::RatLiteral(num, den) => *num == *den as i64,
             CudaExpression::Product(factors) => factors.len() == 0,
             _ => false
+        }
+    }
+
+    pub fn deref(target: CudaExpression) -> CudaExpression {
+        match target {
+            CudaExpression::AddressOf(result) => *result,
+            target => CudaExpression::Deref(Box::new(target))
         }
     }
 }
@@ -318,6 +326,7 @@ impl CudaExpression {
             CudaExpression::Product(_) => 1,
             CudaExpression::RatLiteral(_, _) => 1,
             CudaExpression::AddressOf(_) => 2,
+            CudaExpression::Deref(_) => 2,
             CudaExpression::Index(_, _) => 3,
             CudaExpression::Identifier(_) => i32::MAX,
             CudaExpression::IntLiteral(_) => i32::MAX,
@@ -399,6 +408,10 @@ impl CudaExpression {
                 write!(out, "&")?;
                 expr.write_expression(priority, out)?;
             },
+            CudaExpression::Deref(expr) => {
+                write!(out, "*")?;
+                expr.write_expression(priority, out)?;
+            },
             CudaExpression::Nullptr => write!(out, "nullptr")?,
             CudaExpression::MultiDimIndexCalculation(dimension, index, strides, offsets)  => {
                 // calculate the coordinates as queued thread from the one-dimensional index
@@ -441,7 +454,7 @@ impl CudaExpression {
                 write!(out, ")")?;
             },
             CudaExpression::IndexFloorDiv(divident, divisor) => {
-                write!(out, "static_cast<int>((")?;
+                write!(out, "(")?;
                 divident.write_expression(priority, out)?;
                 write!(out, " - 1) / ")?;
                 divisor.write_expression(CudaExpression::Product(vec![]).get_priority(), out)?;
@@ -497,6 +510,7 @@ impl Writable for CudaFunction {
         if self.device {
             write!(out, "__device__ ")?;
         }
+        write!(out, "inline ")?;
         self.return_type.write(out)?;
         write!(out, " ")?;
         self.name.write(out)?;

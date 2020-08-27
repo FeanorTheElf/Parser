@@ -35,3 +35,7 @@ pub fn error_rvalue_not_assignable(pos: &TextPosition) -> CompileError {
 pub fn error_return_view(pos: &TextPosition) -> CompileError {
     CompileError::new(pos, format!("The function returns a view, which is illegal, as views could reference values owned by the function that are deleted when the function returns"), ErrorType::ViewReturnType)
 }
+
+pub fn error_undefined_symbol(var: &Variable) -> CompileError {
+    CompileError::new(var.pos(), format!("Undefined symbol: {}", var.identifier.unwrap_name()), ErrorType::UndefinedSymbol)
+}

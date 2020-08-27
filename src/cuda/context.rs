@@ -3,7 +3,7 @@ use super::super::analysis::scope::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;
 use super::super::analysis::types::Typed;
-use super::super::language::backend::*;
+use super::super::language::backend::OutputError;
 
 use std::collections::HashMap;
 
@@ -20,9 +20,8 @@ pub trait CudaContext<'data, 'ast: 'data> {
     fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'data, 'ast>;
 
     fn calculate_type(&self, expr: &Expression) -> Type {
-        expr.calculate_type(self.get_scopes())
+        expr.calculate_type(self.get_scopes()).internal_error()
     }
-
 }
 
 impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {

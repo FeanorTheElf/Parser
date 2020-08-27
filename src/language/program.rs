@@ -130,14 +130,14 @@ impl Block {
 }
 
 impl Expression {
-    pub fn expect_identifier(&self) -> Result<&Identifier, CompileError> {
+    pub fn expect_identifier(&self) -> Result<&Variable, CompileError> {
         match self {
             Expression::Call(_) => Err(CompileError::new(
                 self.pos(),
                 format!("Only a variable is allowed here."),
                 ErrorType::VariableRequired,
             )),
-            Expression::Variable(var) => Ok(&var.identifier),
+            Expression::Variable(var) => Ok(&var),
             Expression::Literal(_) => Err(CompileError::new(
                 self.pos(),
                 format!("Only a variable is allowed here."),

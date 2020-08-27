@@ -122,7 +122,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo
         let array_type = context.calculate_type(&access_pattern.array);
         let (_, dim) = expect_array_type(&array_type);
         array_dim_counts.push(dim);
-        let size_exprs = gen_array_size_exprs(&access_pattern.array, &array_type).collect::<Vec<_>>();
+        let size_exprs = gen_simple_expr_array_size(&access_pattern.array, &array_type).collect::<Vec<_>>();
         assert_eq!(size_exprs.len() as u32, dim);
         for d in 0..dim {
             let value = if d + 1 == dim {
@@ -399,6 +399,6 @@ fn test_gen_kernel_call() {
     const unsigned int array0shape0 = a_d0;
     const unsigned int kernel0o0 = round(min(array0shape0, 0));
     const unsigned int kernel0d0 = round(max(array0shape0, 0)) - kernel0o0;
-    kernel0 <<< dim3(static_cast<int>((kernel0d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, &b_, kernel0d0, kernel0o0);
+    kernel0 <<< dim3((kernel0d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, &b_, kernel0d0, kernel0o0);
 }", output);
 }

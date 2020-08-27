@@ -1,6 +1,5 @@
 use super::super::language::prelude::*;
 use super::super::language::backend::OutputError;
-use super::super::analysis::type_error::*;
 use super::expression::*;
 use super::context::CudaContext;
 use super::ast::*;
@@ -10,8 +9,8 @@ pub fn gen_return<'stack, 'ast: 'stack>(statement: &Return, context: &mut dyn Cu
         if let Some(return_type) = context.get_current_function().return_type.as_ref() {
             let assignments = std::iter::once(CudaAssignment {
                 assignee: CudaExpression::Identifier(CudaIdentifier::OutputValueVar),
-                value: gen_value_expr(statement.value.as_ref().unwrap(), return_type).1
-            }).chain(gen_array_size_exprs(statement.value.as_ref().unwrap(), &return_type).enumerate().map(|(dim, (_ty, expr))| CudaAssignment {
+                value: gen_simple_expr(statement.value.as_ref().unwrap(), return_type).1
+            }).chain(gen_simple_expr_array_size(statement.value.as_ref().unwrap(), &return_type).enumerate().map(|(dim, (_ty, expr))| CudaAssignment {
                 assignee: CudaExpression::Identifier(CudaIdentifier::OutputArraySizeVar(dim as u32)),
                 value: expr
             }));
@@ -54,7 +53,7 @@ pub fn gen_localvardef<'a, 'stack, 'ast: 'stack>(statement: &'a LocalVariableDec
         }
     } else {
         let result = statement.value.as_ref().map(|v| gen_expression(v, context)).transpose().map(|value| {
-            let (ty, var) = gen_variable(statement.pos(), &statement.declaration.variable, &statement.declaration.variable_type);
+            let (ty, var) = one_variable(gen_variables(statement.pos(), &statement.declaration.variable, &statement.declaration.variable_type));
             Box::new(CudaVarDeclaration {
                 var: var,
                 var_type: ty,
