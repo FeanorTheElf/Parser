@@ -1,7 +1,7 @@
 use super::super::language::prelude::*;
 
 pub fn error_jump_label_var_type(pos: &TextPosition) -> CompileError {
-    CompileError::new(pos, format!("JumpLabel not valid as variable or parameter type"), ErrorType::TypeError)
+    CompileError::new(pos, format!("JumpLabel not valid as variable, parameter or return type"), ErrorType::TypeError)
 }
 
 pub fn error_test_type(_pos: &TextPosition) -> ! {
@@ -30,4 +30,8 @@ pub fn error_not_indexable_buildin_identifier(pos: &TextPosition, builtin_identi
 
 pub fn error_rvalue_not_assignable(pos: &TextPosition) -> CompileError {
     CompileError::new(pos, format!("Assignments to RValues are illegal"), ErrorType::RValueAssignment)
+}
+
+pub fn error_return_view(pos: &TextPosition) -> CompileError {
+    CompileError::new(pos, format!("The function returns a view, which is illegal, as views could reference values owned by the function that are deleted when the function returns"), ErrorType::ViewReturnType)
 }

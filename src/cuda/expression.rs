@@ -1,5 +1,5 @@
 use super::super::language::prelude::*;
-use super::super::language::backend::OutputError;
+use super::super::language::backend::*;
 use super::super::analysis::type_error::*;
 use super::context::CudaContext;
 use super::ast::*;
@@ -16,8 +16,10 @@ pub fn is_mul_var_type(ty: &Type) -> bool {
     }
 }
 
-pub fn is_generated_with_output_parameter(return_type: Option<&Box<Type>>) -> bool {
-    return_type.map(|ty| &**ty).map(is_mul_var_type).unwrap_or(false)
+pub fn is_generated_with_output_parameter<T>(return_type: Option<T>) -> bool 
+    where T: std::ops::Deref, T::Target: std::ops::Deref<Target = Type>
+{
+    return_type.as_ref().map(|ty| &***ty).map(is_mul_var_type).unwrap_or(false)
 }
 
 pub fn gen_primitive_ptr_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
@@ -78,11 +80,26 @@ pub fn gen_value_var(pos: &TextPosition, name: &Name, ty: &Type) -> (CudaType, C
     }
 }
 
+pub fn gen_value_expr<'a>(expr: &'a Expression, ty: &Type) -> (CudaType, CudaExpression) {
+    match expr {
+        Expression::Call(call) => panic!("gen_value_expr() currently accepts no call expressions, as builtin calls do not yield arrays, and user-defined calls should be extracted"),
+        Expression::Literal(lit) => panic!("currently, have no array literals"),
+        Expression::Variable(var) => match &var.identifier {
+            Identifier::BuiltIn(op) => panic!("currently, have no builting identifiers that have array type, got {}", op),
+            Identifier::Name(name) => {
+                let (ty, identifier) = gen_value_var(expr.pos(), name, ty);
+                (ty, CudaExpression::Identifier(identifier))
+            }
+        }
+    }
+}
+
 /// Generates a list of cuda identifiers that contain the data of the given variable with given type. For single-var-types,
 /// only one result item will be yielded. For each result identifier, also the cuda type of this identifier is yielded.
 /// 
-/// The cuda type is usable for e.g. local variables, so primitive types have a non-pointer type, and array size variables
-/// cannot be changed
+/// The cuda type is usable for e.g. local variables, so primitive types have a non-pointer type.
+/// 
+/// In other words: this function generates the variables containing the data for var when given the variable var with type ty.
 pub fn gen_variables<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
     let value = gen_value_var(pos, var, ty);
     let size_data = if ty.is_array() { Some(()) } else { None };
@@ -102,11 +119,14 @@ pub fn gen_variable(pos: &TextPosition, var: &Name, ty: &Type) -> (CudaType, Cud
 /// only one result item will be yielded. For each result identifier, also the cuda type of this identifier is yielded.
 /// 
 /// The difference to gen_variables() is that here, all expressions evaluate to values that can be used to modify the value of 
-/// original variable, and the yielded types reflect that (i.e. they are pointers). Therefore, this result is usable 
-/// e.g. for parameters that are passed by reference.
+/// original variable (i.e. addresses may be passed, instead of values), and the yielded types reflect that (i.e. they are pointers). 
+/// Therefore, this result is usable e.g. to give parameters that are passed by reference.
 /// Array entries can be modified through the result of this function, but array sizes cannot. For real output parameters,
 /// consider gen_variables_as_output_params() instead.
-pub fn gen_variables_as_view<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
+/// 
+/// In other words: this function generates the expressions yielding the data for &var when given the variable var with type ty
+/// (and therefore perform a type conversion from ty to &ty).
+pub fn gen_variables_for_view<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
     gen_variables(pos, var, ty).enumerate().map(|(index, (mut ty, var))| {
         // TODO: make this more beautiful: only the value (not the dimension vars) get promoted to view
         if index == 0 && ty.ptr_count == 0 {
@@ -131,12 +151,19 @@ pub fn gen_variables_as_view<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a T
 /// 
 /// The difference to gen_variables() is that this function yields expressions that can be used to modify and/or replace the
 /// value of the original variable.
-pub fn gen_variables_as_output_params<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
+pub fn gen_variables_for_output_params<'a>(pos: &'a TextPosition, var: &'a Name, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaExpression)> {
     gen_variables(pos, var, ty).map(|(ty, var)| (CudaType {
         base: ty.base,
         constant: false,
         ptr_count: ty.ptr_count + 1
     }, CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(var)))))
+}
+
+pub fn gen_output_parameter_declaration<'a>(pos: &'a TextPosition, ty: &'a Type) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
+    assert!(is_generated_with_output_parameter(Some(&ty)));
+    let (base, dim) = expect_array_type(ty);
+    std::iter::once((gen_primitive_ptr_type(&base, 2), CudaIdentifier::OutputValueVar))
+        .chain((0..dim).map(move |d| (gen_primitive_ptr_type(&base, 1), CudaIdentifier::OutputArraySizeVar(d))))
 }
 
 fn gen_defined_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, function_name: &Name, function_type: &Type, mut output_params: I, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaExpression, OutputError> 
@@ -164,7 +191,7 @@ fn gen_defined_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, funct
         Expression::Literal(_lit) => unimplemented!(),
         Expression::Variable(var) => match &var.identifier {
             Identifier::Name(name) => if formal_param.is_view() {
-                Box::new(gen_variables_as_view(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(p))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+                Box::new(gen_variables_for_view(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(p))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
             } else {
                 Box::new(gen_variables(var.pos(), name, &formal_param).map(|(_ty, p)| Ok(CudaExpression::Identifier(p)))) as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
             },
@@ -296,7 +323,7 @@ fn gen_array_copy_assignment_size_assertion<'stack, 'ast: 'stack, I>(assignee: &
 
 fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &FunctionCall, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
     let ty = context.calculate_var_type(assignee, pos);
-    Ok(Box::new(gen_function_call(value, gen_variables_as_output_params(pos, assignee, &ty).map(|(_, v)| v), context)?))
+    Ok(Box::new(gen_function_call(value, gen_variables_for_output_params(pos, assignee, &ty).map(|(_, v)| v), context)?))
 }
 
 fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(pos: &TextPosition, assignee: &Name, value: &Name, context: &mut dyn CudaContext<'stack, 'ast>) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> {
@@ -415,8 +442,6 @@ use super::super::lexer::lexer::fragment_lex;
 use super::super::parser::Parser;
 #[cfg(test)]
 use super::context::CudaContextImpl;
-#[cfg(test)]
-use super::writer::*;
 
 #[test]
 fn test_gen_expression() {
@@ -432,7 +457,7 @@ fn test_gen_expression() {
         (Name::l("d"), Type::Array(PrimitiveType::Int, 1)),
         (Name::l("e"), Type::Primitive(PrimitiveType::Int))
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_expression(&expr, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("(a_ + b_ * c_) / d_[e_]", output);
@@ -451,7 +476,7 @@ fn test_gen_expression_function_call() {
         (Name::l("b"), Type::Primitive(PrimitiveType::Int)),
         (Name::l("c"), Type::Primitive(PrimitiveType::Int))
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_expression(&expr, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("foo_[a_(b_, b_d0) * foo_d1 + c_]", output);
@@ -468,7 +493,7 @@ fn test_gen_expression_pass_index_expression_by_view() {
         (Name::l("foo"), Type::Function(vec![Box::new(Type::View(Box::new(Type::Primitive(PrimitiveType::Int))))], Some(Box::new(Type::Primitive(PrimitiveType::Int))))),
         (Name::l("a"), Type::Array(PrimitiveType::Int, 1))
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_expression(&expr, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("foo_(&a_[0])", output);
@@ -485,7 +510,7 @@ fn test_gen_expression_pass_index_expression_by_value() {
         (Name::l("foo"), Type::Function(vec![Box::new(Type::Primitive(PrimitiveType::Int))], Some(Box::new(Type::Primitive(PrimitiveType::Int))))),
         (Name::l("a"), Type::Array(PrimitiveType::Int, 1))
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_expression(&expr, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("foo_(a_[0])", output);
@@ -502,7 +527,7 @@ fn test_gen_assignment_array_view_to_array() {
         (Name::l("a"), Type::Array(PrimitiveType::Int, 2)),
         (Name::l("b"), Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))))    
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_assignment(&*assignment, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("{
@@ -528,7 +553,7 @@ fn test_gen_assignment_call_result_to_array_view() {
         (Name::l("c"), Type::Primitive(PrimitiveType::Int)),
         (Name::l("b"), Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))))
     ];
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_assignment(&*assignment, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("{

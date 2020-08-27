@@ -7,15 +7,17 @@ use super::super::language::backend::*;
 
 use std::collections::HashMap;
 
-pub trait CudaContext<'stack, 'ast: 'stack> {
+pub trait CudaContext<'data, 'ast: 'data> {
     fn is_device_context(&self) -> bool;
     fn set_device(&mut self);
     fn set_host(&mut self);
-    fn get_scopes(&self) -> &DefinitionScopeStack<'stack, 'ast>;
+    fn get_scopes(&self) -> &DefinitionScopeStack<'data, 'ast>;
     fn get_current_function(&self) -> &Function;
     fn set_current_function(&mut self, function: &'ast Function);
+    fn get_pfor_data(&self, pfor: &ParallelFor) -> &'data KernelInfo<'ast>;
+    fn get_function_data(&self, function: &Function) -> &'data FunctionInfo<'ast>;
 
-    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'stack, 'ast>;
+    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'data, 'ast>;
 
     fn calculate_type(&self, expr: &Expression) -> Type {
         expr.calculate_type(self.get_scopes())
@@ -23,7 +25,7 @@ pub trait CudaContext<'stack, 'ast: 'stack> {
 
 }
 
-impl<'stack, 'ast: 'stack> dyn CudaContext<'stack, 'ast> + '_ {
+impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {
     
     pub fn enter_scope<S: ?Sized>(&mut self, scope: &'ast S)
     where
@@ -41,9 +43,17 @@ impl<'stack, 'ast: 'stack> dyn CudaContext<'stack, 'ast> + '_ {
     }
 }
 
-impl<'stack, 'ast: 'stack, T: CudaContext<'stack, 'ast>> CudaContext<'stack, 'ast> for Box<T> {
+impl<'data, 'ast: 'data, T: CudaContext<'data, 'ast>> CudaContext<'data, 'ast> for Box<T> {
     fn is_device_context(&self) -> bool {
         (**self).is_device_context()
+    }
+    
+    fn get_pfor_data(&self, pfor: &ParallelFor) -> &'data KernelInfo<'ast> {
+        (**self).get_pfor_data(pfor)
+    }
+
+    fn get_function_data(&self, function: &Function) -> &'data FunctionInfo<'ast> {
+        (**self).get_function_data(function)
     }
 
     fn set_device(&mut self) {
@@ -54,7 +64,7 @@ impl<'stack, 'ast: 'stack, T: CudaContext<'stack, 'ast>> CudaContext<'stack, 'as
         (**self).set_host()
     }
 
-    fn get_scopes(&self) -> &DefinitionScopeStack<'stack, 'ast> {
+    fn get_scopes(&self) -> &DefinitionScopeStack<'data, 'ast> {
         (**self).get_scopes()
     }
 
@@ -70,37 +80,57 @@ impl<'stack, 'ast: 'stack, T: CudaContext<'stack, 'ast>> CudaContext<'stack, 'as
         (**self).set_current_function(function)
     }
 
-    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'stack, 'ast> {
+    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'data, 'ast> {
         (**self).get_scopes_mut_do_not_use_outside_of_cuda_context()
     }
 }
 
-pub struct CudaContextImpl<'b, 'ast> {
+pub struct CudaContextImpl<'data, 'ast> {
     device_context: bool,
-    scopes: DefinitionScopeStack<'b, 'ast>,
+    scopes: DefinitionScopeStack<'data, 'ast>,
     function: Option<&'ast Function>,
-    functions: HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-    kernels: HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>
+    functions: &'data HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
+    kernels: &'data HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>
 }
 
-impl<'b, 'ast> CudaContextImpl<'b, 'ast> {
-    pub fn build_for_program(global: &'ast Program) -> Result<CudaContextImpl<'b, 'ast>, OutputError> {
+impl<'data, 'ast: 'data> CudaContextImpl<'data, 'ast> {
+
+    pub fn new(global: &'ast Program, functions: &'data HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, kernels: &'data HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>) -> CudaContextImpl<'data, 'ast> {
+        CudaContextImpl {
+            device_context: false,
+            scopes: ScopeStack::new(&*global.items),
+            function: None,
+            functions: functions,
+            kernels: kernels
+        }
+    }
+
+    #[cfg(test)]
+    pub fn build_with_leak(global: &'ast Program) -> Result<CudaContextImpl<'data, 'ast>, OutputError> {
         let mut counter: u32 = 0;
         let (functions, kernels) = collect_functions(global, &mut || { counter += 1; counter })?;
         Ok(CudaContextImpl {
             device_context: false,
             scopes: ScopeStack::new(&*global.items),
             function: None,
-            functions: functions,
-            kernels: kernels
+            functions: Box::leak(Box::new(functions)),
+            kernels: Box::leak(Box::new(kernels))
         })
     }
 }
 
-impl<'b, 'ast: 'b> CudaContext<'b, 'ast> for CudaContextImpl<'b, 'ast> {
+impl<'data, 'ast: 'data> CudaContext<'data, 'ast> for CudaContextImpl<'data, 'ast> {
 
     fn is_device_context(&self) -> bool {
         self.device_context
+    }
+
+    fn get_pfor_data(&self, pfor: &ParallelFor) -> &'data KernelInfo<'ast> {
+        self.kernels.get(&RefEq::from(pfor)).unwrap()
+    }
+
+    fn get_function_data(&self, function: &Function) -> &'data FunctionInfo<'ast> {
+        self.functions.get(&RefEq::from(function)).unwrap()
     }
 
     fn set_device(&mut self) {
@@ -111,7 +141,7 @@ impl<'b, 'ast: 'b> CudaContext<'b, 'ast> for CudaContextImpl<'b, 'ast> {
         self.device_context = false;
     }
 
-    fn get_scopes(&self) -> &DefinitionScopeStack<'b, 'ast> {
+    fn get_scopes(&self) -> &DefinitionScopeStack<'data, 'ast> {
         &self.scopes
     }
 
@@ -123,7 +153,7 @@ impl<'b, 'ast: 'b> CudaContext<'b, 'ast> for CudaContextImpl<'b, 'ast> {
         self.function = Some(func);
     }
     
-    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'b, 'ast> {
+    fn get_scopes_mut_do_not_use_outside_of_cuda_context(&mut self) -> &mut DefinitionScopeStack<'data, 'ast> {
         &mut self.scopes
     }
 }

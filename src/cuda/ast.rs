@@ -1,6 +1,5 @@
 use super::super::language::prelude::*;
-use super::super::language::backend::OutputError;
-use super::writer::*;
+use super::super::language::backend::*;
 use std::ops::{Add, Mul, Sub};
 
 pub trait Writable {
@@ -67,7 +66,8 @@ pub enum CudaIdentifier {
     /// in some situations, we do not need the postfix product of the array sizes, but the array sizes themselves.
     /// In this case, use this identifier, but usually, it must be declared and initialized correctly before.
     /// have local_array_id, dimension
-    TmpArrayShapeVar(u32, u32)
+    TmpArrayShapeVar(u32, u32),
+    OutputValueVar, OutputArraySizeVar(u32)
 }
 
 impl Writable for CudaIdentifier {
@@ -93,7 +93,9 @@ impl Writable for CudaIdentifier {
             CudaIdentifier::ThreadGridSizeVar(kernel_id, dim) => write!(out, "kernel{}d{}", kernel_id, dim).map_err(OutputError::from),
             CudaIdentifier::TmpVar => write!(out, "tmp").map_err(OutputError::from),
             CudaIdentifier::TmpSizeVar(dim) => write!(out, "tmpd{}", dim).map_err(OutputError::from),
-            CudaIdentifier::TmpArrayShapeVar(array_id, dim) => write!(out, "array{}shape{}", array_id, dim).map_err(OutputError::from)
+            CudaIdentifier::TmpArrayShapeVar(array_id, dim) => write!(out, "array{}shape{}", array_id, dim).map_err(OutputError::from),
+            CudaIdentifier::OutputValueVar => write!(out, "result").map_err(OutputError::from),
+            CudaIdentifier::OutputArraySizeVar(dim) => write!(out, "result{}", dim).map_err(OutputError::from)
         }
     }
 }

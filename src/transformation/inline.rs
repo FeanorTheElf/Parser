@@ -19,18 +19,13 @@ struct InlineTask<'a> {
     function_definition: &'a Function,
 }
 
-trait ExtractFunctionCallFn<'b> =
-    FnMut(Expression, &mut Vec<Box<dyn Statement>>, &mut Vec<InlineTask<'b>>) -> Expression;
-
 impl<F> Inliner<F>
 where
     F: FnMut(&FunctionCall, &Function) -> bool,
 {
     pub fn new(should_inline: F) -> Self {
         Inliner {
-            extractor: Extractor {
-                should_extract: should_inline,
-            },
+            extractor: Extractor::new(should_inline)
         }
     }
 
@@ -47,49 +42,16 @@ where
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
-        let mut scopes = parent_scopes.child_scope(block);
-        let mut statement_indices_to_inline = Vec::new();
-        let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
+        let mut statement_indices_to_inline = self.extractor.extract_calls_in_block(block, parent_scopes, defined_functions);
+        let scopes = parent_scopes.child_scope(block);
 
         {
-            let mut rename_disjunct = scopes.rename_disjunct();
-            for mut statement in block.statements.drain(..) {
-                let index_before = result_statements.len();
-                for expression in statement.iter_mut() {
-                    take_mut::take(expression, &mut |expr| {
-                        self.extractor.extract_calls_in_expr(
-                            expr,
-                            &mut rename_disjunct,
-                            defined_functions,
-                            &mut result_statements,
-                        )
-                    });
-                }
-                let index_after = result_statements.len();
-                // already allocate entries for the initialization of the extracted result variables
-                for i in 0..(index_after - index_before) {
-                    let init_block = Block {
-                        pos: position::NONEXISTING,
-                        statements: Vec::new(),
-                    };
-                    result_statements.push(Box::new(init_block));
-                    statement_indices_to_inline.push((index_before + i, index_after + i));
-                }
-                result_statements.push(statement);
-            }
-        }
-
-        block.statements = result_statements;
-
-        scopes = parent_scopes.child_scope(block);
-
-        {
-            for (declaration_index, inline_index) in statement_indices_to_inline.iter() {
-                let init_block = inline_single_function_call(block.statements[*declaration_index]
+            for extraction in statement_indices_to_inline.iter() {
+                let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
                     .dynamic_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
                     .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
-                block.statements[*inline_index] = Box::new(init_block);
+                block.statements[extraction.extracted_var_value_assignment_index] = Box::new(init_block);
             }
         }
 
@@ -428,7 +390,7 @@ fn test_inline() {
     }",
     ))
     .unwrap();
-    assert_ast_eq!(&expected, &block);
+    assert!(&expected == &block);
 }
 
 #[test]
@@ -490,7 +452,7 @@ fn test_process_inline_body() {
     }",
     ))
     .unwrap();
-    assert_ast_eq!(&expected, &body);
+    assert!(&expected == &body);
 
     let mut expected_mapping = HashMap::new();
     expected_mapping.insert(
@@ -579,5 +541,5 @@ fn test_inline_all() {
         }
     "))
     .unwrap();
-    assert_ast_eq!(&expected, &program);
+    assert!(&expected == &program);
 }

@@ -27,6 +27,20 @@ impl<'a> TargetLanguageFunction<'a> {
             TargetLanguageFunction::Function(func) => *func
         }
     }
+
+    pub fn is_function(&self) -> bool {
+        match self {
+            TargetLanguageFunction::Kernel(_) => false,
+            TargetLanguageFunction::Function(_) => true
+        }
+    }
+
+    pub fn is_kernel(&self) -> bool {
+        match self {
+            TargetLanguageFunction::Kernel(_) => true,
+            TargetLanguageFunction::Function(_) => false
+        }
+    }
 }
 
 pub struct SortByName;
@@ -68,7 +82,9 @@ pub struct KernelInfo<'a> {
 
 pub struct FunctionInfo<'a> {
     pub function: &'a Function,
-    pub called_from: HashSet<TargetLanguageFunction<'a>>
+    pub called_from: HashSet<TargetLanguageFunction<'a>>,
+    pub called_from_device: bool,
+    pub called_from_host: bool
 }
 
 pub fn collect_functions<'a, 'ast, U>(program: &'ast Program, unique_generator: &'a mut U) -> Result<(HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>, HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>), OutputError> 
@@ -79,7 +95,9 @@ pub fn collect_functions<'a, 'ast, U>(program: &'ast Program, unique_generator: 
     for item in &program.items {
         functions.insert(Ref::from(&**item), FunctionInfo {
             function: item,
-            called_from: HashSet::new()
+            called_from: HashSet::new(),
+            called_from_device: false,
+            called_from_host: false
         });
     }
     let scopes: ScopeStack<&'ast dyn SymbolDefinition> = ScopeStack::new(&program.items);
@@ -179,8 +197,6 @@ fn add_variable_uses<'a, 'b>(expr: &'a Expression,
 use super::super::lexer::lexer::lex;
 #[cfg(test)]
 use super::super::parser::Parser;
-#[cfg(test)]
-use super::context::CudaContextImpl;
 
 #[test]
 fn test_collect_functions() {

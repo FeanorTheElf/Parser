@@ -7,6 +7,3 @@ pub use super::types::*;
 pub use super::program::*;
 pub use super::program_parallel_for::*;
 pub use super::AstNode;
-
-#[cfg(test)]
-pub use super::ast_test::DebugDisplayWrapper;

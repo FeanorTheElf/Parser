@@ -15,6 +15,4 @@ pub mod types;
 pub mod program;
 pub mod program_parallel_for;
 pub mod prelude;
-#[cfg(test)]
-#[macro_use]
-pub mod ast_test;
+

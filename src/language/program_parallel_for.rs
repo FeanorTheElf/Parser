@@ -1,4 +1,3 @@
-use super::backend::{Backend, OutputError, Printable};
 use super::error::*;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
@@ -75,14 +74,6 @@ impl PartialEq for ArrayEntryAccess {
 impl Statement for ParallelFor {
     fn dyn_clone(&self) -> Box<dyn Statement> {
         Box::new(self.clone())
-    }
-}
-
-impl Printable for ParallelFor {
-    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError> {
-        printer.print_parallel_for_header(self)?;
-        self.body.print(printer)?;
-        Ok(())
     }
 }
 

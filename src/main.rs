@@ -25,27 +25,21 @@ mod cuda;
 use language::prelude::*;
 use lexer::lexer::lex;
 use parser::Parser;
+use language::backend::Backend;
 
 fn main() {
-    let program = Program::parse(&mut lex("
-		fn min(a: int, b: int,): int {
-			if a < b {
-				return a;
-			}
-			return b;
-		}
-	
-		fn max(a: int, b: int,): int {
-			if b < a {
-				return a;
-			}
-			return b;
-		}
-
-		fn clamp(a: int, lower: int, upper: int,): int {
-			return min(max(a, lower, ), upper, );
+    let mut program = Program::parse(&mut lex("
+		fn main() {
+			
 		}
 	"))
-    .unwrap();
-    println!("{:?}", program);
+	.unwrap();
+	let mut out = "".to_owned();
+    let mut target = language::backend::StringWriter::new(&mut out);
+	let mut writer = language::backend::CodeWriter::new(&mut target);
+	let mut cuda_backend = cuda::backend::CudaBackend{};
+	cuda_backend.init().unwrap();
+	cuda_backend.transform_program(&mut program).unwrap();
+	cuda_backend.generate(&program, &mut writer).unwrap();
+	println!("{}", out);
 }

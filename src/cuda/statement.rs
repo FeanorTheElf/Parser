@@ -6,9 +6,30 @@ use super::context::CudaContext;
 use super::ast::*;
 
 pub fn gen_return<'stack, 'ast: 'stack>(statement: &Return, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
-    Ok(Box::new(CudaReturn {
-        value: statement.value.as_ref().map(|v| gen_expression(v, context)).transpose()?
-    }))
+    if is_generated_with_output_parameter(context.get_current_function().return_type.as_ref().as_ref()) {
+        if let Some(return_type) = context.get_current_function().return_type.as_ref() {
+            let assignments = std::iter::once(CudaAssignment {
+                assignee: CudaExpression::Identifier(CudaIdentifier::OutputValueVar),
+                value: gen_value_expr(statement.value.as_ref().unwrap(), return_type).1
+            }).chain(gen_array_size_exprs(statement.value.as_ref().unwrap(), &return_type).enumerate().map(|(dim, (_ty, expr))| CudaAssignment {
+                assignee: CudaExpression::Identifier(CudaIdentifier::OutputArraySizeVar(dim as u32)),
+                value: expr
+            }));
+            Ok(Box::new(CudaBlock {
+                statements: assignments.map(|a| Box::new(a) as Box<dyn CudaStatement>).chain(std::iter::once(Box::new(CudaReturn {
+                    value: None
+                }) as Box<dyn CudaStatement>)).collect::<Vec<_>>()
+            }))
+        } else {
+            Ok(Box::new(CudaReturn {
+                value: None
+            }))
+        }
+    } else {
+        Ok(Box::new(CudaReturn {
+            value: statement.value.as_ref().map(|v| gen_expression(v, context)).transpose()?
+        }))
+    }
 }
 
 pub fn gen_localvardef<'a, 'stack, 'ast: 'stack>(statement: &'a LocalVariableDeclaration, context: &mut dyn CudaContext<'stack, 'ast>) -> Box<dyn 'a + Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>>> {

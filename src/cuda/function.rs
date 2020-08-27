@@ -1,6 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::analysis::symbol::*;
-use super::super::language::backend::OutputError;
+use super::super::analysis::type_error::*;
+use super::super::language::backend::*;
 use super::ast::*;
 use super::expression::*;
 use super::statement::*;
@@ -9,32 +10,27 @@ use super::context::CudaContext;
 use feanor_la::prelude::*;
 use feanor_la::rat::r64;
 
-fn gen_if<'stack, 'ast: 'stack>(statement: &If, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
+fn gen_if<'stack, 'ast: 'stack>(statement: &'ast If, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
     Ok(Box::new(CudaIf {
-        body: CudaBlock {
-            statements: vec![]
-        },
+        body: gen_block(&statement.body, context)?,
         cond: gen_expression(&statement.condition, context)?
     }))
 }
 
-fn gen_while<'stack, 'ast: 'stack>(statement: &While, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
+fn gen_while<'stack, 'ast: 'stack>(statement: &'ast While, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
     Ok(Box::new(CudaWhile {
-        body: CudaBlock {
-            statements: vec![]
-        },
+        body: gen_block(&statement.body, context)?,
         cond: gen_expression(&statement.condition, context)?
     }))
 }
 
-fn gen_kernel<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaKernel, OutputError> {
+pub fn gen_kernel<'stack, 'ast: 'stack>(pfor: &'ast ParallelFor, kernel: &KernelInfo, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaKernel, OutputError> {
     let name = CudaIdentifier::Kernel(kernel.kernel_name);
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
-        let var_type = var.calc_type();
-        let passed_parameters = gen_variables_as_view(pfor.pos(), var.get_name(), &var_type);
+        let var_type = var.calc_type().with_view();
         let parameter_variables = gen_variables(pfor.pos(), var.get_name(), &var_type);
-        return passed_parameters.map(|(ty, _)| ty).zip(parameter_variables.map(|(_, name)| name)).collect::<Vec<_>>().into_iter();
+        return parameter_variables.collect::<Vec<_>>().into_iter();
     });
     let grid_size_variables = (0..kernel.pfor.index_variables.len()).map(|dim| CudaIdentifier::ThreadGridSizeVar(kernel.kernel_name, dim as u32));
     let grid_size_parameters = std::iter::repeat(CudaType {
@@ -69,12 +65,13 @@ fn gen_kernel<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo, con
             ptr_count: 0
         }
     }).map(|v| Box::new(v) as Box<dyn CudaStatement>);
+    
+    context.enter_scope(pfor);
+    let body = gen_block(&pfor.body, context)?;
+    context.exit_scope();
 
-    // TODO: generate body
     let body = CudaIf {
-        body: CudaBlock {
-            statements: vec![]
-        },
+        body: body,
         cond: CudaExpression::Comparison(Cmp::Ls, 
             Box::new(thread_index.clone()), 
             Box::new(CudaExpression::Identifier(CudaIdentifier::ThreadGridSizeVar(kernel.kernel_name, 0))))
@@ -203,7 +200,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo
     }
 
     // Fourth: collect the parameters
-    let standard_parameters = kernel.used_variables.iter().flat_map(|var| gen_variables_as_view(pfor.pos(), var.get_name(), &var.calc_type()).map(|(_, expr)| expr).collect::<Vec<_>>().into_iter());
+    let standard_parameters = kernel.used_variables.iter().flat_map(|var| gen_variables_for_view(pfor.pos(), var.get_name(), &var.calc_type()).map(|(_, expr)| expr).collect::<Vec<_>>().into_iter());
     let grid_size_variables = (0..kernel.pfor.index_variables.len()).map(|dim| CudaIdentifier::ThreadGridSizeVar(kernel.kernel_name, dim as u32)).map(CudaExpression::Identifier);
     let grid_offset_variables = (0..kernel.pfor.index_variables.len()).map(|dim| CudaIdentifier::ThreadGridOffsetVar(kernel.kernel_name, dim as u32)).map(CudaExpression::Identifier);
     let parameters = standard_parameters.chain(grid_size_variables).chain(grid_offset_variables);
@@ -232,7 +229,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo
     }));
 }
 
-pub fn gen_block<'stack, 'ast: 'stack>(block: &'ast Block, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Box<dyn CudaStatement>, OutputError> {
+pub fn gen_block<'stack, 'ast: 'stack>(block: &'ast Block, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaBlock, OutputError> {
     let mut result_statements: Vec<Box<dyn CudaStatement>> = Vec::new();
     context.enter_scope(block);
     for statement in &block.statements {
@@ -245,7 +242,7 @@ pub fn gen_block<'stack, 'ast: 'stack>(block: &'ast Block, context: &mut dyn Cud
         } else if let Some(return_statement) = statement.dynamic().downcast_ref::<Return>() {
             result_statements.push(gen_return(return_statement, context)?);
         } else if let Some(block) = statement.dynamic().downcast_ref::<Block>() {
-            result_statements.push(gen_block(block, context)?);
+            result_statements.push(Box::new(gen_block(block, context)?));
         } else if let Some(declaration) = statement.dynamic().downcast_ref::<LocalVariableDeclaration>() {
             for v in gen_localvardef(declaration, context) {
                 result_statements.push(v?);
@@ -256,12 +253,78 @@ pub fn gen_block<'stack, 'ast: 'stack>(block: &'ast Block, context: &mut dyn Cud
             result_statements.push(gen_label(label, context)?);
         } else if let Some(goto) = statement.dynamic().downcast_ref::<Goto>() {
             result_statements.push(gen_goto(goto, context)?);
+        } else if let Some(pfor) = statement.dynamic().downcast_ref::<ParallelFor>() {
+            let pfor_data = context.get_pfor_data(pfor);
+            result_statements.push(gen_kernel_call(pfor, pfor_data, context)?);
         } else {
             panic!("Unknown statement type: {:?}", statement);
         }
     }
     context.exit_scope();
-    unimplemented!()
+    Ok(CudaBlock {
+        statements: result_statements
+    })
+}
+
+fn gen_implemented_function<'data, 'ast: 'data>(function: &'ast Function, body: &'ast Block, context: &mut dyn CudaContext<'data, 'ast>) -> Result<CudaFunction, OutputError> {
+    context.set_current_function(function);
+    context.enter_scope(function);
+    let function_info = context.get_function_data(function);
+    let standard_params = function.params.iter().flat_map(|p| gen_variables(p.pos(), &p.variable, &p.variable_type));
+    let result = if is_generated_with_output_parameter(function.return_type.as_ref().as_ref()) {
+        let params = if let Some(return_type) = &function.return_type {
+            standard_params.chain(gen_output_parameter_declaration(function.pos(), return_type)).collect::<Vec<_>>()
+        } else {
+            standard_params.collect::<Vec<_>>()
+        };
+        Ok(CudaFunction {
+            device: function_info.called_from_device,
+            host: function_info.called_from_host,
+            name: CudaIdentifier::ValueVar(function.identifier.clone()),
+            params: params,
+            return_type: CudaType {
+                base: CudaPrimitiveType::Void,
+                ptr_count: 0,
+                constant: false
+            },
+            body: gen_block(body, context)?
+        })
+    } else {
+        let return_type = match &function.return_type {
+            Some(Type::Array(base, dim)) => {
+                assert_eq!(*dim, 0);
+                gen_primitive_ptr_type(base, 1)
+            },
+            Some(Type::Function(_, _)) => return Err(OutputError::UnsupportedCode(function.pos().clone(), format!("Functions that return functions are not supported in cuda backend"))),
+            Some(Type::JumpLabel) => error_jump_label_var_type(function.pos()).throw(),
+            Some(Type::Primitive(base)) => gen_primitive_ptr_type(base, 0),
+            Some(Type::TestType) => error_test_type(function.pos()),
+            Some(Type::View(viewn)) => error_return_view(function.pos()).throw(),
+            None => CudaType {
+                base: CudaPrimitiveType::Void,
+                constant: false,
+                ptr_count: 0
+            }
+        };
+        Ok(CudaFunction {
+            device: function_info.called_from_device,
+            host: function_info.called_from_host,
+            name: CudaIdentifier::ValueVar(function.identifier.clone()),
+            params: standard_params.collect::<Vec<_>>(),
+            return_type: return_type,
+            body: gen_block(body, context)?
+        })
+    };
+    context.exit_scope();
+    return result;
+}
+
+pub fn gen_function<'stack, 'ast: 'stack>(function: &'ast Function, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<Option<CudaFunction>, OutputError> {
+    if let Some(body) = &function.body {
+        Some(gen_implemented_function(function, body, context)).transpose()
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
@@ -276,11 +339,9 @@ use super::super::lexer::lexer::fragment_lex;
 use super::super::parser::Parser;
 #[cfg(test)]
 use super::context::CudaContextImpl;
-#[cfg(test)]
-use super::writer::*;
 
 #[test]
-fn test_write_definition_as_kernel() {
+fn test_gen_kernel() {
     let pfor = ParallelFor::parse(&mut fragment_lex("
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
@@ -299,20 +360,20 @@ fn test_write_definition_as_kernel() {
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_kernel(&pfor, &kernel_info, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!(
-"__global__ void kernel0(int* a_, const unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
+"__global__ void kernel0(int* a_, unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
     const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel0o0;
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel0d0) {
-        
+        a_[i_] = a_[i_] * b_;
     };
 }", output);
 }
 
 #[test]
-fn test_write_kernel_call() {
+fn test_gen_kernel_call() {
     let pfor = ParallelFor::parse(&mut fragment_lex("
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
@@ -331,7 +392,7 @@ fn test_write_kernel_call() {
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_for_program(&program).unwrap());
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_kernel_call(&pfor, &kernel_info, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("{

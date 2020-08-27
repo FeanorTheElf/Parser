@@ -1,5 +1,10 @@
 use super::prelude::*;
 
+pub use std::io::Write;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::str;
+
 #[derive(Debug)]
 pub enum OutputError {
     FormatError(std::fmt::Error),
@@ -19,21 +24,138 @@ impl From<std::io::Error> for OutputError {
     }
 }
 
-pub trait Backend<'a> {
-    fn print_function_header(&mut self, node: &'a Function) -> Result<(), OutputError>;
-    fn enter_block(&mut self, block: &'a Block) -> Result<(), OutputError>;
-    fn exit_block(&mut self, block: &'a Block) -> Result<(), OutputError>;
-    fn print_parallel_for_header(&mut self, node: &'a ParallelFor) -> Result<(), OutputError>;
-    fn print_label(&mut self, node: &'a Label) -> Result<(), OutputError>;
-    fn print_goto(&mut self, node: &'a Goto) -> Result<(), OutputError>;
-    fn print_if_header(&mut self, node: &'a If) -> Result<(), OutputError>;
-    fn print_while_header(&mut self, node: &'a While) -> Result<(), OutputError>;
-    fn print_return(&mut self, node: &'a Return) -> Result<(), OutputError>;
-    fn print_expression(&mut self, node: &'a Expression) -> Result<(), OutputError>;
-    fn print_assignment(&mut self, node: &'a Assignment) -> Result<(), OutputError>;
-    fn print_declaration(&mut self, node: &'a LocalVariableDeclaration) -> Result<(), OutputError>;
+pub trait Backend {
+    fn init(&mut self) -> Result<(), OutputError>;
+    fn transform_program(&mut self, program: &mut Program) -> Result<(), OutputError>;
+    fn generate(&mut self, program: &Program, out: &mut CodeWriter) -> Result<(), OutputError>;
 }
 
-pub trait Printable {
-    fn print<'a>(&'a self, printer: &mut (dyn Backend<'a> + 'a)) -> Result<(), OutputError>;
+pub struct StringWriter<'a> {
+    out: &'a mut String
+}
+
+impl<'a> Write for StringWriter<'a>
+{
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        let result = <&'a mut String as std::fmt::Write>::write_str(&mut self.out, str::from_utf8(buf).unwrap());
+        if result.is_err() {
+            return Err(Error::new(ErrorKind::Other, result.unwrap_err()));
+        } else {
+            return Ok(buf.len());
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl<'a> StringWriter<'a> {
+    pub fn new(target: &'a mut String) -> StringWriter<'a> {
+        StringWriter {
+            out: target
+        }
+    }
+}
+
+pub struct CodeWriter<'a> {
+    out: &'a mut (dyn Write + 'a),
+    indent: String
+}
+
+impl<'a> CodeWriter<'a> {
+    pub fn new<T: Write + 'a>(out: &'a mut T) -> CodeWriter<'a> {
+        CodeWriter {
+            out: out,
+            indent: "".to_owned()
+        }
+    }
+
+    pub fn enter_indented_level(&mut self) -> Result<(), Error> {
+        self.indent.push(' ');
+        self.indent.push(' ');
+        self.indent.push(' ');
+        self.indent.push(' ');
+        self.newline()
+    }
+
+    pub fn exit_indented_level(&mut self) -> Result<(), Error> {
+        self.indent.pop();
+        self.indent.pop();
+        self.indent.pop();
+        self.indent.pop();
+        self.newline()
+    }
+
+    pub fn newline(&mut self) -> Result<(), Error> {
+        write!(self.out, "\n{}", self.indent)
+    }
+
+    pub fn enter_block(&mut self) -> Result<(), Error> {
+        write!(self.out, "{{")?;
+        self.enter_indented_level()
+    }
+
+    pub fn exit_block(&mut self) -> Result<(), Error> {
+        self.exit_indented_level()?;
+        write!(self.out, "}}")
+    }
+
+    pub fn write_separated<I, G, E>(&mut self, mut it: I, mut separator: G) -> std::prelude::v1::Result<(), E> 
+        where I: Iterator, 
+            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+            G: FnMut(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+            E: From<std::io::Error>
+    {
+        if let Some(value) = it.next() {
+            value(self)?;
+        }
+        for value in it {
+            separator(self)?;
+            value(self)?;
+        }
+        Ok(())
+    }
+
+    pub fn write_many<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E> 
+        where I: Iterator, 
+            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+            E: From<std::io::Error>
+    {
+        for value in it {
+            value(self)?;
+        }
+        Ok(())
+    }
+
+    pub fn write_comma_separated<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E> 
+        where I: Iterator, 
+            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+            E: From<std::io::Error>
+    {
+        self.write_separated(it, |out| write!(out, ", ").map_err(E::from))
+    }
+}
+
+impl<'a> Write for CodeWriter<'a> {
+    
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        self.out.write(buf)
+    }
+
+    fn write_vectored(&mut self, bufs: &[std::io::IoSlice<'_>]) -> Result<usize, Error> {
+        self.out.write_vectored(bufs)
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        self.out.flush()
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
+        self.out.write_all(buf)
+    }
+
+    fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> Result<(), Error> {
+        self.out.write_fmt(fmt)
+    }
 }
