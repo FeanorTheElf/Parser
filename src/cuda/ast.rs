@@ -507,7 +507,7 @@ impl Writable for CudaFunction {
             p.1.write(out)?;
             Ok(())
         }))?;
-        write!(out, ")")?;
+        write!(out, ") ")?;
         self.body.write(out)?;
         Ok(())
     }
