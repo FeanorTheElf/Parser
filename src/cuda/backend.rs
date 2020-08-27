@@ -84,19 +84,14 @@ impl Backend for CudaBackend {
             function_kernels_order.push(TargetLanguageFunction::Kernel(*kernel));
         }
         topological_sort(&mut function_kernels_order, &functions, &kernels);
-        
-        let mut transitive_called_from_host = HashSet::new();
-        transitive_called_from_host.insert(TargetLanguageFunction::Function(exported_function));
-        let mut transitive_called_from_device = HashSet::new();
-        transitive_called_from_device.extend(kernels.iter().map(|(kernel, _)| TargetLanguageFunction::Kernel(*kernel)));
-        for (func, info) in functions.iter_mut() {
-            if !info.called_from_host && info.called_from.iter().any(|caller| transitive_called_from_host.contains(caller)) {
-                info.called_from_host = true;
-                transitive_called_from_host.insert(TargetLanguageFunction::Function(*func));
-            }
-            if !info.called_from_device && info.called_from.iter().any(|caller| transitive_called_from_device.contains(caller)) {
-                info.called_from_device = true;
-                transitive_called_from_device.insert(TargetLanguageFunction::Function(*func));
+
+        for func in &function_kernels_order {
+            if let TargetLanguageFunction::Function(func) = func {
+                let called_from_host = functions.get(&RefEq::from(&**func)).unwrap().called_from.iter().filter_map(|f| match f { TargetLanguageFunction::Kernel(_) => None, TargetLanguageFunction::Function(f) => Some(f) }).any(|f| functions.get(&RefEq::from(&**f)).unwrap().called_from_host);
+                let called_from_device = functions.get(&RefEq::from(&**func)).unwrap().called_from.iter().any(|f| match f { TargetLanguageFunction::Kernel(_) => true, TargetLanguageFunction::Function(f) => functions.get(&RefEq::from(&**f)).unwrap().called_from_device });
+                let mut info = functions.get_mut(&RefEq::from(&**func)).unwrap();
+                info.called_from_host |= called_from_host;
+                info.called_from_device |= called_from_device;
             }
         }
 
@@ -116,10 +111,6 @@ impl Backend for CudaBackend {
                     gen_kernel(&**kernel, kernels.get(&RefEq::from(&**kernel)).unwrap(), &mut context)?.write(out)?;
                 }
             };
-            if funcs.peek().is_some() {
-                out.newline()?;
-                out.newline()?;
-            }
         }
 
         return Ok(());
@@ -157,8 +148,9 @@ fn test_topological_sort() {
     backend.init().unwrap();
     backend.transform_program(&mut program).unwrap();
     backend.generate(&program, &mut writer).unwrap();
-    assert_eq!(backend.header_template.unwrap() + 
-"__host__ inline int bar_(int a_) {
+    assert_eq!(backend.header_template.unwrap() + "
+
+__host__ inline int bar_(int a_) {
     return a_ + 1;
 }
 

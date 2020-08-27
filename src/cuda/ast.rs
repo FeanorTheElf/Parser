@@ -504,6 +504,8 @@ pub struct CudaFunction {
 
 impl Writable for CudaFunction {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        out.newline()?;
+        out.newline()?;
         if self.host {
             write!(out, "__host__ ")?;
         } 
@@ -535,6 +537,8 @@ pub struct CudaKernel {
 
 impl Writable for CudaKernel {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        out.newline()?;
+        out.newline()?;
         write!(out, "__global__ void ")?;
         self.name.write(out)?;
         write!(out, "(")?;

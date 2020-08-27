@@ -364,8 +364,9 @@ fn test_gen_kernel() {
     let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
     context.enter_scope(&defs[..]);
     gen_kernel(&pfor, &kernel_info, &mut *context).unwrap().write(&mut writer).unwrap();
-    assert_eq!(
-"__global__ void kernel0(int* a_, unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
+    assert_eq!("
+
+__global__ void kernel0(int* a_, unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
     const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel0o0;
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel0d0) {
         a_[i_] = a_[i_] * b_;
@@ -398,7 +399,7 @@ fn test_gen_kernel_call() {
     gen_kernel_call(&pfor, &kernel_info, &mut *context).unwrap().write(&mut writer).unwrap();
     assert_eq!("{
     const unsigned int array0shape0 = a_d0;
-    const unsigned int kernel0o0 = round(min(array0shape0, 0));
+    const int kernel0o0 = round(min(array0shape0, 0));
     const unsigned int kernel0d0 = round(max(array0shape0, 0)) - kernel0o0;
     kernel0 <<< dim3((kernel0d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, &b_, kernel0d0, kernel0o0);
 }", output);
