@@ -110,22 +110,10 @@ impl Parseable for Function {
     type ParseOutputType = Self;
 }
 
-impl
-    Build<(
-        Name,
-        Vec<DeclarationListNode>,
-        Option<Type>,
-        FunctionImpl,
-    )> for Function
-{
+impl Build<(Name, Vec<DeclarationListNode>, Option<Type>, FunctionImpl)> for Function {
     fn build(
         pos: TextPosition,
-        param: (
-            Name,
-            Vec<DeclarationListNode>,
-            Option<Type>,
-            FunctionImpl,
-        ),
+        param: (Name, Vec<DeclarationListNode>, Option<Type>, FunctionImpl),
     ) -> Self::ParseOutputType {
         let block = if let FunctionImpl::Block(block) = param.3 {
             Some(block)
@@ -573,23 +561,29 @@ impl Build<ExprNodeLevelCall> for Expression {
     fn build(pos: TextPosition, param: ExprNodeLevelCall) -> Self::ParseOutputType {
         let call_chain = (param.1).1;
         let start_expr = (param.1).0;
-        call_chain.into_iter().fold(
-            Expression::build(pos, start_expr),
-            |current, next_call| match next_call {
-                FunctionCallOrIndexAccess::IndexAccessParameters(index_access) => {
-                    let mut indices = (index_access.1).0;
-                    indices.insert(0, current);
-                    build_function_call(index_access.0, BuiltInIdentifier::FunctionIndex, indices)
-                }
-                FunctionCallOrIndexAccess::FunctionCallParameters(function_call) => {
-                    Expression::Call(Box::new(FunctionCall {
-                        pos: function_call.0,
-                        function: current,
-                        parameters: (function_call.1).0,
-                    }))
-                }
-            },
-        )
+        call_chain
+            .into_iter()
+            .fold(
+                Expression::build(pos, start_expr),
+                |current, next_call| match next_call {
+                    FunctionCallOrIndexAccess::IndexAccessParameters(index_access) => {
+                        let mut indices = (index_access.1).0;
+                        indices.insert(0, current);
+                        build_function_call(
+                            index_access.0,
+                            BuiltInIdentifier::FunctionIndex,
+                            indices,
+                        )
+                    }
+                    FunctionCallOrIndexAccess::FunctionCallParameters(function_call) => {
+                        Expression::Call(Box::new(FunctionCall {
+                            pos: function_call.0,
+                            function: current,
+                            parameters: (function_call.1).0,
+                        }))
+                    }
+                },
+            )
     }
 }
 
@@ -724,7 +718,7 @@ impl_parse! { Variable := Name }
 #[cfg(test)]
 use super::super::language::position::NONEXISTING;
 #[cfg(test)]
-use super::super::lexer::lexer::{lex, fragment_lex};
+use super::super::lexer::lexer::{fragment_lex, lex};
 
 #[test]
 fn test_parser() {
@@ -775,12 +769,12 @@ fn test_parser() {
 fn test_parse_index_expressions() {
     let text = "a[b,]";
     let expr = Expression::parse(&mut fragment_lex(text)).unwrap();
-    assert_eq!(Expression::Call(Box::new(
-        FunctionCall {
+    assert_eq!(
+        Expression::Call(Box::new(FunctionCall {
             pos: NONEXISTING,
-            function: Expression::Variable(Variable { 
-                pos: NONEXISTING, 
-                identifier: Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) 
+            function: Expression::Variable(Variable {
+                pos: NONEXISTING,
+                identifier: Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex)
             }),
             parameters: vec![
                 Expression::Variable(Variable {
@@ -792,6 +786,7 @@ fn test_parse_index_expressions() {
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],
-        }
-    )), expr);
+        })),
+        expr
+    );
 }

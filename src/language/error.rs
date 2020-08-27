@@ -22,7 +22,7 @@ pub enum ErrorType {
     ViewOnView,
     ViewReturnType,
     ArrayParameterByValue,
-    RValueAssignment
+    RValueAssignment,
 }
 
 #[derive(Debug, Clone)]

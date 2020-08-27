@@ -1,8 +1,8 @@
 use super::prelude::*;
 
-pub use std::io::Write;
 use std::io::Error;
 use std::io::ErrorKind;
+pub use std::io::Write;
 use std::str;
 
 #[derive(Debug)]
@@ -31,13 +31,15 @@ pub trait Backend {
 }
 
 pub struct StringWriter<'a> {
-    out: &'a mut String
+    out: &'a mut String,
 }
 
-impl<'a> Write for StringWriter<'a>
-{
+impl<'a> Write for StringWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        let result = <&'a mut String as std::fmt::Write>::write_str(&mut self.out, str::from_utf8(buf).unwrap());
+        let result = <&'a mut String as std::fmt::Write>::write_str(
+            &mut self.out,
+            str::from_utf8(buf).unwrap(),
+        );
         if result.is_err() {
             return Err(Error::new(ErrorKind::Other, result.unwrap_err()));
         } else {
@@ -52,22 +54,20 @@ impl<'a> Write for StringWriter<'a>
 
 impl<'a> StringWriter<'a> {
     pub fn new(target: &'a mut String) -> StringWriter<'a> {
-        StringWriter {
-            out: target
-        }
+        StringWriter { out: target }
     }
 }
 
 pub struct CodeWriter<'a> {
     out: &'a mut (dyn Write + 'a),
-    indent: String
+    indent: String,
 }
 
 impl<'a> CodeWriter<'a> {
     pub fn new<T: Write + 'a>(out: &'a mut T) -> CodeWriter<'a> {
         CodeWriter {
             out: out,
-            indent: "".to_owned()
+            indent: "".to_owned(),
         }
     }
 
@@ -101,11 +101,16 @@ impl<'a> CodeWriter<'a> {
         write!(self.out, "}}")
     }
 
-    pub fn write_separated<I, G, E>(&mut self, mut it: I, mut separator: G) -> std::prelude::v1::Result<(), E> 
-        where I: Iterator, 
-            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
-            G: FnMut(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
-            E: From<std::io::Error>
+    pub fn write_separated<I, G, E>(
+        &mut self,
+        mut it: I,
+        mut separator: G,
+    ) -> std::prelude::v1::Result<(), E>
+    where
+        I: Iterator,
+        I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+        G: FnMut(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+        E: From<std::io::Error>,
     {
         if let Some(value) = it.next() {
             value(self)?;
@@ -117,10 +122,11 @@ impl<'a> CodeWriter<'a> {
         Ok(())
     }
 
-    pub fn write_many<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E> 
-        where I: Iterator, 
-            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
-            E: From<std::io::Error>
+    pub fn write_many<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E>
+    where
+        I: Iterator,
+        I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+        E: From<std::io::Error>,
     {
         for value in it {
             value(self)?;
@@ -128,17 +134,17 @@ impl<'a> CodeWriter<'a> {
         Ok(())
     }
 
-    pub fn write_comma_separated<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E> 
-        where I: Iterator, 
-            I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
-            E: From<std::io::Error>
+    pub fn write_comma_separated<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E>
+    where
+        I: Iterator,
+        I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,
+        E: From<std::io::Error>,
     {
         self.write_separated(it, |out| write!(out, ", ").map_err(E::from))
     }
 }
 
 impl<'a> Write for CodeWriter<'a> {
-    
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         self.out.write(buf)
     }

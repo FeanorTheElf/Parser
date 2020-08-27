@@ -4,8 +4,8 @@ use super::position::TextPosition;
 use super::program::*;
 use super::AstNode;
 
-use feanor_la::prelude::*;
 use super::super::util::iterable::LifetimeIterable;
+use feanor_la::prelude::*;
 
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
@@ -294,7 +294,8 @@ impl ArrayEntryAccess {
         &'a self,
         index_variables: I,
     ) -> Result<Ref<'a, Matrix<i32>>, CompileError>
-        where I: Iterator<Item = &'b Name>
+    where
+        I: Iterator<Item = &'b Name>,
     {
         if self.matrix_cache.borrow().is_none() {
             let result = self.calculate_transformation_matrix(index_variables);
@@ -329,15 +330,14 @@ impl ArrayEntryAccess {
     /// an affine linear transform. On success, the result is an array_dimension_count x (index_variable_count + 1)
     /// matrix A, where the column at ACCESS_MATRIX_AFFINE_COLUMN is the translation part and the
     /// rest is the linear transformation (columns are in the same order as the index variables).
-    /// 
+    ///
     /// Passing a vector that does not contain the index variables of the parallel for (in the correct order)
     /// will result in a wrong result and possibly caching this wrong result.
     ///
     pub fn get_transformation_matrix<'a, 'b>(
         &'a self,
         index_variables: &'b Vec<Declaration>,
-    ) -> Result<Ref<'a, Matrix<i32>>, CompileError>
-    {
+    ) -> Result<Ref<'a, Matrix<i32>>, CompileError> {
         self.get_transformation_matrix_iter(index_variables.iter().map(|d| &d.variable))
     }
 

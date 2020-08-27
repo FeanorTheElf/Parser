@@ -22,10 +22,10 @@ mod transformation;
 
 mod cuda;
 
+use language::backend::*;
 use language::prelude::*;
 use lexer::lexer::lex;
 use parser::Parser;
-use language::backend::*;
 
 fn main() {
     let mut program = Program::parse(&mut lex("
@@ -56,7 +56,8 @@ fn main() {
         }
     }
     
-    ")).unwrap();
+    "))
+    .unwrap();
     let mut cuda_backend = cuda::backend::CudaBackend::new();
     cuda_backend.init().unwrap();
     cuda_backend.transform_program(&mut program).unwrap();

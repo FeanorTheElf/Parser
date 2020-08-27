@@ -20,21 +20,21 @@ impl Type {
     pub fn with_view(self) -> Type {
         match self {
             Type::View(ty) => Type::View(ty),
-            ty => Type::View(Box::new(ty))
+            ty => Type::View(Box::new(ty)),
         }
     }
-    
+
     pub fn without_view(self) -> Type {
         match self {
             Type::View(ty) => *ty,
-            ty => ty
+            ty => ty,
         }
     }
 
     pub fn is_view(&self) -> bool {
         match self {
             Type::View(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -42,14 +42,14 @@ impl Type {
         match self {
             Type::Array(_, _) => true,
             Type::View(ty) => ty.is_array(),
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_assignable_from(&self, value: &Type) -> bool {
         match self {
             Type::View(viewn) => value == &**viewn || value == self,
-            _ => value == self
+            _ => value == self,
         }
     }
 
@@ -57,10 +57,17 @@ impl Type {
         self.expect_callable(&NONEXISTING).is_ok()
     }
 
-    pub fn expect_callable(&self, pos: &TextPosition) -> Result<(&Vec<Box<Type>>, &Option<Box<Type>>), CompileError> {
+    pub fn expect_callable(
+        &self,
+        pos: &TextPosition,
+    ) -> Result<(&Vec<Box<Type>>, &Option<Box<Type>>), CompileError> {
         match self {
             Type::Function(param_types, return_type) => Ok((param_types, return_type)),
-            ty => Err(CompileError::new(pos, format!("Expression of type {} is not callable", ty), ErrorType::TypeError))
+            ty => Err(CompileError::new(
+                pos,
+                format!("Expression of type {} is not callable", ty),
+                ErrorType::TypeError,
+            )),
         }
     }
 }

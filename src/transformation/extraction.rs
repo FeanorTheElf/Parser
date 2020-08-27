@@ -11,7 +11,7 @@ where
 
 pub struct ExtractionReport {
     pub extracted_var_declaration_index: usize,
-    pub extracted_var_value_assignment_index: usize
+    pub extracted_var_value_assignment_index: usize,
 }
 
 impl<F> Extractor<F>
@@ -20,7 +20,7 @@ where
 {
     pub fn new(should_extract: F) -> Self {
         Extractor {
-            should_extract: should_extract
+            should_extract: should_extract,
         }
     }
 
@@ -178,12 +178,12 @@ where
                 result_statements.push(Box::new(init_block));
                 statement_indices_to_inline.push(ExtractionReport {
                     extracted_var_declaration_index: index_before + i,
-                    extracted_var_value_assignment_index: index_after + i
+                    extracted_var_value_assignment_index: index_after + i,
                 });
             }
             result_statements.push(statement);
         }
-        
+
         block.statements = result_statements;
         return statement_indices_to_inline;
     }

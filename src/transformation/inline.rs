@@ -25,7 +25,7 @@ where
 {
     pub fn new(should_inline: F) -> Self {
         Inliner {
-            extractor: Extractor::new(should_inline)
+            extractor: Extractor::new(should_inline),
         }
     }
 
@@ -42,7 +42,9 @@ where
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
-        let statement_indices_to_inline = self.extractor.extract_calls_in_block(block, parent_scopes, defined_functions);
+        let statement_indices_to_inline =
+            self.extractor
+                .extract_calls_in_block(block, parent_scopes, defined_functions);
         let scopes = parent_scopes.child_scope(block);
 
         {
@@ -51,7 +53,8 @@ where
                     .dynamic_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
                     .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
-                block.statements[extraction.extracted_var_value_assignment_index] = Box::new(init_block);
+                block.statements[extraction.extracted_var_value_assignment_index] =
+                    Box::new(init_block);
             }
         }
 

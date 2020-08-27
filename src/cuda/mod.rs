@@ -1,9 +1,9 @@
-mod context;
 mod ast;
+mod context;
 mod expression;
-mod statement;
-mod kernel_data;
 mod function;
+mod kernel_data;
+mod statement;
 
 pub mod backend;
 

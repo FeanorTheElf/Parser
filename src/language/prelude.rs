@@ -3,7 +3,7 @@ pub use super::error::{CompileError, ErrorType, InternalErrorConvertable};
 pub use super::identifier::*;
 pub use super::position;
 pub use super::position::TextPosition;
-pub use super::types::*;
 pub use super::program::*;
 pub use super::program_parallel_for::*;
+pub use super::types::*;
 pub use super::AstNode;

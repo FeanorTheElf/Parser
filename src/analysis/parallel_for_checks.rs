@@ -1,5 +1,5 @@
-use feanor_la::prelude::*;
 use super::super::language::prelude::*;
+use feanor_la::prelude::*;
 
 #[allow(unused)]
 pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
@@ -33,12 +33,8 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
                 let entry1 = &access_pattern.entry_accesses[i];
                 let entry2 = &access_pattern.entry_accesses[j];
                 let one_write = entry1.write || entry2.write;
-                let transform1 = entry1.get_transformation_matrix(
-                    &pfor.index_variables
-                )?;
-                let transform2 = entry2.get_transformation_matrix(
-                    &pfor.index_variables
-                )?;
+                let transform1 = entry1.get_transformation_matrix(&pfor.index_variables)?;
+                let transform2 = entry2.get_transformation_matrix(&pfor.index_variables)?;
                 if one_write {
                     let collision =
                         get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);

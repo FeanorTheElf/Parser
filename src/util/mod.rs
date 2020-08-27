@@ -1,7 +1,7 @@
+pub mod cmp;
 pub mod dynamic;
 pub mod iterable;
 pub mod ref_eq;
-pub mod cmp;
 
 #[allow(unused)]
 pub fn equal_ignore_order<T>(lhs: &Vec<T>, rhs: &Vec<T>) -> bool

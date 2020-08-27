@@ -1,7 +1,7 @@
 use super::error::{CompileError, ErrorType};
-use super::types::Type;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
+use super::types::Type;
 use super::AstNode;
 
 use super::super::util::iterable::{Iterable, LifetimeIterable};
@@ -116,7 +116,8 @@ pub struct Literal {
 
 impl Block {
     pub fn scan_top_level_expressions<'a, F>(&'a self, f: &mut F)
-        where F: FnMut(&'a Expression)
+    where
+        F: FnMut(&'a Expression),
     {
         for statement in &self.statements {
             for expr in statement.iter() {
@@ -142,7 +143,7 @@ impl Expression {
                 self.pos(),
                 format!("Only a variable is allowed here."),
                 ErrorType::VariableRequired,
-            ))
+            )),
         }
     }
 
@@ -153,9 +154,10 @@ impl Expression {
                 Expression::Literal(_) => {
                     debug_assert!(false);
                     false
-                },
+                }
                 Expression::Variable(var) => {
-                    var.identifier == Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) && call.parameters[0].is_lvalue()
+                    var.identifier == Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex)
+                        && call.parameters[0].is_lvalue()
                 }
             },
             Expression::Variable(_) => true,
@@ -168,7 +170,7 @@ impl PartialEq<Identifier> for Expression {
     fn eq(&self, rhs: &Identifier) -> bool {
         match self {
             Expression::Variable(var) => var.identifier == *rhs,
-            _ => false
+            _ => false,
         }
     }
 }

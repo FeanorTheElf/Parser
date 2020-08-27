@@ -93,7 +93,7 @@ impl Identifier {
     pub fn unwrap_name(&self) -> &Name {
         match self {
             Identifier::BuiltIn(op) => panic!("Called unwrap_name() on builtin identifier {}", op),
-            Identifier::Name(name) => name
+            Identifier::Name(name) => name,
         }
     }
 }

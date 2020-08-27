@@ -110,7 +110,7 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
 
 #[cfg(test)]
 pub struct TupleDefinitionsIter<'a> {
-    iter: std::slice::Iter<'a, (Name, Type)>
+    iter: std::slice::Iter<'a, (Name, Type)>,
 }
 
 #[cfg(test)]
@@ -279,7 +279,13 @@ impl<'a, T> ScopeStack<'a, T> {
     }
 
     pub fn get_defined(&self, name: &Name, pos: &TextPosition) -> Result<&T, CompileError> {
-        self.get(name).ok_or_else(|| CompileError::new(pos, format!("Undefined symbol {}", name), ErrorType::UndefinedSymbol))
+        self.get(name).ok_or_else(|| {
+            CompileError::new(
+                pos,
+                format!("Undefined symbol {}", name),
+                ErrorType::UndefinedSymbol,
+            )
+        })
     }
 }
 
