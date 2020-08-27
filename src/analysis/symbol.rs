@@ -3,7 +3,7 @@ use super::super::language::prelude::*;
 use super::super::util::dynamic::Dynamic;
 use std::any::Any;
 
-pub trait SymbolDefinition: Any + Dynamic {
+pub trait SymbolDefinition: Any + Dynamic + std::fmt::Debug {
     fn get_name(&self) -> &Name;
     fn calc_type(&self) -> Type;
 }

@@ -80,6 +80,28 @@ pub struct KernelInfo<'a> {
     pub kernel_name: u32
 }
 
+pub struct KernelInfoUsedVariablesIter<'a, 'b> {
+    iter: std::collections::btree_set::Iter<'b, SortByNameSymbolDefinition<'a>>,
+}
+
+impl<'a, 'b> Iterator for KernelInfoUsedVariablesIter<'a, 'b> {
+    type Item = &'a dyn SymbolDefinition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|x| **x)
+    }
+}
+
+impl<'a, 'b> EnumerateDefinitions<'a> for &'b KernelInfo<'a> {
+    type IntoIter = KernelInfoUsedVariablesIter<'a, 'b>;
+
+    fn enumerate(self) -> Self::IntoIter {
+        KernelInfoUsedVariablesIter {
+            iter: self.used_variables.iter()
+        }
+    }
+}
+
 pub struct FunctionInfo<'a> {
     pub function: &'a Function,
     pub called_from: HashSet<TargetLanguageFunction<'a>>,

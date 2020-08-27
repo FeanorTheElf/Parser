@@ -24,7 +24,7 @@ fn gen_while<'stack, 'ast: 'stack>(statement: &'ast While, context: &mut dyn Cud
     }))
 }
 
-pub fn gen_kernel<'stack, 'ast: 'stack>(pfor: &'ast ParallelFor, kernel: &KernelInfo, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaKernel, OutputError> {
+pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(pfor: &'ast ParallelFor, kernel: &'c KernelInfo<'ast>, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaKernel, OutputError> {
     let name = CudaIdentifier::Kernel(kernel.kernel_name);
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
@@ -46,6 +46,7 @@ pub fn gen_kernel<'stack, 'ast: 'stack>(pfor: &'ast ParallelFor, kernel: &Kernel
     }).zip(grid_offset_variables.clone());
 
     context.set_device();
+    context.enter_scope(kernel);
 
     let thread_index = CudaExpression::Sum(vec![
         (AddSub::Plus, CudaExpression::Identifier(CudaIdentifier::ThreadIdxX)),
@@ -182,7 +183,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(pfor: &ParallelFor, kernel: &KernelInfo
         statements.push(Box::new(CudaVarDeclaration {
             var: offset.clone(),
             var_type: CudaType {
-                base: CudaPrimitiveType::Index,
+                base: CudaPrimitiveType::Int,
                 ptr_count: 0,
                 constant: true
             },

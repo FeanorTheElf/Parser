@@ -8,10 +8,10 @@ pub fn gen_return<'stack, 'ast: 'stack>(statement: &Return, context: &mut dyn Cu
     if is_generated_with_output_parameter(context.get_current_function().return_type.as_ref().as_ref()) {
         if let Some(return_type) = context.get_current_function().return_type.as_ref() {
             let assignments = std::iter::once(CudaAssignment {
-                assignee: CudaExpression::Identifier(CudaIdentifier::OutputValueVar),
+                assignee: CudaExpression::deref(CudaExpression::Identifier(CudaIdentifier::OutputValueVar)),
                 value: gen_simple_expr(statement.value.as_ref().unwrap(), return_type).1
             }).chain(gen_simple_expr_array_size(statement.value.as_ref().unwrap(), &return_type).enumerate().map(|(dim, (_ty, expr))| CudaAssignment {
-                assignee: CudaExpression::Identifier(CudaIdentifier::OutputArraySizeVar(dim as u32)),
+                assignee: CudaExpression::deref(CudaExpression::Identifier(CudaIdentifier::OutputArraySizeVar(dim as u32))),
                 value: expr
             }));
             Ok(Box::new(CudaBlock {

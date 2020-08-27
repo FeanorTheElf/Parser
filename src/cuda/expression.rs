@@ -178,7 +178,11 @@ pub fn gen_output_parameter_declaration<'a>(_pos: &'a TextPosition, ty: &'a Type
     assert!(is_generated_with_output_parameter(Some(&ty)));
     let (base, dim) = expect_array_type(ty);
     std::iter::once((gen_primitive_ptr_type(&base, 2), CudaIdentifier::OutputValueVar))
-        .chain((0..dim).map(move |d| (gen_primitive_ptr_type(&base, 1), CudaIdentifier::OutputArraySizeVar(d))))
+        .chain((0..dim).map(move |d| (CudaType {
+            base: CudaPrimitiveType::Index,
+            ptr_count: 1,
+            constant: false
+        }, CudaIdentifier::OutputArraySizeVar(d))))
 }
 
 fn gen_defined_function_call<'stack, 'ast: 'stack, I>(call: &FunctionCall, function_name: &Name, function_type: &Type, mut output_params: I, context: &mut dyn CudaContext<'stack, 'ast>) -> Result<CudaExpression, OutputError> 

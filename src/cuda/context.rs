@@ -26,9 +26,9 @@ pub trait CudaContext<'data, 'ast: 'data> {
 
 impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {
     
-    pub fn enter_scope<S: ?Sized>(&mut self, scope: &'ast S)
+    pub fn enter_scope<'b, S: ?Sized>(&mut self, scope: &'b S)
     where
-        &'ast S: EnumerateDefinitions<'ast>
+        &'b S: EnumerateDefinitions<'ast>
     {
         self.get_scopes_mut_do_not_use_outside_of_cuda_context().enter(scope)
     }

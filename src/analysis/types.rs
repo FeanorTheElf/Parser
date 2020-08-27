@@ -30,9 +30,13 @@ impl Typed for Expression {
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryNeg) => call.parameters[0].calculate_type(context)?.without_view(),
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => {
                     let array_type = call.parameters[0].calculate_type(context)?;
-                    match array_type {
-                        Type::Array(base_type, _) => Type::View(Box::new(Type::Primitive(base_type))),
-                        _ => CompileError::new(call.pos(), format!("Cannot index access on {}", array_type), ErrorType::TypeError).throw()
+                    match &array_type {
+                        Type::Array(base_type, _) => Type::View(Box::new(Type::Primitive(*base_type))),
+                        Type::View(viewn) => match &**viewn {
+                            Type::Array(base_type, _) => Type::View(Box::new(Type::Primitive(*base_type))),
+                            _ => Err(error_not_indexable(call.pos(), &array_type))?
+                        },
+                        _ => Err(error_not_indexable(call.pos(), &array_type))?
                     }
                 }
                 _ => unimplemented!()

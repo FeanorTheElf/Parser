@@ -148,9 +148,9 @@ struct ScopeNode<T> {
 }
 
 impl<T> ScopeNode<T> {
-    fn create<'a, S: ?Sized>(scope: &'a S) -> ScopeNode<T>
+    fn create<'c, 'a, S: ?Sized>(scope: &'c S) -> ScopeNode<T>
     where
-        &'a S: EnumerateDefinitions<'a>,
+        &'c S: EnumerateDefinitions<'a>,
         T: From<&'a dyn SymbolDefinition>,
     {
         let defs = scope
@@ -209,9 +209,9 @@ impl<'a, T> ScopeStack<'a, T> {
         return result;
     }
 
-    pub fn enter<'b, S: ?Sized>(&mut self, scope: &'b S)
+    pub fn enter<'c, 'b, S: ?Sized>(&mut self, scope: &'c S)
     where
-        &'b S: EnumerateDefinitions<'b>,
+        &'c S: EnumerateDefinitions<'b>,
         T: From<&'b dyn SymbolDefinition>,
     {
         self.scopes.push(ScopeNode::create(scope));
