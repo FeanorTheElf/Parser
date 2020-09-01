@@ -38,7 +38,7 @@ fn main() {
     fn main() {
         let a: int[,] = allocate1d(5,);
         pfor i: int, with this[i,], in a {
-            set(a[i,], i,);
+            set(a[i,], 2 * i,);
         }
         let b: int[,] = copy(a,);
         print(b,);
@@ -57,8 +57,8 @@ fn main() {
     }
 
     fn copy_array(dst: &int[,], src: &int[,],) {
-        pfor i: int, with this[i,], in dst with this[i,], in src {
-            dst[i,] = src[i,];
+        pfor i: int, with this[i,], in dst with this[4-i,], in src {
+            dst[i,] = src[4-i,];
         }
     }
     

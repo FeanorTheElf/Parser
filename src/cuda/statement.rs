@@ -19,7 +19,7 @@ pub fn gen_return<'stack, 'ast: 'stack>(
                 assignee: CudaExpression::deref(CudaExpression::Identifier(
                     CudaIdentifier::OutputValueVar,
                 )),
-                value: gen_simple_expr(statement.value.as_ref().unwrap(), return_type).1,
+                value: CudaExpression::Move(Box::new(gen_simple_expr(statement.value.as_ref().unwrap(), return_type).1)),
             })
             .chain(
                 gen_simple_expr_array_size(statement.value.as_ref().unwrap(), &return_type)

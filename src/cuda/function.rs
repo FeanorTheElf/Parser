@@ -55,7 +55,8 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
     let grid_size_parameters = std::iter::repeat(CudaType {
         base: CudaPrimitiveType::Index,
         constant: true,
-        ptr_count: 0,
+        ptr: false,
+        owned: false
     })
     .zip(grid_size_variables.clone());
 
@@ -64,9 +65,10 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
 
     let grid_offset_parameters = std::iter::repeat(CudaType {
         base: CudaPrimitiveType::Int,
-        constant: true,
-        ptr_count: 0,
-    })
+        owned: false,
+        ptr: false,
+        constant: true
+    },)
     .zip(grid_offset_variables.clone());
 
     context.set_device();
@@ -116,8 +118,9 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
             var: CudaIdentifier::ValueVar(var.get_name().clone()),
             var_type: CudaType {
                 base: CudaPrimitiveType::Int,
-                constant: true,
-                ptr_count: 0,
+                owned: false,
+                ptr: false,
+                constant: true
             },
         })
         .map(|v| Box::new(v) as Box<dyn CudaStatement>);
@@ -236,9 +239,10 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
             statements.push(Box::new(CudaVarDeclaration {
                 value: Some(value),
                 var_type: CudaType {
-                    ptr_count: 0,
-                    constant: true,
                     base: CudaPrimitiveType::Index,
+                    owned: false,
+                    ptr: false,
+                    constant: true
                 },
                 var: CudaIdentifier::TmpArrayShapeVar(local_array_id as u32, d),
             }));
@@ -332,8 +336,9 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
             var: offset.clone(),
             var_type: CudaType {
                 base: CudaPrimitiveType::Int,
-                ptr_count: 0,
-                constant: true,
+                owned: false,
+                ptr: false,
+                constant: true
             },
             value: Some(CudaExpression::Round(Box::new(CudaExpression::Min(
                 coordinates.clone(),
@@ -344,8 +349,9 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
             var: size.clone(),
             var_type: CudaType {
                 base: CudaPrimitiveType::Index,
-                ptr_count: 0,
-                constant: true,
+                owned: false,
+                ptr: false,
+                constant: true
             },
             value: Some(
                 CudaExpression::Round(Box::new(CudaExpression::Max(coordinates)))
@@ -516,8 +522,9 @@ fn gen_implemented_function<'data, 'ast: 'data>(
             params: params,
             return_type: CudaType {
                 base: CudaPrimitiveType::Void,
-                ptr_count: 0,
-                constant: false,
+                owned: false,
+                ptr: false,
+                constant: false
             },
             body: gen_block(body, context)?,
         })
@@ -527,8 +534,12 @@ fn gen_implemented_function<'data, 'ast: 'data>(
             Some(Type::Array(base, dim)) => {
 
                 assert_eq!(*dim, 0);
-
-                gen_primitive_ptr_type(base, 1)
+                CudaType {
+                    base: gen_primitive_type(*base),
+                    owned: false,
+                    ptr: false,
+                    constant: false
+                }
             }
             Some(Type::Function(_, _)) => {
                 return Err(OutputError::UnsupportedCode(
@@ -537,13 +548,19 @@ fn gen_implemented_function<'data, 'ast: 'data>(
                 ))
             }
             Some(Type::JumpLabel) => error_jump_label_var_type(function.pos()).throw(),
-            Some(Type::Primitive(base)) => gen_primitive_ptr_type(base, 0),
+            Some(Type::Primitive(base)) => CudaType {
+                base: gen_primitive_type(*base),
+                owned: false,
+                ptr: false,
+                constant: false
+            },
             Some(Type::TestType) => error_test_type(function.pos()),
-            Some(Type::View(viewn)) => error_return_view(function.pos()).throw(),
+            Some(Type::View(_viewn)) => error_return_view(function.pos()).throw(),
             None => CudaType {
                 base: CudaPrimitiveType::Void,
-                constant: false,
-                ptr_count: 0,
+                owned: false,
+                ptr: false,
+                constant: false
             },
         };
 
