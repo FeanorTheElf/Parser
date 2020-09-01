@@ -1,5 +1,4 @@
 use super::prelude::*;
-
 use std::io::Error;
 use std::io::ErrorKind;
 pub use std::io::Write;

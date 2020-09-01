@@ -1,8 +1,7 @@
-use std::string::String;
-use std::vec::Vec;
-
 use super::super::language::position::TextPosition;
 use super::tokens::*;
+use std::string::String;
+use std::vec::Vec;
 
 fn lex_op(string: &str) -> Option<Token> {
 

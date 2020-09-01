@@ -773,6 +773,15 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
     ))
 }
 
+pub fn gen_tmp_var_free<'stack, 'ast: 'stack>(
+    context: &mut dyn CudaContext<'stack, 'ast>,
+) -> Result<CudaFree, OutputError> {
+    Ok(CudaFree {
+        device: context.is_device_context(),
+        ptr: CudaIdentifier::TmpVar
+    })
+}
+
 pub fn gen_array_checked_copy_assignment_from_var<'stack, 'ast: 'stack>(
     _pos: &TextPosition,
     assignee: &Name,
@@ -848,6 +857,7 @@ pub fn gen_array_assignment<'stack, 'ast: 'stack>(
                     statements: tmp_var_init
                         .chain(size_check)
                         .chain(std::iter::once(copy))
+                        .chain(std::iter::once(gen_tmp_var_free(context).map(Box::new).map(|x| x as Box<dyn CudaStatement>)))
                         .collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?,
                 }))
             }
@@ -1202,6 +1212,7 @@ fn test_gen_assignment_call_result_to_array_view() {
     assert(b_d0 == tmpd0);
     assert(b_d1 == tmpd1);
     checkCudaStatus(cudaMemcpy(b_, tmp, sizeof(int) * b_d0, cudaMemcpyDeviceToDevice));
+    checkCudaStatus(cudaFree(tmp));
 }",
         output
     );

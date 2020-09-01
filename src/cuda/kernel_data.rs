@@ -3,7 +3,6 @@ use super::super::analysis::symbol::*;
 use super::super::language::backend::OutputError;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
-
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;

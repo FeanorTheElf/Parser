@@ -1,6 +1,5 @@
 use super::super::language::prelude::*;
 use super::symbol::SymbolDefinition;
-
 use std::collections::HashMap;
 
 pub trait EnumerateDefinitions<'a> {

@@ -1,5 +1,4 @@
 use super::position::TextPosition;
-
 use std::fmt::{Display, Error, Formatter};
 
 const INTERNAL_ERROR: &'static str =

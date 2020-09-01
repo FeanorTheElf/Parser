@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-
 use super::super::util::dynamic::Dynamic;
 use std::any::Any;
 

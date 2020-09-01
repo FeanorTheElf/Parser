@@ -5,7 +5,6 @@
 
 extern crate itertools;
 extern crate take_mut;
-
 #[cfg(test)]
 extern crate test;
 
@@ -17,13 +16,11 @@ mod util;
 
 mod language;
 
+mod analysis;
+mod cuda;
 mod lexer;
 mod parser;
-
-mod analysis;
 mod transformation;
-
-mod cuda;
 
 use language::backend::*;
 use language::prelude::*;

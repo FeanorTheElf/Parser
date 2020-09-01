@@ -4,7 +4,6 @@ use super::super::language::backend::OutputError;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;
-
 use std::collections::HashMap;
 
 pub trait CudaContext<'data, 'ast: 'data> {

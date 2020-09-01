@@ -702,3 +702,60 @@ fn test_gen_kernel_call() {
     kernel0 <<< dim3((kernel0d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, &b_, kernel0d0, kernel0o0);
 }", output);
 }
+
+#[test]
+
+fn test_gen_kernel_call_complex() {
+
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "
+        pfor i: int, j: int, with this[2 * i + j, j,], this[2 * i + j + 1, j,], in a {
+            a[2 * i + j + 1, j,] = a[2 * i + j, j,];
+        }
+    ",
+    ))
+    .unwrap();
+
+    let declaration_a = (Name::l("a"), Type::Array(PrimitiveType::Int, 2));
+
+    let defs = [declaration_a];
+
+    let kernel_info = KernelInfo {
+        called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
+        kernel_name: 0,
+        pfor: &pfor,
+        used_variables: BTreeSet::from_iter(
+            defs.iter()
+                .map(|d| d as &dyn SymbolDefinition)
+                .map(SortByNameSymbolDefinition::from),
+        ),
+    };
+
+    let program = Program { items: vec![] };
+
+    let mut output = "".to_owned();
+
+    let mut target = StringWriter::new(&mut output);
+
+    let mut writer = CodeWriter::new(&mut target);
+
+    let mut context: Box<dyn CudaContext> =
+        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
+
+    context.enter_scope(&defs[..]);
+
+    gen_kernel_call(&pfor, &kernel_info, &mut *context)
+        .unwrap()
+        .write(&mut writer)
+        .unwrap();
+
+    assert_eq!("{
+    const unsigned int array0shape0 = a_d0 / a_d1;
+    const unsigned int array0shape1 = a_d1;
+    const int kernel0o0 = round(min((1./2.) * array0shape0 + (-1./2.) * array0shape1, (-1./2.) * array0shape1, (1./2.) * array0shape0, 0, (1./2.) * array0shape0 + (-1./2.) * array0shape1 - 1./2., (-1./2.) * array0shape1 - 1./2., (1./2.) * array0shape0 - 1./2., 0 - 1./2.));
+    const unsigned int kernel0d0 = round(max((1./2.) * array0shape0 + (-1./2.) * array0shape1, (-1./2.) * array0shape1, (1./2.) * array0shape0, 0, (1./2.) * array0shape0 + (-1./2.) * array0shape1 - 1./2., (-1./2.) * array0shape1 - 1./2., (1./2.) * array0shape0 - 1./2., 0 - 1./2.)) - kernel0o0;
+    const int kernel0o1 = round(min(array0shape1, array0shape1, 0, 0, array0shape1, array0shape1, 0, 0));
+    const unsigned int kernel0d1 = round(max(array0shape1, array0shape1, 0, 0, array0shape1, array0shape1, 0, 0)) - kernel0o1;
+    kernel0 <<< dim3(kernel0d0 * ((kernel0d1 - 1) / 256 + 1)), dim3(256), 0 >>> (a_, a_d0, a_d1, kernel0d0, kernel0d1, kernel0o0, kernel0o1);
+}", output);
+}

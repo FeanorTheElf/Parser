@@ -1,10 +1,9 @@
+use super::super::util::iterable::{Iterable, LifetimeIterable};
 use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
 use super::types::Type;
 use super::AstNode;
-
-use super::super::util::iterable::{Iterable, LifetimeIterable};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 

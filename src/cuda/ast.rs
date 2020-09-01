@@ -1,5 +1,6 @@
 use super::super::language::backend::*;
 use super::super::language::prelude::*;
+use feanor_la::rat::{r64, ZERO, ONE};
 use std::ops::{Add, Mul, Sub};
 
 pub trait Writable {
@@ -234,7 +235,7 @@ pub enum CudaExpression {
     Identifier(CudaIdentifier),
     IntLiteral(i64),
     FloatLiteral(f64),
-    RatLiteral(i64, u64),
+    RatLiteral(r64),
     Product(Vec<(MulDiv, CudaExpression)>),
     Comparison(Cmp, Box<CudaExpression>, Box<CudaExpression>),
     Conjunction(Vec<CudaExpression>),
@@ -262,7 +263,7 @@ impl CudaExpression {
         match &self {
             CudaExpression::IntLiteral(x) => *x == 0,
             CudaExpression::FloatLiteral(x) => *x == 0.,
-            CudaExpression::RatLiteral(num, _) => *num == 0,
+            CudaExpression::RatLiteral(val) => *val == ZERO,
             CudaExpression::Sum(summands) => summands.len() == 0,
             _ => false,
         }
@@ -273,7 +274,7 @@ impl CudaExpression {
         match &self {
             CudaExpression::IntLiteral(x) => *x == 1,
             CudaExpression::FloatLiteral(x) => *x == 1.,
-            CudaExpression::RatLiteral(num, den) => *num == *den as i64,
+            CudaExpression::RatLiteral(val) => *val == ONE,
             CudaExpression::Product(factors) => factors.len() == 0,
             _ => false,
         }
@@ -397,17 +398,17 @@ impl Mul for CudaExpression {
     }
 }
 
-impl From<feanor_la::rat::r64> for CudaExpression {
-    fn from(rhs: feanor_la::rat::r64) -> CudaExpression {
+impl From<r64> for CudaExpression {
+    fn from(rhs: r64) -> CudaExpression {
 
-        CudaExpression::RatLiteral(rhs.num(), rhs.den() as u64)
+        CudaExpression::RatLiteral(rhs)
     }
 }
 
-impl<'a> From<&'a feanor_la::rat::r64> for CudaExpression {
-    fn from(rhs: &'a feanor_la::rat::r64) -> CudaExpression {
+impl<'a> From<&'a r64> for CudaExpression {
+    fn from(rhs: &'a r64) -> CudaExpression {
 
-        CudaExpression::RatLiteral(rhs.num(), rhs.den() as u64)
+        CudaExpression::RatLiteral(*rhs)
     }
 }
 
@@ -422,7 +423,7 @@ impl CudaExpression {
             CudaExpression::Sum(_) => 0,
             CudaExpression::IndexFloorDiv(_, _) => 0,
             CudaExpression::Product(_) => 1,
-            CudaExpression::RatLiteral(_, _) => 1,
+            CudaExpression::RatLiteral(_) => 1,
             CudaExpression::AddressOf(_) => 2,
             CudaExpression::Deref(_) => 2,
             CudaExpression::Index(_, _) => 3,
@@ -477,9 +478,9 @@ impl CudaExpression {
 
                 write!(out, "{}.", val)?;
             }
-            CudaExpression::RatLiteral(num, den) => {
-
-                write!(out, "{}./{}.", num, den)?;
+            CudaExpression::RatLiteral(mut rhs) => {
+                rhs.reduce();
+                write!(out, "{}./{}.", rhs.num(), rhs.den())?;
             }
             CudaExpression::Sum(summands) => {
                 if summands.len() == 0 {
@@ -783,7 +784,7 @@ impl Writable for CudaKernel {
 
         out.newline()?;
 
-        write!(out, "__global__ inline void ")?;
+        write!(out, "__global__ void ")?;
 
         self.name.write(out)?;
 
@@ -1066,3 +1067,70 @@ impl Writable for CudaKernelCall {
 }
 
 impl CudaStatement for CudaKernelCall {}
+
+pub struct CudaAlloc {
+    pub device: bool,
+    pub elements: CudaExpression,
+    pub base_type: CudaType,
+    pub ptr: CudaIdentifier,
+}
+
+impl Writable for CudaAlloc {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+
+        if self.device {
+            self.ptr.write(out)?;
+            write!(out, " = malloc(sizeof(");
+            
+            self.base_type.write(out)?;
+    
+            write!(out, ") * ")?;
+    
+            self.elements
+                .write_expression(CudaExpression::Product(vec![]).get_priority(), out)?;
+            write!(out, ")")?;
+        } else {
+            write!(out, "checkCudaStatus(cudaMalloc(&")?;
+
+            self.ptr.write(out)?;
+    
+            write!(out, ", sizeof(")?;
+    
+            self.base_type.write(out)?;
+    
+            write!(out, ") * ")?;
+    
+            self.elements
+                .write_expression(CudaExpression::Product(vec![]).get_priority(), out)?;
+    
+            write!(out, "))")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl CudaStatement for CudaAlloc {}
+
+pub struct CudaFree {
+    pub device: bool,
+    pub ptr: CudaIdentifier,
+}
+
+impl Writable for CudaFree {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+
+        if self.device {
+           write!(out, "free(")?;
+           self.ptr.write(out)?;
+           write!(out, ")")?;
+        } else {
+            write!(out, "checkCudaStatus(cudaFree(")?;
+            self.ptr.write(out)?;
+            write!(out, "))")?;
+        }
+
+        Ok(())
+    }
+}
+impl CudaStatement for CudaFree {}

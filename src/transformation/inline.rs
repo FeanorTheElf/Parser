@@ -2,7 +2,6 @@ use super::super::analysis::scope::NameScopeStack;
 use super::super::language::prelude::*;
 use super::extraction::Extractor;
 use super::function_resolution::{find_function_definition, DefinedFunctions, FunctionDefinition};
-
 use std::collections::HashMap;
 
 pub struct Inliner<F>

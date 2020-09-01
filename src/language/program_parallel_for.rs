@@ -1,12 +1,10 @@
+use super::super::util::iterable::LifetimeIterable;
 use super::error::*;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
 use super::program::*;
 use super::AstNode;
-
-use super::super::util::iterable::LifetimeIterable;
 use feanor_la::prelude::*;
-
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::ops::MulAssign;
@@ -441,8 +439,8 @@ fn test_get_transformation_matrix() {
     );
 
     #[rustfmt::skip]
-    let expected: Matrix<i32> = Matrix::from_array([[-2, 1, 2, -1], 
-                                                    [6, -1, 1,  0], 
+    let expected: Matrix<i32> = Matrix::from_array([[-2, 1, 2, -1],
+                                                    [6, -1, 1,  0],
                                                     [0,  9, 0, -9]]);
 
     assert_eq!(

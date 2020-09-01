@@ -1,6 +1,5 @@
 use super::super::language::error::{CompileError, ErrorType};
 use super::super::language::position::TextPosition;
-
 use std::string::String;
 use std::vec::Vec;
 

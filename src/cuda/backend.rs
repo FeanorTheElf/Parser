@@ -8,7 +8,6 @@ use super::expression::*;
 use super::function::*;
 use super::kernel_data::*;
 use super::statement::*;
-
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
