@@ -934,7 +934,7 @@ pub fn gen_assignment<'stack, 'ast: 'stack>(
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
 
-    match &statement.assignee {
+    let result: Result<Box<dyn CudaStatement>, OutputError> = match &statement.assignee {
         Expression::Call(call) => {
 
             if call.function != BuiltInIdentifier::FunctionIndex {
@@ -968,7 +968,8 @@ pub fn gen_assignment<'stack, 'ast: 'stack>(
             }
         },
         Expression::Literal(_) => error_rvalue_not_assignable(statement.pos()).throw(),
-    }
+    };
+    return result;
 }
 
 #[cfg(test)]

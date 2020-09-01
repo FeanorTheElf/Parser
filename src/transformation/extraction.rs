@@ -160,7 +160,7 @@ where
         }
     }
 
-    pub fn extract_calls_in_block<'a, 'b>(
+    pub fn extract_calls_in_block_flat<'a, 'b>(
         &mut self,
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
@@ -169,7 +169,7 @@ where
 
         let scopes = parent_scopes.child_scope(block);
 
-        let mut statement_indices_to_inline = Vec::new();
+        let mut results = Vec::new();
 
         let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
 
@@ -204,7 +204,7 @@ where
 
                 result_statements.push(Box::new(init_block));
 
-                statement_indices_to_inline.push(ExtractionReport {
+                results.push(ExtractionReport {
                     extracted_var_declaration_index: index_before + i,
                     extracted_var_value_assignment_index: index_after + i,
                 });
@@ -215,7 +215,29 @@ where
 
         block.statements = result_statements;
 
-        return statement_indices_to_inline;
+        return results;
+    }
+
+    pub fn extract_calls_in_block<'a, 'b>(
+        &mut self,
+        block: &'a mut Block,
+        parent_scopes: &'b NameScopeStack<'b>,
+        defined_functions: &'b DefinedFunctions,
+    ) {
+        let extractions = self.extract_calls_in_block_flat(block, parent_scopes, defined_functions);
+        for extraction in extractions {
+            debug_assert!(&*block.statements[extraction.extracted_var_value_assignment_index] == &Block {
+                pos: position::NONEXISTING,
+                statements: vec![]
+            } as &dyn Statement);
+            block.statements.remove(extraction.extracted_var_value_assignment_index);
+        }
+        let child_scopes = parent_scopes.child_scope(block);
+        for statement in &mut block.statements {
+            for mut subblock in statement.iter_mut() {
+                self.extract_calls_in_block(&mut subblock, &child_scopes, defined_functions);
+            }
+        }
     }
 
     pub fn extract_calls_in_program(&mut self, program: &mut Program) {

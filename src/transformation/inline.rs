@@ -46,13 +46,13 @@ where
 
         let statement_indices_to_inline =
             self.extractor
-                .extract_calls_in_block(block, parent_scopes, defined_functions);
+                .extract_calls_in_block_flat(block, parent_scopes, defined_functions);
 
         let scopes = parent_scopes.child_scope(block);
 
         {
 
-            for extraction in statement_indices_to_inline.iter() {
+            for extraction in &statement_indices_to_inline {
 
                 let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
                     .dynamic_mut()

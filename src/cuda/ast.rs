@@ -1095,7 +1095,7 @@ impl Writable for CudaAlloc {
 
         if self.device {
             self.ptr.write(out)?;
-            write!(out, " = malloc(sizeof(");
+            write!(out, " = malloc(sizeof(")?;
             
             self.base_type.write(out)?;
     
