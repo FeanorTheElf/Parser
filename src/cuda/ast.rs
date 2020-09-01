@@ -37,21 +37,26 @@ impl Writable for CudaPrimitiveType {
 pub struct CudaType {
     pub constant: bool,
     pub base: CudaPrimitiveType,
-    pub ptr_count: u32,
+    pub owned: bool,
+    pub ptr: bool
 }
 
 impl Writable for CudaType {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
 
         if self.constant {
-
             write!(out, "const ")?;
         }
 
-        self.base.write(out)?;
+        if self.owned {
+            write!(out, "DevPtr<")?;
+            self.base.write(out)?;
+            write!(out, ">")?;
+        } else {
+            self.base.write(out)?;
+        }
 
-        for _i in 0..self.ptr_count {
-
+        if self.ptr {
             write!(out, "*")?;
         }
 
@@ -255,6 +260,7 @@ pub enum CudaExpression {
     Round(Box<CudaExpression>),
     Max(Vec<CudaExpression>),
     IndexFloorDiv(Box<CudaExpression>, Box<CudaExpression>),
+    Move(Box<CudaExpression>)
 }
 
 impl CudaExpression {
@@ -435,6 +441,7 @@ impl CudaExpression {
             CudaExpression::Min(_) => i32::MAX,
             CudaExpression::Max(_) => i32::MAX,
             CudaExpression::Round(_) => i32::MAX,
+            CudaExpression::Move(_) => i32::MAX,
         }
     }
 
@@ -649,6 +656,14 @@ impl CudaExpression {
 
                 write!(out, ")")?;
             }
+            CudaExpression::Move(expr) => {
+
+                write!(out, "std::move(")?;
+
+                expr.write_expression(i32::MIN, out)?;
+
+                write!(out, ")")?;
+            }
             CudaExpression::IndexFloorDiv(divident, divisor) => {
 
                 write!(out, "(")?;
@@ -784,7 +799,7 @@ impl Writable for CudaKernel {
 
         out.newline()?;
 
-        write!(out, "__global__ void ")?;
+        write!(out, "__global__ inline void ")?;
 
         self.name.write(out)?;
 
@@ -936,7 +951,7 @@ pub struct CudaMemcpy {
     pub destination: CudaExpression,
     pub source: CudaExpression,
     pub length: CudaExpression,
-    pub base_type: CudaType,
+    pub base_type: CudaPrimitiveType,
     pub device: bool,
 }
 

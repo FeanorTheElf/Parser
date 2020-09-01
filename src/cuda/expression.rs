@@ -34,17 +34,6 @@ where
         .unwrap_or(false)
 }
 
-pub fn gen_primitive_ptr_type(value: &PrimitiveType, ptr_count: u32) -> CudaType {
-
-    assert_eq!(*value, PrimitiveType::Int);
-
-    CudaType {
-        base: CudaPrimitiveType::Int,
-        constant: false,
-        ptr_count: ptr_count,
-    }
-}
-
 pub fn expect_array_type(value: &Type) -> (PrimitiveType, u32) {
 
     match value {
@@ -57,9 +46,14 @@ pub fn expect_array_type(value: &Type) -> (PrimitiveType, u32) {
     }
 }
 
+pub fn gen_primitive_type(ty: PrimitiveType) -> CudaPrimitiveType {
+    assert_eq!(ty, PrimitiveType::Int);
+    CudaPrimitiveType::Int
+}
+
 pub fn gen_array_size<'a>(
     _pos: &TextPosition,
-    name: &'a Name,
+    array_variable: &'a Name,
     ty: &Type,
 ) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
 
@@ -69,11 +63,12 @@ pub fn gen_array_size<'a>(
 
         (
             CudaType {
-                ptr_count: 0,
+                ptr: false,
                 constant: false,
+                owned: false,
                 base: CudaPrimitiveType::Index,
             },
-            CudaIdentifier::ArraySizeVar(name.clone(), d),
+            CudaIdentifier::ArraySizeVar(array_variable.clone(), d),
         )
     })
 }
@@ -93,29 +88,50 @@ pub fn gen_simple_expr_array_size<'a>(
     }
 }
 
+/// Generates the cuda variable containing the data from the given variable
 pub fn gen_variable(pos: &TextPosition, name: &Name, ty: &Type) -> (CudaType, CudaIdentifier) {
 
     match ty {
         Type::Array(base, _) => (
-            gen_primitive_ptr_type(base, 1),
+            CudaType {
+                base: gen_primitive_type(*base),
+                owned: true,
+                constant: false,
+                ptr: false
+            },
             CudaIdentifier::ValueVar(name.clone()),
         ),
         Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
         Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
         Type::Primitive(base) => (
-            gen_primitive_ptr_type(base, 0),
+            CudaType {
+                base: gen_primitive_type(*base),
+                owned: false,
+                constant: false,
+                ptr: false
+            },
             CudaIdentifier::ValueVar(name.clone()),
         ),
         Type::TestType => error_test_type(pos),
         Type::View(viewn) => match &**viewn {
             Type::Array(base, _) => (
-                gen_primitive_ptr_type(base, 1),
+                CudaType {
+                    base: gen_primitive_type(*base),
+                    owned: false,
+                    constant: false,
+                    ptr: true
+                },
                 CudaIdentifier::ValueVar(name.clone()),
             ),
             Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
             Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
             Type::Primitive(base) => (
-                gen_primitive_ptr_type(base, 1),
+                CudaType {
+                    base: gen_primitive_type(*base),
+                    owned: false,
+                    constant: false,
+                    ptr: true
+                },
                 CudaIdentifier::ValueVar(name.clone()),
             ),
             Type::TestType => error_test_type(pos),
@@ -197,11 +213,13 @@ pub fn gen_variables_for_view<'a>(
 
     let (mut cuda_type, cuda_val) = gen_variable(pos, var, ty);
 
-    let expr = if cuda_type.ptr_count == 0 {
-
-        cuda_type.ptr_count = 1;
-
+    let expr = if !cuda_type.ptr && !cuda_type.owned {
+        cuda_type.ptr = true;
         CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(cuda_val)))
+    } else if cuda_type.owned {
+        cuda_type.ptr = true;
+        cuda_type.owned = false;
+        CudaExpression::Identifier(cuda_val)
     } else {
 
         CudaExpression::Identifier(cuda_val)
@@ -236,9 +254,9 @@ pub fn gen_variables_for_value<'a>(
 
     let (mut cuda_type, cuda_val) = gen_variable(pos, var, ty);
 
-    let expr = if !ty.is_array() && cuda_type.ptr_count > 0 {
+    let expr = if !ty.is_array() && cuda_type.ptr {
 
-        cuda_type.ptr_count = 0;
+        cuda_type.ptr = false;
 
         CudaExpression::deref(CudaExpression::Identifier(cuda_val))
     } else {
@@ -273,7 +291,8 @@ pub fn gen_variables_for_output_params<'a>(
             CudaType {
                 base: ty.base,
                 constant: false,
-                ptr_count: ty.ptr_count + 1,
+                ptr: true,
+                owned: ty.owned
             },
             CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(var))),
         )
@@ -290,7 +309,12 @@ pub fn gen_output_parameter_declaration<'a>(
     let (base, dim) = expect_array_type(ty);
 
     std::iter::once((
-        gen_primitive_ptr_type(&base, 2),
+        CudaType {
+            base: gen_primitive_type(base),
+            ptr: true,
+            owned: true,
+            constant: false
+        },
         CudaIdentifier::OutputValueVar,
     ))
     .chain((0..dim).map(move |d| {
@@ -298,8 +322,9 @@ pub fn gen_output_parameter_declaration<'a>(
         (
             CudaType {
                 base: CudaPrimitiveType::Index,
-                ptr_count: 1,
-                constant: false,
+                ptr: true,
+                owned: false,
+                constant: false
             },
             CudaIdentifier::OutputArraySizeVar(d),
         )
@@ -642,7 +667,7 @@ fn gen_array_copy_assignment<'stack, 'ast: 'stack>(
         source: value,
         device: context.is_device_context(),
         length: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(assignee.clone(), 0)),
-        base_type: gen_primitive_ptr_type(&base_type, 0),
+        base_type: gen_primitive_type(base_type)
     }))
 }
 
@@ -707,7 +732,7 @@ fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(
 
     std::iter::once(CudaAssignment {
         assignee: CudaExpression::Identifier(CudaIdentifier::ValueVar(assignee.clone())),
-        value: CudaExpression::Identifier(CudaIdentifier::ValueVar(value.clone())),
+        value: CudaExpression::Move(Box::new(CudaExpression::Identifier(CudaIdentifier::ValueVar(value.clone())))),
     })
     .chain((0..dim).map(move |d| CudaAssignment {
         assignee: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(
@@ -743,15 +768,21 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
     let declarations = std::iter::once(CudaVarDeclaration {
         var: CudaIdentifier::TmpVar,
         value: Some(CudaExpression::Nullptr),
-        var_type: gen_primitive_ptr_type(&base_type, 1),
+        var_type: CudaType {
+            base: gen_primitive_type(base_type),
+            owned: true,
+            ptr: false,
+            constant: false
+        },
     })
     .chain((0..dim).map(|d| CudaVarDeclaration {
         var: CudaIdentifier::TmpSizeVar(d),
         value: Some(CudaExpression::IntLiteral(0)),
         var_type: CudaType {
             base: CudaPrimitiveType::Index,
-            constant: false,
-            ptr_count: 0,
+            owned: false,
+            ptr: false,
+            constant: false
         },
     }))
     .map(|d| Box::new(d) as Box<dyn CudaStatement>)
@@ -771,15 +802,6 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
         gen_function_call(call, output_params, context)
             .map(|d| Box::new(d) as Box<dyn CudaStatement>),
     ))
-}
-
-pub fn gen_tmp_var_free<'stack, 'ast: 'stack>(
-    context: &mut dyn CudaContext<'stack, 'ast>,
-) -> Result<CudaFree, OutputError> {
-    Ok(CudaFree {
-        device: context.is_device_context(),
-        ptr: CudaIdentifier::TmpVar
-    })
 }
 
 pub fn gen_array_checked_copy_assignment_from_var<'stack, 'ast: 'stack>(
@@ -857,7 +879,6 @@ pub fn gen_array_assignment<'stack, 'ast: 'stack>(
                     statements: tmp_var_init
                         .chain(size_check)
                         .chain(std::iter::once(copy))
-                        .chain(std::iter::once(gen_tmp_var_free(context).map(Box::new).map(|x| x as Box<dyn CudaStatement>)))
                         .collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?,
                 }))
             }
@@ -1205,14 +1226,13 @@ fn test_gen_assignment_call_result_to_array_view() {
 
     assert_eq!(
         "{
-    int* tmp = nullptr;
+    DevPtr<int> tmp = nullptr;
     unsigned int tmpd0 = 0;
     unsigned int tmpd1 = 0;
     foo_(a_, a_d0, c_, &tmp, &tmpd0, &tmpd1);
     assert(b_d0 == tmpd0);
     assert(b_d1 == tmpd1);
     checkCudaStatus(cudaMemcpy(b_, tmp, sizeof(int) * b_d0, cudaMemcpyDeviceToDevice));
-    checkCudaStatus(cudaFree(tmp));
 }",
         output
     );
