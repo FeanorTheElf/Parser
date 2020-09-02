@@ -656,7 +656,7 @@ fn test_gen_kernel() {
 
     assert_eq!("
 
-__global__ void kernel0(int* a_, unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
+__global__ inline void kernel0(int* a_, unsigned int a_d0, int* b_, const unsigned int kernel0d0, const int kernel0o0) {
     const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel0o0;
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel0d0) {
         a_[i_] = a_[i_] * b_;

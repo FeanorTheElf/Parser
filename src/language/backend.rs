@@ -61,10 +61,39 @@ impl<'a> Write for StringWriter<'a> {
     }
 }
 
+pub struct FormatterWriter<'a, 'b> {
+    out: &'a mut std::fmt::Formatter<'b>,
+}
+
+impl<'a, 'b> Write for FormatterWriter<'a, 'b> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+
+        let result = self.out.write_str(str::from_utf8(buf).unwrap());
+
+        if result.is_err() {
+            return Err(Error::new(ErrorKind::Other, result.unwrap_err()));
+        } else {
+            return Ok(buf.len());
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+
+        Ok(())
+    }
+}
+
 impl<'a> StringWriter<'a> {
     pub fn new(target: &'a mut String) -> StringWriter<'a> {
 
         StringWriter { out: target }
+    }
+}
+
+impl<'a, 'b> FormatterWriter<'a, 'b> {
+    pub fn new(target: &'a mut std::fmt::Formatter<'b>) -> FormatterWriter<'a, 'b> {
+
+        FormatterWriter { out: target }
     }
 }
 

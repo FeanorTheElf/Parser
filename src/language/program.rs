@@ -4,8 +4,9 @@ use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
 use super::types::Type;
 use super::AstNode;
+use super::super::util::cmp::Comparing;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 
 pub struct Program {
     pub items: Vec<Box<Function>>,
@@ -204,6 +205,25 @@ impl AstNode for Program {
     fn pos(&self) -> &TextPosition {
 
         &BEGIN
+    }
+}
+
+impl PartialEq for Program {
+    fn eq(&self, rhs: &Program) -> bool {
+        if self.items.len() != rhs.items.len() {
+            return false;
+        }
+        let cmp_fn = |lhs: &&Function, rhs: &&Function| lhs.identifier.cmp(&rhs.identifier);
+        let mut self_items = self.items.iter().map(|f| Comparing::new(&**f, cmp_fn)).collect::<Vec<_>>();
+        let mut rhs_items = self.items.iter().map(|f| Comparing::new(&**f, cmp_fn)).collect::<Vec<_>>();
+        self_items.sort();
+        rhs_items.sort();
+        for i in 0..self_items.len() {
+            if self_items[i] != rhs_items[i] {
+                return false;
+            }
+        }
+        return true;
     }
 }
 

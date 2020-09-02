@@ -317,5 +317,5 @@ fn test_extract_calls_in_program() {
     }
     ")).unwrap();
 
-    assert_eq!(expected, program);
+    assert_ast_eq!(expected, program);
 }

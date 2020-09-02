@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 
 pub struct Name {
     pub name: String,
@@ -36,10 +36,19 @@ impl Ord for Name {
     }
 }
 
+impl std::fmt::Debug for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}#{}", self.name, self.id)
+    }
+}
+
 impl std::fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-
-        write!(f, "{}#{}", self.name, self.id)
+        if self.id == 0 {
+            write!(f, "{}", self.name)
+        } else {
+            write!(f, "{}#{}", self.name, self.id)
+        }
     }
 }
 
