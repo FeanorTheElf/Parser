@@ -64,15 +64,6 @@ fn main() {
     
     "))
     .unwrap();
-    program = Program::parse(&mut lex("
-
-    fn get(): int[,] native;
-    
-    fn main() {
-        let a: int[,] = get();
-    }
-    
-    ")).unwrap();
 
     let mut cuda_backend = cuda::backend::CudaBackend::new();
 

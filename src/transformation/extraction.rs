@@ -9,9 +9,25 @@ where
     should_extract: F,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct ExtractionReport {
     pub extracted_var_declaration_index: usize,
     pub extracted_var_value_assignment_index: usize,
+}
+
+impl std::cmp::PartialOrd for ExtractionReport {
+    fn partial_cmp(&self, rhs: &ExtractionReport) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(rhs))
+    }
+}
+
+impl std::cmp::Ord for ExtractionReport {
+    fn cmp(&self, rhs: &ExtractionReport) -> std::cmp::Ordering {
+        match self.extracted_var_value_assignment_index.cmp(&rhs.extracted_var_value_assignment_index) {
+            std::cmp::Ordering::Equal => self.extracted_var_declaration_index.cmp(&rhs.extracted_var_declaration_index),
+            ord => ord
+        }
+    }
 }
 
 impl<F> Extractor<F>
@@ -224,7 +240,9 @@ where
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
     ) {
-        let extractions = self.extract_calls_in_block_flat(block, parent_scopes, defined_functions);
+        let mut extractions = self.extract_calls_in_block_flat(block, parent_scopes, defined_functions);
+        extractions.sort();
+        extractions.reverse();
         for extraction in extractions {
             debug_assert!(&*block.statements[extraction.extracted_var_value_assignment_index] == &Block {
                 pos: position::NONEXISTING,
@@ -260,4 +278,44 @@ where
             }
         }
     }
+}
+
+#[cfg(test)]
+use super::super::lexer::lexer::lex;
+#[cfg(test)]
+use super::super::parser::Parser;
+
+#[test]
+fn test_extract_calls_in_program() {
+    let mut program = Program::parse(&mut lex("
+    
+    fn foo(a: int,): int native;
+    fn bar(a: int,): int native;
+
+    fn main(): int {
+        if (foo(bar(a,),)) {
+            return bar(foo(a,),);
+        }
+    }
+    ")).unwrap();
+
+    Extractor::new(|_, _| true).extract_calls_in_program(&mut program);
+
+    let expected = Program::parse(&mut lex("
+
+    fn foo(a: int,): int native;
+    fn bar(a: int,): int native;
+
+    fn main(): int {
+        let result_bar: int = bar(a,);
+        let result_foo: int = foo(result_bar,);
+        if (result_bar) {
+            let result_foo#1: int = foo(a,);
+            let result_bar#1: int = bar(result_foo#1,);
+            return result_bar#1;
+        }
+    }
+    ")).unwrap();
+
+    assert_eq!(expected, program);
 }
