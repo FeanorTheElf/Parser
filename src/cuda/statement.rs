@@ -1,4 +1,4 @@
-use super::super::language::backend::OutputError;
+use super::super::language::compiler::OutputError;
 use super::super::language::prelude::*;
 use super::ast::*;
 use super::context::CudaContext;

@@ -1,4 +1,4 @@
-use super::super::language::backend::*;
+use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::super::transformation::extraction;
 use super::super::util::ref_eq::*;
@@ -88,7 +88,7 @@ impl CudaBackend {
     }
 }
 
-impl Backend for CudaBackend {
+impl Compiler for CudaBackend {
     fn init(&mut self) -> Result<(), OutputError> {
 
         self.header_template = Some(fs::read_to_string("./cuda/template.cuh")?);
@@ -224,11 +224,9 @@ impl Backend for CudaBackend {
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::lex;
+use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
 use super::super::parser::Parser;
-#[cfg(test)]
-use super::super::util::ref_eq::*;
 #[cfg(test)]
 use std::iter::FromIterator;
 
@@ -236,7 +234,7 @@ use std::iter::FromIterator;
 
 fn test_topological_sort() {
 
-    let mut program = Program::parse(&mut lex("
+    let mut program = Program::parse(&mut lex_str("
     fn foo(a: int,): int {
         return bar(a,) + 1;
     }

@@ -1,6 +1,6 @@
 use super::super::analysis::scope::*;
 use super::super::analysis::symbol::*;
-use super::super::language::backend::OutputError;
+use super::super::language::compiler::OutputError;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use std::borrow::Borrow;
@@ -339,7 +339,7 @@ fn add_variable_uses<'a, 'b>(
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::lex;
+use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
 use super::super::parser::Parser;
 
@@ -347,7 +347,7 @@ use super::super::parser::Parser;
 
 fn test_collect_functions() {
 
-    let program = Program::parse(&mut lex("
+    let program = Program::parse(&mut lex_str("
         fn foo(a: &int[,],): int {
             pfor i: int, with this[i,], in a {
                 a[i,] = bar(a[i,],);

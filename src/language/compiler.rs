@@ -26,7 +26,7 @@ impl From<std::io::Error> for OutputError {
     }
 }
 
-pub trait Backend {
+pub trait Compiler {
     fn init(&mut self) -> Result<(), OutputError>;
 
     fn transform_program(&mut self, program: &mut Program) -> Result<(), OutputError>;

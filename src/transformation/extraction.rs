@@ -281,13 +281,13 @@ where
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::lex;
+use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
 use super::super::parser::Parser;
 
 #[test]
 fn test_extract_calls_in_program() {
-    let mut program = Program::parse(&mut lex("
+    let mut program = Program::parse(&mut lex_str("
     
     fn foo(a: int,): int native;
     fn bar(a: int,): int native;
@@ -301,7 +301,7 @@ fn test_extract_calls_in_program() {
 
     Extractor::new(|_, _| true).extract_calls_in_program(&mut program);
 
-    let expected = Program::parse(&mut lex("
+    let expected = Program::parse(&mut lex_str("
 
     fn foo(a: int,): int native;
     fn bar(a: int,): int native;

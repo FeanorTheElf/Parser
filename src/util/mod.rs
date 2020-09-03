@@ -2,6 +2,7 @@ pub mod cmp;
 pub mod dynamic;
 pub mod iterable;
 pub mod ref_eq;
+#[macro_use] pub mod singleton;
 
 #[allow(unused)]
 
@@ -41,4 +42,33 @@ where
 		});
 		return result;
 	})
+}
+
+pub struct SkippingLast<I>
+    where I: Iterator
+{
+    iter: std::iter::Peekable<I>
+}
+
+impl<I> Iterator for SkippingLast<I>
+    where I: Iterator
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<I::Item> {
+        let result = self.iter.next();
+        if self.iter.peek().is_some() {
+            result
+        } else {
+            None
+        }
+    }
+}
+
+pub fn skip_last<I>(it: I) -> SkippingLast<I>
+    where I: Iterator
+{
+    SkippingLast {
+        iter: it.peekable()
+    }
 }

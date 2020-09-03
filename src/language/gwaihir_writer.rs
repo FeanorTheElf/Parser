@@ -1,5 +1,5 @@
 use super::prelude::*;
-use super::backend::*;
+use super::compiler::*;
 
 pub trait AstWriter {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
@@ -238,7 +238,7 @@ impl<'a, T: AstWriter + ?Sized> std::fmt::Display for DisplayWrapper<'a, T> {
     fn fmt<'b, 'c>(&self, fmt: &'b mut std::fmt::Formatter<'c>) -> std::fmt::Result {
         let mut writer = FormatterWriter::new(fmt);
         let mut out: CodeWriter = CodeWriter::new(&mut writer);
-        self.content.write(&mut out).map_err(|_| std::fmt::Error);
+        self.content.write(&mut out).map_err(|_| std::fmt::Error)?;
         return Ok(());
     }
 }

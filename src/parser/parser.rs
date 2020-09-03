@@ -850,7 +850,7 @@ impl_parse! { Variable := Name }
 #[cfg(test)]
 use super::super::language::position::NONEXISTING;
 #[cfg(test)]
-use super::super::lexer::lexer::{fragment_lex, lex};
+use super::super::lexer::lexer::{fragment_lex, lex_str};
 
 #[test]
 
@@ -862,7 +862,7 @@ fn test_parser() {
         }
     }";
 
-    let ast = Program::parse(&mut lex(program)).unwrap();
+    let ast = Program::parse(&mut lex_str(program)).unwrap();
 
     assert_eq!(1, ast.items.len());
 

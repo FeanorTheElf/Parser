@@ -1,0 +1,29 @@
+
+fn main() {
+    let a: int[,] = zero_vec(10,);
+    pfor i: int, with this[i,], in a {
+        a[i,] = i;
+    }
+    vec_add(a, copy(a,),);
+    print_vec(a,);
+}
+
+fn print_vec(a: &int[,],) native;
+
+fn zero_vec(len: int,): int[,] native;
+
+fn len(a: &int[,],): int native;
+
+fn vec_add(a: &int[,], b: &int[,],) {
+    pfor i: int, with this[i,], in a with this[i,], in b {
+        a[i,] = a[i,] + b[i,];
+    }
+}
+
+fn copy(a: &int[,],): int[,] {
+    let result: int[,] = zero_vec(len(a,),);
+    pfor i: int, with this[i,], in a with this[i,], in result {
+        result[i,] = a[i,];
+    }
+    return result;
+}

@@ -5,3 +5,5 @@ mod expression;
 mod function;
 mod kernel_data;
 mod statement;
+
+pub use backend::CudaBackend;

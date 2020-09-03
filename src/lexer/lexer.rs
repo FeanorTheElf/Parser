@@ -61,7 +61,7 @@ fn lex_keyword(string: &str) -> Option<Token> {
     }
 }
 
-fn lex_str(string: &str) -> Token {
+fn lex_token(string: &str) -> Token {
 
     lex_op(string)
         .or_else(|| lex_keyword(string))
@@ -102,7 +102,9 @@ fn is_sequence_valid_operator(current: &mut String, next_char: char) -> bool {
     return new_current_operator;
 }
 
-pub fn lex(input: &str) -> Stream {
+pub fn lex<I>(input: I) -> Stream 
+    where I: Iterator<Item = char>
+{
 
     let mut result: Vec<PosToken> = vec![];
 
@@ -114,7 +116,7 @@ pub fn lex(input: &str) -> Stream {
 
     result.push(PosToken::create(Token::BOF, current_pos.clone()));
 
-    for c in input.chars() {
+    for c in input {
 
         let mut separator = false;
 
@@ -144,7 +146,7 @@ pub fn lex(input: &str) -> Stream {
         if separator {
 
             result.push(PosToken::create(
-                lex_str(&current),
+                lex_token(&current),
                 current_token_start_pos.clone(),
             ));
 
@@ -172,7 +174,7 @@ pub fn lex(input: &str) -> Stream {
 
     if !current.is_empty() {
 
-        result.push(PosToken::create(lex_str(&current), current_token_start_pos));
+        result.push(PosToken::create(lex_token(&current), current_token_start_pos));
     }
 
     result.push(PosToken::create(Token::EOF, current_pos));
@@ -182,11 +184,15 @@ pub fn lex(input: &str) -> Stream {
     return Stream::create(result);
 }
 
+pub fn lex_str(string: &str) -> Stream {
+    lex(string.chars())
+}
+
 #[cfg(test)]
 
 pub fn fragment_lex(input: &str) -> Stream {
 
-    let mut result = lex(input);
+    let mut result = lex_str(input);
 
     result.data.remove(0);
 
@@ -231,7 +237,7 @@ fn test_lex() {
             Token::Semicolon,
             Token::EOF
         ],
-        Vec::from_iter(lex("let test: int[] = a[2][4 ==1]>=b&&c+-d;"))
+        Vec::from_iter(lex_str("let test: int[] = a[2][4 ==1]>=b&&c+-d;"))
     );
 }
 
@@ -239,7 +245,7 @@ fn test_lex() {
 
 fn test_lex_position() {
 
-    let mut stream = lex("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
+    let mut stream = lex_str("let a = b[c+-1];\n{\n\ta>=1==2;\n}");
 
     stream.skip_next(&Token::BOF).unwrap();
 

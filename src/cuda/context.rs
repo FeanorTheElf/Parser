@@ -1,6 +1,6 @@
 use super::super::analysis::scope::*;
 use super::super::analysis::types::Typed;
-use super::super::language::backend::OutputError;
+use super::super::language::compiler::OutputError;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;

@@ -356,7 +356,7 @@ where
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::{fragment_lex, lex};
+use super::super::lexer::lexer::{fragment_lex, lex_str};
 #[cfg(test)]
 use super::super::parser::Parser;
 
@@ -556,7 +556,7 @@ fn test_inline_all() {
 
     let mut test = Inliner::new(|_, _| true);
 
-    let mut program = Program::parse(&mut lex("
+    let mut program = Program::parse(&mut lex_str("
         fn foo(a: int, ): int {
             return a * bar();
         }
@@ -573,7 +573,7 @@ fn test_inline_all() {
 
     test.inline_calls_in_program(&mut program);
 
-    let expected = Program::parse(&mut lex("
+    let expected = Program::parse(&mut lex_str("
         fn foobar(a: int, b: int, ) {
             let result_bar: int;
             let result_foo: int;

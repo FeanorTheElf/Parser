@@ -1,6 +1,6 @@
 use super::super::analysis::symbol::*;
 use super::super::analysis::type_error::*;
-use super::super::language::backend::*;
+use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::ast::*;
 use super::context::CudaContext;

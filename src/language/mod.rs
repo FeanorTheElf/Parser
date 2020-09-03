@@ -8,7 +8,7 @@ pub trait AstNode: std::fmt::Debug + Any + DynEq + Dynamic {
     fn pos(&self) -> &TextPosition;
 }
 
-pub mod backend;
+pub mod compiler;
 pub mod error;
 pub mod identifier;
 pub mod prelude;
