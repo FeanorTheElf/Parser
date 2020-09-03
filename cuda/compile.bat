@@ -1,3 +1,4 @@
+@echo off
 rem call VsDevCmd to setup environment
 call %1 -arch=x64
 rem call nvcc

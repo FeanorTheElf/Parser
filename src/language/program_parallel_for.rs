@@ -13,7 +13,7 @@ use std::ops::MulAssign;
 
 pub struct ArrayEntryAccess {
     pub pos: TextPosition,
-    indices: Vec<Expression>,
+    pub indices: Vec<Expression>,
     pub alias: Option<Name>,
     pub write: bool,
     matrix_cache: RefCell<Option<Result<Matrix<i32>, CompileError>>>,

@@ -6,6 +6,7 @@ use std::str;
 
 use super::cli_backend::Error;
 
+#[allow(non_snake_case)]
 #[derive(Debug, Deserialize)]
 pub struct WinCLConfig {
     installationPath: String,

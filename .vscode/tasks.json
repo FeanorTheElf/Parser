@@ -1,0 +1,10 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "run_example",
+        "type": "shell",
+        "command": "start example/go.bat"
+      }
+    ]
+  }

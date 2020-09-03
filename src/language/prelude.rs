@@ -8,5 +8,6 @@ pub use super::program_parallel_for::*;
 pub use super::types::*;
 pub use super::AstNode;
 
+pub use super::gwaihir_writer::DisplayWrapper;
 #[cfg(test)]
 pub use super::ast_test::*;

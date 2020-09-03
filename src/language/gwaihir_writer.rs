@@ -130,28 +130,59 @@ impl AstWriter for Return {
     }
 }
 
-impl AstWriter for dyn Statement {
+impl AstWriter for ParallelFor {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-    if let Some(statement) = self.dynamic().downcast_ref::<If>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<While>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<Block>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<Return>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<LocalVariableDeclaration>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<Assignment>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<Goto>() {
-        statement.write(out)
-    } else if let Some(statement) = self.dynamic().downcast_ref::<Label>() {
-        statement.write(out)
-    } else {
-        panic!("Unknown statement type: {:?}", self)
+        write!(out, "pfor ")?;
+        for index_var in &self.index_variables {
+            write!(out, "{}: int, ", index_var.variable)?;
+        }
+        for access_pattern in &self.access_pattern {
+            write!(out, "with ")?;
+            for entry_access in &access_pattern.entry_accesses {
+                write!(out, "this[")?;
+                for index in &entry_access.indices {
+                    index.write(out)?;
+                    write!(out, ", ")?;
+                }
+                write!(out, "]")?;
+                if let Some(alias) = &entry_access.alias {
+                    write!(out, " as {}", alias)?;
+                }
+                write!(out, ", ")?;
+            }
+        }
+        self.body.write(out)?;
+        return Ok(());
     }
 }
+
+impl AstWriter for dyn Statement {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        if let Some(statement) = self.dynamic().downcast_ref::<If>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<While>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Block>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Return>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<LocalVariableDeclaration>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Assignment>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Goto>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Label>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<ParallelFor>() {
+            statement.write(out)
+        } else if let Some(statement) = self.dynamic().downcast_ref::<Expression>() {
+            statement.write(out)?;
+            write!(out, ";").map_err(OutputError::from)
+        } else {
+            panic!("Unknown statement type: {:?}", self)
+        }
+    }
 }
 
 impl AstWriter for Block {

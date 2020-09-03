@@ -142,6 +142,8 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
         ),
     };
 
+    context.exit_scope();
+
     context.set_host();
 
     return Ok(CudaKernel {
@@ -429,6 +431,8 @@ pub fn gen_block<'stack, 'ast: 'stack>(
 
     context.enter_scope(block);
 
+    let scope_levels = context.get_scopes().get_scope_levels();
+
     for statement in &block.statements {
 
         if let Some(expr) = statement.dynamic().downcast_ref::<Expression>() {
@@ -476,6 +480,8 @@ pub fn gen_block<'stack, 'ast: 'stack>(
         }
     }
 
+    debug_assert_eq!(context.get_scopes().get_scope_levels(), scope_levels);
+
     context.exit_scope();
 
     Ok(CudaBlock {
@@ -492,6 +498,7 @@ fn gen_implemented_function<'data, 'ast: 'data>(
     context.set_current_function(function);
 
     context.enter_scope(function);
+    let scope_levels = context.get_scopes().get_scope_levels();
 
     let function_info = context.get_function_data(function);
 
@@ -574,6 +581,7 @@ fn gen_implemented_function<'data, 'ast: 'data>(
         })
     };
 
+    debug_assert_eq!(context.get_scopes().get_scope_levels(), scope_levels);
     context.exit_scope();
 
     return result;
@@ -584,13 +592,16 @@ pub fn gen_function<'stack, 'ast: 'stack>(
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Option<CudaFunction>, OutputError> {
 
-    if let Some(body) = &function.body {
+    debug_assert!(context.get_scopes().is_global_scope());
+    let result = if let Some(body) = &function.body {
 
         Some(gen_implemented_function(function, body, context)).transpose()
     } else {
 
         Ok(None)
-    }
+    };
+    debug_assert!(context.get_scopes().is_global_scope());
+    return result;
 }
 
 #[cfg(test)]

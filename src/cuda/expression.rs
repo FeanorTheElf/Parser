@@ -1133,6 +1133,44 @@ fn test_gen_expression_pass_index_expression_by_value() {
 }
 
 #[test]
+fn test_gen_assignment_var_to_var() {
+    let assignment = Statement::parse(&mut fragment_lex("a = b;"))
+        .unwrap()
+        .dynamic_box()
+        .downcast::<Assignment>()
+        .unwrap();
+        
+    let mut output = "".to_owned();
+    let mut target = StringWriter::new(&mut output);
+    let mut writer = CodeWriter::new(&mut target);
+    let program = Program { items: vec![] };
+
+    let defs = [
+        (Name::l("a"), Type::Array(PrimitiveType::Int, 2)),
+        (Name::l("b"),Type::Array(PrimitiveType::Int, 2)),
+    ];
+
+    let mut context: Box<dyn CudaContext> =
+        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
+
+    context.enter_scope(&defs[..]);
+
+    gen_assignment(&*assignment, &mut *context)
+        .unwrap()
+        .write(&mut writer)
+        .unwrap();
+
+    assert_eq!(
+        "{
+    a_ = std::move(b_);
+    a_d0 = b_d0;
+    a_d1 = b_d1;
+}",
+        output
+    );
+}
+
+#[test]
 
 fn test_gen_assignment_array_view_to_array() {
 

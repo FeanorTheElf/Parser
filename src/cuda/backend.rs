@@ -192,6 +192,7 @@ impl Compiler for CudaBackend {
         function_kernels_order.reverse();
 
         let mut context = CudaContextImpl::new(program, &functions, &kernels);
+        assert!(context.get_scopes().is_global_scope());
 
         write!(out, "{}", self.header_template.as_ref().unwrap())?;
 

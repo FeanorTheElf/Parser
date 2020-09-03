@@ -263,7 +263,15 @@ impl<'a, T> ScopeStack<'a, T> {
 
     pub fn is_global_scope<'b>(self: &'b Self) -> bool {
 
-        self.parent.is_none()
+        self.parent.is_none() && self.scopes.len() == 1
+    }
+
+    pub fn get_scope_levels(&self) -> usize {
+        if let Some(parent) = &self.parent {
+            parent.get_scope_levels() + self.scopes.len()
+        } else {
+            self.scopes.len()
+        }
     }
 
     fn non_global_stacks<'b>(&'b self) -> impl 'b + Iterator<Item = &'b ScopeStack<'b, T>> {

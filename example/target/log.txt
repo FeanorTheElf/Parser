@@ -1,0 +1,18 @@
+**********************************************************************
+** Visual Studio 2019 Developer Command Prompt v16.7.2
+** Copyright (c) 2020 Microsoft Corporation
+**********************************************************************
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(10): warning: inline qualifier ignored for "__global__" function
+
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(17): warning: inline qualifier ignored for "__global__" function
+
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(24): warning: inline qualifier ignored for "__global__" function
+
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(10): warning: inline qualifier ignored for "__global__" function
+
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(17): warning: inline qualifier ignored for "__global__" function
+
+E:\Users\Simon\Documents\Projekte\Parser\example\temp\out.cuh(24): warning: inline qualifier ignored for "__global__" function
+
+main.cu
+   Bibliothek "E:\Users\Simon\Documents\Projekte\Parser\example\target\out.lib" und Objekt "E:\Users\Simon\Documents\Projekte\Parser\example\target\out.exp" werden erstellt.
