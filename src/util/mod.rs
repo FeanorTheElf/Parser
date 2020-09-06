@@ -2,6 +2,7 @@ pub mod cmp;
 pub mod dynamic;
 pub mod iterable;
 pub mod ref_eq;
+pub mod dyn_lifetime;
 #[macro_use] pub mod singleton;
 
 #[allow(unused)]

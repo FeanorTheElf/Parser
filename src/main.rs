@@ -4,7 +4,6 @@
 #![feature(fn_traits)]
 #![feature(iter_map_while)]
 
-//extern crate itertools;
 extern crate take_mut;
 #[macro_use] 
 extern crate serde;
