@@ -2,36 +2,36 @@ use super::super::util::iterable::{Iterable, LifetimeIterable};
 use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
-use super::types::Type;
+use super::types::{Type, TypeVec};
 use super::AstNode;
 use super::super::util::cmp::Comparing;
+use super::super::util::dyn_lifetime::*;
+
+use std::cell::RefCell;
 
 #[derive(Debug, Clone)]
-
 pub struct Program {
     pub items: Vec<Box<Function>>,
+    pub types: TypeVec
 }
 
 #[derive(Debug, Eq, Clone)]
-
 pub struct Declaration {
     pub pos: TextPosition,
     pub variable: Name,
-    pub variable_type: Type,
+    pub variable_type: DynRef<RefCell<Type>>,
 }
 
 #[derive(Debug, Eq, Clone)]
-
 pub struct Function {
     pub pos: TextPosition,
     pub identifier: Name,
     pub params: Vec<Declaration>,
-    pub return_type: Option<Type>,
+    pub return_type: Option<DynRef<RefCell<Type>>>,
     pub body: Option<Block>,
 }
 
 #[derive(Debug, Eq, Clone)]
-
 pub struct Block {
     pub pos: TextPosition,
     pub statements: Vec<Box<dyn Statement>>,

@@ -3,6 +3,8 @@ use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::ast::*;
 use super::context::CudaContext;
+use super::super::util::dyn_lifetime::*;
+use std::cell::{RefCell, Ref};
 
 fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
 
@@ -15,35 +17,18 @@ fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
 pub fn is_mul_var_type(ty: &Type) -> bool {
 
     match ty {
-        Type::Array(_, dim) => *dim > 0,
-        Type::View(viewn) => is_mul_var_type(viewn),
+        Type::Array(arr) => arr.dimension > 0,
+        Type::View(view) => view.base.dimension > 0,
         _ => false,
     }
 }
 
-pub fn is_generated_with_output_parameter<T>(return_type: Option<T>) -> bool
-where
-    T: std::ops::Deref,
-    T::Target: std::ops::Deref<Target = Type>,
+pub fn is_generated_with_output_parameter(return_type: Option<&RefCell<Type>>) -> bool
 {
-
     return_type
-        .as_ref()
-        .map(|ty| &***ty)
-        .map(is_mul_var_type)
+        .map(|ty| ty.borrow())
+        .map(|ty| is_mul_var_type(&ty))
         .unwrap_or(false)
-}
-
-pub fn expect_array_type(value: &Type) -> (PrimitiveType, u32) {
-
-    match value {
-        Type::Array(base, dim) => (*base, *dim),
-        Type::View(viewn) => match &**viewn {
-            Type::Array(base, dim) => (*base, *dim),
-            _ => panic!("expect_array_type() called for non-array type {:?}", value),
-        },
-        _ => panic!("expect_array_type() called for non-array type {:?}", value),
-    }
 }
 
 pub fn gen_primitive_type(ty: PrimitiveType) -> CudaPrimitiveType {
@@ -52,14 +37,15 @@ pub fn gen_primitive_type(ty: PrimitiveType) -> CudaPrimitiveType {
 }
 
 pub fn gen_array_size<'a>(
-    _pos: &TextPosition,
+    pos: &TextPosition,
     array_variable: &'a Name,
     ty: &Type,
 ) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
 
-    let (_, dim_count) = expect_array_type(ty);
+    let without_view = ty.clone().without_view();
+    let arr = without_view.expect_array(pos).internal_error();
 
-    (0..dim_count).map(move |d| {
+    (0..arr.dimension).map(move |d| {
 
         (
             CudaType {
@@ -68,7 +54,7 @@ pub fn gen_array_size<'a>(
                 owned: false,
                 base: CudaPrimitiveType::Index,
             },
-            CudaIdentifier::ArraySizeVar(array_variable.clone(), d),
+            CudaIdentifier::ArraySizeVar(array_variable.clone(), d as u32),
         )
     })
 }
@@ -92,51 +78,27 @@ pub fn gen_simple_expr_array_size<'a>(
 pub fn gen_variable(pos: &TextPosition, name: &Name, ty: &Type) -> (CudaType, CudaIdentifier) {
 
     match ty {
-        Type::Array(base, _) => (
+        Type::Array(arr) => (
             CudaType {
-                base: gen_primitive_type(*base),
-                owned: true,
+                base: gen_primitive_type(arr.base),
+                owned: arr.dimension > 0,
                 constant: false,
                 ptr: false
             },
             CudaIdentifier::ValueVar(name.clone()),
         ),
-        Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
+        Type::Function(_) => panic!("Cannot represent a function in cuda variables"),
         Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
-        Type::Primitive(base) => (
+        Type::TestType => error_test_type(pos),
+        Type::View(view) => (
             CudaType {
-                base: gen_primitive_type(*base),
+                base: gen_primitive_type(view.base.base),
                 owned: false,
                 constant: false,
-                ptr: false
+                ptr: true
             },
             CudaIdentifier::ValueVar(name.clone()),
-        ),
-        Type::TestType => error_test_type(pos),
-        Type::View(viewn) => match &**viewn {
-            Type::Array(base, _) => (
-                CudaType {
-                    base: gen_primitive_type(*base),
-                    owned: false,
-                    constant: false,
-                    ptr: true
-                },
-                CudaIdentifier::ValueVar(name.clone()),
-            ),
-            Type::Function(_, _) => panic!("Cannot represent a function in cuda variables"),
-            Type::JumpLabel => panic!("Cannot represent a jump label in cuda variables"),
-            Type::Primitive(base) => (
-                CudaType {
-                    base: gen_primitive_type(*base),
-                    owned: false,
-                    constant: false,
-                    ptr: true
-                },
-                CudaIdentifier::ValueVar(name.clone()),
-            ),
-            Type::TestType => error_test_type(pos),
-            Type::View(_) => error_nested_view(pos).throw(),
-        },
+        )
     }
 }
 
@@ -171,7 +133,7 @@ pub fn gen_variables<'a>(
 
     let value = gen_variable(pos, var, ty);
 
-    let size_data = if ty.is_array() { Some(()) } else { None };
+    let size_data = if is_mul_var_type(ty) { Some(()) } else { None };
 
     std::iter::once(value).chain(
         size_data
@@ -225,7 +187,7 @@ pub fn gen_variables_for_view<'a>(
         CudaExpression::Identifier(cuda_val)
     };
 
-    let size_data = if ty.is_array() { Some(()) } else { None };
+    let size_data = if is_mul_var_type(ty) { Some(()) } else { None };
 
     std::iter::once((cuda_type, expr)).chain(size_data.into_iter().flat_map(move |_| {
 
@@ -254,7 +216,7 @@ pub fn gen_variables_for_value<'a>(
 
     let (mut cuda_type, cuda_val) = gen_variable(pos, var, ty);
 
-    let expr = if !ty.is_array() && cuda_type.ptr {
+    let expr = if !is_mul_var_type(ty) && cuda_type.ptr {
 
         cuda_type.ptr = false;
 
@@ -264,7 +226,7 @@ pub fn gen_variables_for_value<'a>(
         CudaExpression::Identifier(cuda_val)
     };
 
-    let size_data = if ty.is_array() { Some(()) } else { None };
+    let size_data = if is_mul_var_type(ty) { Some(()) } else { None };
 
     std::iter::once((cuda_type, expr)).chain(size_data.into_iter().flat_map(move |_| {
 
@@ -301,23 +263,19 @@ pub fn gen_variables_for_output_params<'a>(
 
 pub fn gen_output_parameter_declaration<'a>(
     _pos: &'a TextPosition,
-    ty: &'a Type,
+    arr: &'a ArrayType,
 ) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
-
-    assert!(is_generated_with_output_parameter(Some(&ty)));
-
-    let (base, dim) = expect_array_type(ty);
 
     std::iter::once((
         CudaType {
-            base: gen_primitive_type(base),
+            base: gen_primitive_type(arr.base),
             ptr: true,
             owned: true,
             constant: false
         },
         CudaIdentifier::OutputValueVar,
     ))
-    .chain((0..dim).map(move |d| {
+    .chain((0..arr.dimension).map(move |d| {
 
         (
             CudaType {
@@ -326,7 +284,7 @@ pub fn gen_output_parameter_declaration<'a>(
                 owned: false,
                 constant: false
             },
-            CudaIdentifier::OutputArraySizeVar(d),
+            CudaIdentifier::OutputArraySizeVar(d as u32),
         )
     }))
 }
@@ -334,7 +292,7 @@ pub fn gen_output_parameter_declaration<'a>(
 fn gen_defined_function_call<'stack, 'ast: 'stack, I>(
     call: &FunctionCall,
     function_name: &Name,
-    function_type: &Type,
+    function_type: &FunctionType,
     mut output_params: I,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<CudaExpression, OutputError>
@@ -344,12 +302,11 @@ where
 
     debug_assert!(call.function == Identifier::Name(function_name.clone()));
 
-    let (param_types, return_type) = match function_type {
-        Type::Function(param_types, return_type) => (param_types, return_type),
-        ty => error_not_callable(call.pos(), ty).throw(),
-    };
+    let ast_lifetime = context.ast_lifetime();
+    let param_types = function_type.param_types.iter().map(|r| ast_lifetime.cast(*r));
+    let return_type = function_type.return_type.map(|r| ast_lifetime.cast(r));
 
-    if !is_generated_with_output_parameter(return_type.as_ref()) {
+    if !is_generated_with_output_parameter(return_type) {
 
         assert!(output_params.next().is_none());
     }
@@ -357,13 +314,13 @@ where
     let params = call
         .parameters
         .iter()
-        .zip(param_types.iter())
+        .zip(param_types)
         .flat_map(|(param, formal_param)| match param {
             Expression::Call(_) => {
 
                 assert!(!is_generated_with_output_parameter(Some(formal_param)));
 
-                if formal_param.is_view() {
+                if formal_param.borrow().is_view() {
 
                     Box::new(std::iter::once(gen_expression_for_view(param, context)))
                         as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
@@ -379,19 +336,17 @@ where
                 as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>,
             Expression::Variable(var) => match &var.identifier {
                 Identifier::Name(name) => {
-                    if formal_param.is_view() {
+                    if formal_param.borrow().is_view() {
 
                         Box::new(
-                            gen_variables_for_view(var.pos(), name, &formal_param)
-                                .map(|(_ty, p)| Ok(p)),
-                        )
+                            gen_variables_for_view(var.pos(), name, &*formal_param.borrow())
+                                .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
                             as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
                     } else {
 
                         Box::new(
-                            gen_variables_for_value(var.pos(), name, &formal_param)
-                                .map(|(_ty, p)| Ok(p)),
-                        )
+                            gen_variables_for_value(var.pos(), name, &*formal_param.borrow())
+                                .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
                             as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
                     }
                 }
@@ -530,7 +485,7 @@ where
     match &call.function {
         Expression::Call(_) => Err(error_call_dynamic_expression(call.pos())),
         Expression::Literal(_) => {
-            error_not_callable(call.pos(), &Type::Primitive(PrimitiveType::Int)).throw()
+            unimplemented!()
         }
         Expression::Variable(var) => match &var.identifier {
             Identifier::BuiltIn(op) => {
@@ -543,7 +498,7 @@ where
 
                 let function = context.get_scopes().get_defined(name, call.pos()).unwrap();
 
-                gen_defined_function_call(call, name, &function.calc_type(), output_params, context)
+                gen_defined_function_call(call, name, &function.calc_type(context.ast_lifetime()).expect_callable(call.pos()).internal_error(), output_params, context)
             }
         },
     }
@@ -586,10 +541,8 @@ pub fn gen_expression_for_view<'stack, 'ast: 'stack>(
     match expr {
         Expression::Call(call) => {
             if context.calculate_type(expr).is_view() {
-
                 gen_function_call(call, std::iter::empty(), context)
             } else {
-
                 Ok(CudaExpression::AddressOf(Box::new(gen_function_call(
                     call,
                     std::iter::empty(),
@@ -653,12 +606,10 @@ pub fn gen_expression_for_value<'stack, 'ast: 'stack>(
 
 fn gen_array_copy_assignment<'stack, 'ast: 'stack>(
     assignee: &Name,
-    assignee_type: &Type,
+    assignee_type: &ArrayType,
     value: CudaExpression,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
-
-    let (base_type, _) = expect_array_type(&assignee_type.clone().without_view());
 
     let destination = CudaExpression::Identifier(CudaIdentifier::ValueVar(assignee.clone()));
 
@@ -667,27 +618,24 @@ fn gen_array_copy_assignment<'stack, 'ast: 'stack>(
         source: value,
         device: context.is_device_context(),
         length: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(assignee.clone(), 0)),
-        base_type: gen_primitive_type(base_type)
+        base_type: gen_primitive_type(assignee_type.base)
     }))
 }
 
 fn gen_array_copy_assignment_size_assertion<'stack, 'ast: 'stack, I>(
     assignee: &Name,
-    assignee_type: &Type,
+    assignee_type: &ArrayType,
     value_sizes: I,
     _context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>>
 where
     I: Iterator<Item = CudaExpression>,
 {
-
-    let (_, dim) = expect_array_type(&assignee_type.clone().without_view());
-
     let assignee_copy = assignee.clone();
 
-    (0..dim).zip(value_sizes).map(move |(d, value_size)| {
+    (0..assignee_type.dimension).zip(value_sizes).map(move |(d, value_size)| {
 
-        let assignee_size = CudaIdentifier::ArraySizeVar(assignee_copy.clone(), d);
+        let assignee_size = CudaIdentifier::ArraySizeVar(assignee_copy.clone(), d as u32);
 
         Ok(Box::new(CudaAssert {
             expr: CudaExpression::Comparison(
@@ -722,9 +670,8 @@ fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> {
 
-    let ty = context.calculate_var_type(assignee, pos);
-
-    let (_base_type, dim) = expect_array_type(&ty);
+    let var_ty = context.calculate_var_type(assignee, pos);
+    let ty = var_ty.expect_array(pos).internal_error();
 
     let assignee_copy = assignee.clone();
 
@@ -734,12 +681,12 @@ fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(
         assignee: CudaExpression::Identifier(CudaIdentifier::ValueVar(assignee.clone())),
         value: CudaExpression::Move(Box::new(CudaExpression::Identifier(CudaIdentifier::ValueVar(value.clone())))),
     })
-    .chain((0..dim).map(move |d| CudaAssignment {
+    .chain((0..ty.dimension).map(move |d| CudaAssignment {
         assignee: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(
             assignee_copy.clone(),
-            d,
+            d as u32,
         )),
-        value: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(value_copy.clone(), d)),
+        value: CudaExpression::Identifier(CudaIdentifier::ArraySizeVar(value_copy.clone(), d as u32)),
     }))
     .map(|a| Ok(Box::new(a) as Box<dyn CudaStatement>))
 }
@@ -758,25 +705,23 @@ pub fn gen_scalar_assignment<'stack, 'ast: 'stack>(
 
 pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
     _pos: &TextPosition,
-    result_type: &Type,
+    result_type: &ArrayType,
     call: &FunctionCall,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> impl Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>> {
-
-    let (base_type, dim) = expect_array_type(result_type);
 
     let declarations = std::iter::once(CudaVarDeclaration {
         var: CudaIdentifier::TmpVar,
         value: Some(CudaExpression::Nullptr),
         var_type: CudaType {
-            base: gen_primitive_type(base_type),
+            base: gen_primitive_type(result_type.base),
             owned: true,
             ptr: false,
             constant: false
         },
     })
-    .chain((0..dim).map(|d| CudaVarDeclaration {
-        var: CudaIdentifier::TmpSizeVar(d),
+    .chain((0..result_type.dimension).map(|d| CudaVarDeclaration {
+        var: CudaIdentifier::TmpSizeVar(d as u32),
         value: Some(CudaExpression::IntLiteral(0)),
         var_type: CudaType {
             base: CudaPrimitiveType::Index,
@@ -791,10 +736,10 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
     let output_params = std::iter::once(CudaExpression::AddressOf(Box::new(
         CudaExpression::Identifier(CudaIdentifier::TmpVar),
     )))
-    .chain((0..dim).map(|d| {
+    .chain((0..result_type.dimension).map(|d| {
 
         CudaExpression::AddressOf(Box::new(CudaExpression::Identifier(
-            CudaIdentifier::TmpSizeVar(d),
+            CudaIdentifier::TmpSizeVar(d as u32),
         )))
     }));
 
@@ -805,29 +750,33 @@ pub fn gen_call_array_result_in_tmp_var<'stack, 'ast: 'stack>(
 }
 
 pub fn gen_array_checked_copy_assignment_from_var<'stack, 'ast: 'stack>(
-    _pos: &TextPosition,
+    pos: &TextPosition,
     assignee: &Name,
     assignee_type: &Type,
     value: &Name,
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
 
-    let array_type = assignee_type.clone().without_view();
-
-    let (_, dim_count) = expect_array_type(&array_type);
+    let array_type = match assignee_type {
+        Type::Function(_) => unimplemented!(),
+        Type::Array(arr) => arr,
+        Type::View(view) => &view.base,
+        Type::TestType => error_test_type(pos),
+        Type::JumpLabel => error_jump_label_var_type(pos).throw()
+    };
 
     let size_check = gen_array_copy_assignment_size_assertion(
         assignee,
-        assignee_type,
-        (0..dim_count)
-            .map(|d| CudaIdentifier::ArraySizeVar(value.clone(), d))
+        array_type,
+        (0..array_type.dimension)
+            .map(|d| CudaIdentifier::ArraySizeVar(value.clone(), d as u32))
             .map(CudaExpression::Identifier),
         context,
     );
 
     let copy = gen_array_copy_assignment(
         assignee,
-        assignee_type,
+        array_type,
         CudaExpression::Identifier(CudaIdentifier::ValueVar(value.clone())),
         context,
     );
@@ -847,56 +796,14 @@ pub fn gen_array_assignment<'stack, 'ast: 'stack>(
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
 
-    let array_type = assignee_type.clone().without_view();
+    let without_view_type = assignee_type.clone().without_view();
+    let array_type = without_view_type.expect_array(pos).internal_error();
 
-    let (_, dim_count) = expect_array_type(&array_type);
-
-    if assignee_type.is_view() {
-
-        match value {
-            Expression::Call(call) => {
-
-                let tmp_var_init =
-                    gen_call_array_result_in_tmp_var(pos, &array_type, call, context);
-
-                let size_check = gen_array_copy_assignment_size_assertion(
-                    assignee,
-                    assignee_type,
-                    (0..dim_count)
-                        .map(|d| CudaIdentifier::TmpSizeVar(d))
-                        .map(CudaExpression::Identifier),
-                    context,
-                );
-
-                let copy = gen_array_copy_assignment(
-                    assignee,
-                    assignee_type,
-                    CudaExpression::Identifier(CudaIdentifier::TmpVar),
-                    context,
-                );
-
-                Ok(Box::new(CudaBlock {
-                    statements: tmp_var_init
-                        .chain(size_check)
-                        .chain(std::iter::once(copy))
-                        .collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?,
-                }))
-            }
-            Expression::Variable(var) => match &var.identifier {
-                Identifier::BuiltIn(_) => unimplemented!(),
-                Identifier::Name(val_name) => gen_array_checked_copy_assignment_from_var(
-                    pos,
-                    assignee,
-                    assignee_type,
-                    val_name,
-                    context,
-                ),
-            },
-            Expression::Literal(_) => unimplemented!(),
-        }
-    } else {
-
-        match value {
+    match assignee_type {
+        Type::TestType => error_test_type(pos),
+        Type::JumpLabel => error_jump_label_var_type(pos).throw(),
+        Type::Function(_) => unimplemented!(),
+        Type::Array(_) => match value {
             Expression::Call(call) => {
                 gen_array_move_assignment_from_call(pos, assignee, call, context)
             }
@@ -923,6 +830,47 @@ pub fn gen_array_assignment<'stack, 'ast: 'stack>(
                         statements: assignments,
                     }))
                 }
+            },
+            Expression::Literal(_) => unimplemented!(),
+        },
+        Type::View(view) => match value {
+            Expression::Call(call) => {
+
+                let tmp_var_init =
+                    gen_call_array_result_in_tmp_var(pos, &array_type, call, context);
+
+                let size_check = gen_array_copy_assignment_size_assertion(
+                    assignee,
+                    &view.base,
+                    (0..array_type.dimension)
+                        .map(|d| CudaIdentifier::TmpSizeVar(d as u32))
+                        .map(CudaExpression::Identifier),
+                    context,
+                );
+
+                let copy = gen_array_copy_assignment(
+                    assignee,
+                    &view.base,
+                    CudaExpression::Identifier(CudaIdentifier::TmpVar),
+                    context,
+                );
+
+                Ok(Box::new(CudaBlock {
+                    statements: tmp_var_init
+                        .chain(size_check)
+                        .chain(std::iter::once(copy))
+                        .collect::<Result<Vec<Box<dyn CudaStatement>>, OutputError>>()?,
+                }))
+            }
+            Expression::Variable(var) => match &var.identifier {
+                Identifier::BuiltIn(_) => unimplemented!(),
+                Identifier::Name(val_name) => gen_array_checked_copy_assignment_from_var(
+                    pos,
+                    assignee,
+                    assignee_type,
+                    val_name,
+                    context,
+                ),
             },
             Expression::Literal(_) => unimplemented!(),
         }
@@ -983,7 +931,8 @@ use super::context::CudaContextImpl;
 
 fn test_gen_expression() {
 
-    let expr = Expression::parse(&mut fragment_lex("(a + b * c) / d[e,]")).unwrap();
+    let mut types = TypeVec::new();
+    let expr = Expression::parse(&mut fragment_lex("(a + b * c) / d[e,]"), &mut types).unwrap();
 
     let mut output = "".to_owned();
 
@@ -991,14 +940,14 @@ fn test_gen_expression() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let mut program = Program { items: Vec::new(), types: types };
 
     let defs = [
-        (Name::l("a"), Type::Primitive(PrimitiveType::Int)),
-        (Name::l("b"), Type::Primitive(PrimitiveType::Int)),
-        (Name::l("c"), Type::Primitive(PrimitiveType::Int)),
-        (Name::l("d"), Type::Array(PrimitiveType::Int, 1)),
-        (Name::l("e"), Type::Primitive(PrimitiveType::Int)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
+        (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
+        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
+        (Name::l("d"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
+        (Name::l("e"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
     ];
 
     let mut context: Box<dyn CudaContext> =
@@ -1018,7 +967,7 @@ fn test_gen_expression() {
 
 fn test_gen_expression_function_call() {
 
-    let expr = Expression::parse(&mut fragment_lex("foo[a(b,), c,]")).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo[a(b,), c,]"), &mut TypeVec::new()).unwrap();
 
     let mut output = "".to_owned();
 
@@ -1026,19 +975,20 @@ fn test_gen_expression_function_call() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let mut program = Program { items: vec![], types: TypeVec::new() };
+    let types = &mut program.types;
 
     let defs = [
         (
             Name::l("a"),
-            Type::Function(
-                vec![Box::new(Type::Array(PrimitiveType::Int, 1))],
-                Some(Box::new(Type::Primitive(PrimitiveType::Int))),
-            ),
+            Type::Function(FunctionType {
+                param_types: vec![types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }))],
+                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }))),
+            }),
         ),
-        (Name::l("foo"), Type::Array(PrimitiveType::Int, 2)),
-        (Name::l("b"), Type::Primitive(PrimitiveType::Int)),
-        (Name::l("c"), Type::Primitive(PrimitiveType::Int)),
+        (Name::l("foo"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
+        (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
+        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
     ];
 
     let mut context: Box<dyn CudaContext> =
@@ -1058,7 +1008,7 @@ fn test_gen_expression_function_call() {
 
 fn test_gen_expression_pass_index_expression_by_view() {
 
-    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)")).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), &mut TypeVec::new()).unwrap();
 
     let mut output = "".to_owned();
 
@@ -1066,19 +1016,18 @@ fn test_gen_expression_pass_index_expression_by_view() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let mut program = Program { items: vec![], types: TypeVec::new() };
+    let types = &mut program.types;
 
     let defs = [
         (
             Name::l("foo"),
-            Type::Function(
-                vec![Box::new(Type::View(Box::new(Type::Primitive(
-                    PrimitiveType::Int,
-                ))))],
-                Some(Box::new(Type::Primitive(PrimitiveType::Int))),
-            ),
+            Type::Function(FunctionType {
+                param_types: vec![types.push_from(Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 0 }, concrete: None }))],
+                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }))),
+            }),
         ),
-        (Name::l("a"), Type::Array(PrimitiveType::Int, 1)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
     ];
 
     let mut context: Box<dyn CudaContext> =
@@ -1098,7 +1047,7 @@ fn test_gen_expression_pass_index_expression_by_view() {
 
 fn test_gen_expression_pass_index_expression_by_value() {
 
-    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)")).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), &mut TypeVec::new()).unwrap();
 
     let mut output = "".to_owned();
 
@@ -1106,17 +1055,18 @@ fn test_gen_expression_pass_index_expression_by_value() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let mut program = Program { items: vec![], types: TypeVec::new() };
+    let types = &mut program.types;
 
     let defs = [
         (
             Name::l("foo"),
-            Type::Function(
-                vec![Box::new(Type::Primitive(PrimitiveType::Int))],
-                Some(Box::new(Type::Primitive(PrimitiveType::Int))),
-            ),
+            Type::Function(FunctionType {
+                param_types: vec![types.push(RefCell::from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })))],
+                return_type: Some(types.push(RefCell::from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })))),
+            }),
         ),
-        (Name::l("a"), Type::Array(PrimitiveType::Int, 1)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
     ];
 
     let mut context: Box<dyn CudaContext> =
@@ -1134,7 +1084,7 @@ fn test_gen_expression_pass_index_expression_by_value() {
 
 #[test]
 fn test_gen_assignment_var_to_var() {
-    let assignment = Statement::parse(&mut fragment_lex("a = b;"))
+    let assignment = Statement::parse(&mut fragment_lex("a = b;"), &mut TypeVec::new())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
@@ -1143,11 +1093,11 @@ fn test_gen_assignment_var_to_var() {
     let mut output = "".to_owned();
     let mut target = StringWriter::new(&mut output);
     let mut writer = CodeWriter::new(&mut target);
-    let program = Program { items: vec![] };
+    let program = Program { items: vec![], types: TypeVec::new() };
 
     let defs = [
-        (Name::l("a"), Type::Array(PrimitiveType::Int, 2)),
-        (Name::l("b"),Type::Array(PrimitiveType::Int, 2)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
+        (Name::l("b"),Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
     ];
 
     let mut context: Box<dyn CudaContext> =
@@ -1174,7 +1124,7 @@ fn test_gen_assignment_var_to_var() {
 
 fn test_gen_assignment_array_view_to_array() {
 
-    let assignment = Statement::parse(&mut fragment_lex("a = b;"))
+    let assignment = Statement::parse(&mut fragment_lex("a = b;"), &mut TypeVec::new())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
@@ -1186,13 +1136,13 @@ fn test_gen_assignment_array_view_to_array() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let program = Program { items: vec![], types: TypeVec::new() };
 
     let defs = [
-        (Name::l("a"), Type::Array(PrimitiveType::Int, 2)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
         (
             Name::l("b"),
-            Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))),
+            Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 2 }, concrete: None }),
         ),
     ];
 
@@ -1220,7 +1170,7 @@ fn test_gen_assignment_array_view_to_array() {
 
 fn test_gen_assignment_call_result_to_array_view() {
 
-    let assignment = Statement::parse(&mut fragment_lex("b = foo(a, c,);"))
+    let assignment = Statement::parse(&mut fragment_lex("b = foo(a, c,);"), &mut TypeVec::new())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
@@ -1232,24 +1182,25 @@ fn test_gen_assignment_call_result_to_array_view() {
 
     let mut writer = CodeWriter::new(&mut target);
 
-    let program = Program { items: vec![] };
+    let mut program = Program { items: vec![], types: TypeVec::new() };
+    let types = &mut program.types;
 
     let defs = [
         (
             Name::l("foo"),
-            Type::Function(
-                vec![
-                    Box::new(Type::View(Box::new(Type::Array(PrimitiveType::Int, 1)))),
-                    Box::new(Type::Primitive(PrimitiveType::Int)),
+            Type::Function(FunctionType {
+                param_types: vec![
+                    types.push_from(Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 1 }, concrete: None })),
+                    types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
                 ],
-                Some(Box::new(Type::Array(PrimitiveType::Int, 2))),
-            ),
+                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 }))),
+            }),
         ),
-        (Name::l("a"), Type::Array(PrimitiveType::Int, 1)),
-        (Name::l("c"), Type::Primitive(PrimitiveType::Int)),
+        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
+        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
         (
             Name::l("b"),
-            Type::View(Box::new(Type::Array(PrimitiveType::Int, 2))),
+            Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 2 }, concrete: None }),
         ),
     ];
 

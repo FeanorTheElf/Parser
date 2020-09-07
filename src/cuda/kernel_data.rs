@@ -341,7 +341,7 @@ fn add_variable_uses<'a, 'b>(
 #[cfg(test)]
 use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
-use super::super::parser::Parser;
+use super::super::parser::TopLevelParser;
 
 #[test]
 

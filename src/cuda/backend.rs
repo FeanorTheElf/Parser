@@ -98,12 +98,13 @@ impl Compiler for CudaBackend {
 
     fn transform_program(&mut self, program: &mut Program) -> Result<(), OutputError> {
 
-        let mut extractor = extraction::Extractor::new(|_, function| {
+        let prog_lifetime = program.types.get_lifetime();
 
-            is_generated_with_output_parameter(function.return_type.as_ref().as_ref())
+        let mut extractor = extraction::Extractor::new(|_, function| {
+            is_generated_with_output_parameter(function.return_type.as_ref().map(|x| prog_lifetime.cast(*x)))
         });
 
-        extractor.extract_calls_in_program(program);
+        extractor.extract_calls_in_program(&mut program.items);
 
         return Ok(());
     }
@@ -227,7 +228,7 @@ impl Compiler for CudaBackend {
 #[cfg(test)]
 use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
-use super::super::parser::Parser;
+use super::super::parser::TopLevelParser;
 #[cfg(test)]
 use std::iter::FromIterator;
 

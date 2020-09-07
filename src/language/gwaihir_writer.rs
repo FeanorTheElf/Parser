@@ -1,8 +1,9 @@
 use super::prelude::*;
 use super::compiler::*;
+use super::super::util::dyn_lifetime::*;
 
 pub trait AstWriter {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError>;
 }
 
 fn get_priority(expr: &Expression) -> i32 {
@@ -93,33 +94,33 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
 }
 
 impl AstWriter for Expression {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write_expression(self, i32::MIN, out)
     }
 }
 
 impl AstWriter for If {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "if (")?;
         write_expression(&self.condition, i32::MIN, out)?;
         write!(out, ")")?;
-        self.body.write(out)?;
+        self.body.write(prog_lifetime, out)?;
         return Ok(());
     }
 }
 
 impl AstWriter for While {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "while (")?;
         write_expression(&self.condition, i32::MIN, out)?;
         write!(out, ")")?;
-        self.body.write(out)?;
+        self.body.write(prog_lifetime, out)?;
         return Ok(());
     }
 }
 
 impl AstWriter for Return {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "return")?;
         if let Some(val) = &self.value {
             write!(out, " ")?;
@@ -131,7 +132,7 @@ impl AstWriter for Return {
 }
 
 impl AstWriter for ParallelFor {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "pfor ")?;
         for index_var in &self.index_variables {
             write!(out, "{}: int, ", index_var.variable)?;
@@ -141,7 +142,7 @@ impl AstWriter for ParallelFor {
             for entry_access in &access_pattern.entry_accesses {
                 write!(out, "this[")?;
                 for index in &entry_access.indices {
-                    index.write(out)?;
+                    index.write(prog_lifetime, out)?;
                     write!(out, ", ")?;
                 }
                 write!(out, "]")?;
@@ -151,33 +152,33 @@ impl AstWriter for ParallelFor {
                 write!(out, ", ")?;
             }
         }
-        self.body.write(out)?;
+        self.body.write(prog_lifetime, out)?;
         return Ok(());
     }
 }
 
 impl AstWriter for dyn Statement {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         if let Some(statement) = self.dynamic().downcast_ref::<If>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<While>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Block>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Return>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<LocalVariableDeclaration>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Assignment>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Goto>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Label>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<ParallelFor>() {
-            statement.write(out)
+            statement.write(prog_lifetime, out)
         } else if let Some(statement) = self.dynamic().downcast_ref::<Expression>() {
-            statement.write(out)?;
+            statement.write(prog_lifetime, out)?;
             write!(out, ";").map_err(OutputError::from)
         } else {
             panic!("Unknown statement type: {:?}", self)
@@ -186,17 +187,17 @@ impl AstWriter for dyn Statement {
 }
 
 impl AstWriter for Block {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
     out.enter_block()?;
-    out.write_separated(self.statements.iter().map(|s| move |out: &mut CodeWriter| s.write(out)), |out| out.newline().map_err(OutputError::from))?;
+    out.write_separated(self.statements.iter().map(|s| move |out: &mut CodeWriter| s.write(prog_lifetime, out)), |out| out.newline().map_err(OutputError::from))?;
     out.exit_block()?;
     return Ok(());
 }
 }
 
 impl AstWriter for LocalVariableDeclaration {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "let {}: {}", self.declaration.variable, self.declaration.variable_type)?;
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "let {}: {}", self.declaration.variable, prog_lifetime.cast(self.declaration.variable_type).borrow())?;
         if let Some(val) = &self.value {
             write!(out, " = ")?;
             write_expression(val, i32::MIN, out)?;
@@ -207,7 +208,7 @@ impl AstWriter for LocalVariableDeclaration {
 }
 
 impl AstWriter for Assignment {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write_expression(&self.assignee, i32::MIN, out)?;
         write!(out, " = ")?;
         write_expression(&self.value, i32::MIN, out)?;
@@ -216,33 +217,33 @@ impl AstWriter for Assignment {
 }
 
 impl AstWriter for Label {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "@{}:", self.label)?;
         return Ok(());
     }
 }
 
 impl AstWriter for Goto {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "goto {};", self.target)?;
         return Ok(());
     }
 }
 
 impl AstWriter for Function {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "fn {}(", self.identifier)?;
         for param in &self.params {
-            write!(out, "{}: {}, ", param.variable, param.variable_type)?;
+            write!(out, "{}: {}, ", param.variable, prog_lifetime.cast(param.variable_type).borrow())?;
         }
         write!(out, ")")?;
         if let Some(return_type) = &self.return_type {
-            write!(out, ": {} ", return_type)?;
+            write!(out, ": {} ", prog_lifetime.cast(*return_type).borrow())?;
         } else {
             write!(out, " ")?;
         }
         if let Some(body) = &self.body {
-            body.write(out)?;
+            body.write(prog_lifetime, out)?;
         } else {
             write!(out, "native;")?;
         }
@@ -251,9 +252,9 @@ impl AstWriter for Function {
 }
 
 impl AstWriter for Program {
-    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         for item in &self.items {
-            item.write(out)?;
+            item.write(self.types.get_lifetime(), out)?;
             out.newline()?;
         }
         return Ok(());
@@ -262,22 +263,33 @@ impl AstWriter for Program {
 
 #[derive(Clone, Copy, Debug)]
 pub struct DisplayWrapper<'a, T: AstWriter + ?Sized> {
-    content: &'a T
+    content: &'a T,
+    prog_lifetime: Lifetime<'a>
 }
 
 impl<'a, T: AstWriter + ?Sized> std::fmt::Display for DisplayWrapper<'a, T> {
     fn fmt<'b, 'c>(&self, fmt: &'b mut std::fmt::Formatter<'c>) -> std::fmt::Result {
         let mut writer = FormatterWriter::new(fmt);
         let mut out: CodeWriter = CodeWriter::new(&mut writer);
-        self.content.write(&mut out).map_err(|_| std::fmt::Error)?;
+        self.content.write(self.prog_lifetime, &mut out).map_err(|_| std::fmt::Error)?;
         return Ok(());
     }
 }
 
-impl<'a, T: AstWriter + ?Sized> From<&'a T> for DisplayWrapper<'a, T> {
-    fn from(writable: &'a T) -> DisplayWrapper<'a, T> {
+impl<'a, T: AstWriter + ?Sized> From<(&'a T, Lifetime<'a>)> for DisplayWrapper<'a, T> {
+    fn from((writable, prog_lifetime): (&'a T, Lifetime<'a>)) -> DisplayWrapper<'a, T> {
         DisplayWrapper {
-            content: writable
+            content: writable,
+            prog_lifetime: prog_lifetime
+        }
+    }
+}
+
+impl<'a> From<&'a Program> for DisplayWrapper<'a, Program> {
+    fn from(prog: &'a Program) -> DisplayWrapper<'a, Program> {
+        DisplayWrapper {
+            content: prog,
+            prog_lifetime: prog.types.get_lifetime()
         }
     }
 }

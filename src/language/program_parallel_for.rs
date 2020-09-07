@@ -422,6 +422,9 @@ use super::super::lexer::lexer::fragment_lex;
 use super::super::parser::Parser;
 #[cfg(test)]
 use super::position::BEGIN;
+#[cfg(test)]
+use super::types::TypeVec;
+
 
 #[test]
 
@@ -430,9 +433,9 @@ fn test_get_transformation_matrix() {
     let array_entry_access = ArrayEntryAccess::new(
         BEGIN,
         vec![
-            Expression::parse(&mut fragment_lex("a + b * 2 - c - 2")).unwrap(),
-            Expression::parse(&mut fragment_lex("a * (-1) - (-1) * b + 2 * 3")).unwrap(),
-            Expression::parse(&mut fragment_lex("(a - c) * (1 + 2 * (1 + 3))")).unwrap(),
+            Expression::parse(&mut fragment_lex("a + b * 2 - c - 2"), &mut TypeVec::new()).unwrap(),
+            Expression::parse(&mut fragment_lex("a * (-1) - (-1) * b + 2 * 3"), &mut TypeVec::new()).unwrap(),
+            Expression::parse(&mut fragment_lex("(a - c) * (1 + 2 * (1 + 3))"), &mut TypeVec::new()).unwrap(),
         ],
         None,
         true,
@@ -459,7 +462,7 @@ fn test_get_transformation_matrix_non_affine_transform() {
 
     let array_entry_access = ArrayEntryAccess::new(
         BEGIN,
-        vec![Expression::parse(&mut fragment_lex("-1 + a * (2 + x)")).unwrap()],
+        vec![Expression::parse(&mut fragment_lex("-1 + a * (2 + x)"), &mut TypeVec::new()).unwrap()],
         None,
         true,
     );
@@ -475,7 +478,7 @@ fn test_get_transformation_matrix_non_index_variable() {
 
     let array_entry_access = ArrayEntryAccess::new(
         BEGIN,
-        vec![Expression::parse(&mut fragment_lex("a")).unwrap()],
+        vec![Expression::parse(&mut fragment_lex("a"), &mut TypeVec::new()).unwrap()],
         None,
         true,
     );

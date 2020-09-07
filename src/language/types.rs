@@ -1,77 +1,136 @@
 use super::error::*;
-use super::position::{TextPosition, NONEXISTING};
+use super::position::TextPosition;
+use super::super::util::dynamic::{DynEq, Dynamic};
+use super::super::util::dyn_lifetime::*;
+use std::cell::RefCell;
+use std::any::Any;
+
+pub type TypeVec = DynRefVec<RefCell<Type>>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-
 pub enum PrimitiveType {
-    Int,
+    Int, Float
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+pub trait ConcreteView : std::fmt::Debug + Any + DynEq + Dynamic {
+    fn clone(&self) -> Box<dyn ConcreteView>;
+}
 
+impl Clone for Box<dyn ConcreteView> {
+    fn clone(&self) -> Box<dyn ConcreteView> {
+        self.clone()
+    }
+}
+
+impl PartialEq for dyn ConcreteView {
+    fn eq(&self, rhs: &dyn ConcreteView) -> bool {
+        self.dyn_eq(rhs.dynamic())
+    }
+}
+
+impl Eq for dyn ConcreteView {}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     TestType,
     JumpLabel,
-    Primitive(PrimitiveType),
-    Array(PrimitiveType, u32),
-    Function(Vec<Box<Type>>, Option<Box<Type>>),
-    View(Box<Type>),
+    Array(ArrayType),
+    Function(FunctionType),
+    View(ViewType),
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Type::TestType => write!(out, "TestType"),
+            Type::JumpLabel => write!(out, "JumpLabel"),
+            Type::Array(ty) => write!(out, "{}", ty),
+            Type::Function(ty) => write!(out, "{}", ty),
+            Type::View(ty) => write!(out, "{}", ty),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionType {
+    pub param_types: Vec<DynRef<RefCell<Type>>>,
+    pub return_type: Option<DynRef<RefCell<Type>>>
+}
+
+impl std::fmt::Display for FunctionType {
+    fn fmt(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(out, "fn(")?;
+        for param in &self.param_types {
+            write!(out, "{:?}, ", param)?;
+        }
+        write!(out, ")")?;
+        if let Some(ret) = &self.return_type {
+            write!(out, ": {:?}", ret)?;
+        }
+        return Ok(());
+    }
+}
+
+impl FunctionType {
+    fn write(&self, prog_lifetime: Lifetime, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(out, "fn(")?;
+        for param in &self.param_types {
+            write!(out, "{}, ", prog_lifetime.cast(*param).borrow())?;
+        }
+        write!(out, ")")?;
+        if let Some(ret) = &self.return_type {
+            write!(out, ": {}", prog_lifetime.cast(*ret).borrow())?;
+        }
+        return Ok(());
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ArrayType {
+    pub base: PrimitiveType,
+    pub dimension: usize
+}
+
+impl std::fmt::Display for ArrayType {
+    fn fmt(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(out, "{:?}[{}]", self.base, ",".to_owned().repeat(self.dimension))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ViewType {
+    pub base: ArrayType,
+    pub concrete: Option<Box<dyn ConcreteView>>
+}
+
+impl std::fmt::Display for ViewType {
+    fn fmt(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(out, "&{}", self.base)
+    }
 }
 
 impl Type {
-    pub fn with_view(self) -> Type {
-
-        match self {
-            Type::View(ty) => Type::View(ty),
-            ty => Type::View(Box::new(ty)),
-        }
-    }
 
     pub fn without_view(self) -> Type {
-
         match self {
-            Type::View(ty) => *ty,
-            ty => ty,
+            Type::View(view) => Type::Array(view.base),
+            ty => ty
         }
     }
 
     pub fn is_view(&self) -> bool {
-
         match self {
-            Type::View(_) => true,
-            _ => false,
+            Type::View(view) => true,
+            _ => false
         }
-    }
-
-    pub fn is_array(&self) -> bool {
-
-        match self {
-            Type::Array(_, _) => true,
-            Type::View(ty) => ty.is_array(),
-            _ => false,
-        }
-    }
-
-    pub fn is_assignable_from(&self, value: &Type) -> bool {
-
-        match self {
-            Type::View(viewn) => value == &**viewn || value == self,
-            _ => value == self,
-        }
-    }
-
-    pub fn is_callable(&self) -> bool {
-
-        self.expect_callable(&NONEXISTING).is_ok()
     }
 
     pub fn expect_callable(
         &self,
         pos: &TextPosition,
-    ) -> Result<(&Vec<Box<Type>>, &Option<Box<Type>>), CompileError> {
-
+    ) -> Result<&FunctionType, CompileError> {
         match self {
-            Type::Function(param_types, return_type) => Ok((param_types, return_type)),
+            Type::Function(function_type) => Ok(function_type),
             ty => Err(CompileError::new(
                 pos,
                 format!("Expression of type {} is not callable", ty),
@@ -79,41 +138,42 @@ impl Type {
             )),
         }
     }
+
+    pub fn expect_array(
+        &self,
+        pos: &TextPosition
+    ) -> Result<&ArrayType, CompileError> {
+        match self {
+            Type::Array(array_type) => Ok(array_type),
+            ty => Err(CompileError::new(
+                pos,
+                format!("Expression of type {} is not an owned array", ty),
+                ErrorType::TypeError,
+            )),
+        }
+    }
+
+    pub fn expect_indexable(
+        &self,
+        pos: &TextPosition
+    ) -> Result<&ArrayType, CompileError> {
+        match self {
+            Type::Array(array_type) => Ok(array_type),
+            Type::View(view_type) => Ok(&view_type.base),
+            ty => Err(CompileError::new(
+                pos,
+                format!("Expression of type {} is not indexable", ty),
+                ErrorType::TypeError,
+            )),
+        }
+    }
 }
 
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-
-        match self {
-            Type::TestType => write!(f, "test"),
-            Type::Primitive(PrimitiveType::Int) => write!(f, "int"),
-            Type::Array(PrimitiveType::Int, dims) => {
-                write!(f, "int[{}]", ",".repeat(*dims as usize))
-            }
-            Type::Function(params, result) => {
-
-                f.write_str("fn(")?;
-
-                for param in params {
-
-                    param.fmt(f)?;
-
-                    f.write_str(", ")?;
-                }
-
-                f.write_str(")")?;
-
-                if let Some(result_type) = result {
-
-                    f.write_str(": ")?;
-
-                    result_type.fmt(f)?;
-                }
-
-                Ok(())
-            }
-            Type::JumpLabel => write!(f, "LABEL"),
-            Type::View(viewn_type) => write!(f, "&{}", viewn_type),
+impl ArrayType {
+    pub fn reference_view(self) -> ViewType {
+        ViewType {
+            base: self,
+            concrete: None
         }
     }
 }

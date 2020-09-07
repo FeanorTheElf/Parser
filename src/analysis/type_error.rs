@@ -34,24 +34,6 @@ pub fn error_array_value_parameter(pos: &TextPosition) -> CompileError {
     )
 }
 
-pub fn error_not_callable(pos: &TextPosition, ty: &Type) -> CompileError {
-
-    CompileError::new(
-        pos,
-        format!("Type {} is not callable", ty),
-        ErrorType::TypeError,
-    )
-}
-
-pub fn error_not_indexable(pos: &TextPosition, ty: &Type) -> CompileError {
-
-    CompileError::new(
-        pos,
-        format!("Type {} cannot be indexed", ty),
-        ErrorType::TypeError,
-    )
-}
-
 pub fn error_not_indexable_buildin_identifier(
     pos: &TextPosition,
     builtin_identifier: &BuiltInIdentifier,

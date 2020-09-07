@@ -258,17 +258,17 @@ where
         }
     }
 
-    pub fn extract_calls_in_program(&mut self, program: &mut Program) {
+    pub fn extract_calls_in_program(&mut self, items: &mut Vec<Box<Function>>) {
 
-        assert_ne!(program.items.len(), 0);
+        assert_ne!(items.len(), 0);
 
-        let scopes = NameScopeStack::new(&program.items[..]);
+        let scopes = NameScopeStack::new(&items[..]);
 
-        for i in 0..program.items.len() {
+        for i in 0..items.len() {
 
-            program.items.swap(0, i);
+            items.swap(0, i);
 
-            let (current, other) = program.items[..].split_at_mut(1);
+            let (current, other) = items[..].split_at_mut(1);
 
             let child_scopes = scopes.child_scope(&*current[0]);
 
@@ -283,7 +283,7 @@ where
 #[cfg(test)]
 use super::super::lexer::lexer::lex_str;
 #[cfg(test)]
-use super::super::parser::Parser;
+use super::super::parser::TopLevelParser;
 
 #[test]
 fn test_extract_calls_in_program() {
@@ -299,7 +299,7 @@ fn test_extract_calls_in_program() {
     }
     ")).unwrap();
 
-    Extractor::new(|_, _| true).extract_calls_in_program(&mut program);
+    Extractor::new(|_, _| true).extract_calls_in_program(&mut program.items);
 
     let expected = Program::parse(&mut lex_str("
 

@@ -34,11 +34,18 @@ impl<'a> Lifetime<'a> {
 /// to cast it to a specific lifetime, represented by a lifetime object that can be get from
 /// the container containing the objects.
 /// 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DynRef<T: ?Sized> {
     id: u32,
     target: *const T
 }
+
+impl<T: ?Sized> Clone for DynRef<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T: ?Sized> Copy for DynRef<T> {}
 
 impl<T: ?Sized> DynRef<T> {
     ///
@@ -111,9 +118,19 @@ impl DynRefTargetData {
     }
 }
 
+#[derive(Debug)]
 pub struct DynRefVec<T: ?Sized> {
     data: Vec<Box<T>>,
     ref_target: DynRefTargetData
+}
+
+impl<T: Clone> Clone for DynRefVec<T> {
+    fn clone(&self) -> Self {
+        DynRefVec {
+            data: self.data.clone(),
+            ref_target: DynRefTargetData::new()
+        }
+    }
 }
 
 impl<T: ?Sized> DynRefVec<T> {
@@ -140,6 +157,12 @@ impl<T: ?Sized> DynRefVec<T> {
         where T: Sized
     {
         self.push_box(Box::new(obj))
+    }
+
+    pub fn push_from<S>(&mut self, obj: S) -> DynRef<T>
+        where T: From<S>
+    {
+        self.push(T::from(obj))
     }
 
     pub fn push_box(&mut self, obj: Box<T>) -> DynRef<T> {

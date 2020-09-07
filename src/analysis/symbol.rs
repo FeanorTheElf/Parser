@@ -1,11 +1,13 @@
 use super::super::language::prelude::*;
 use super::super::util::dynamic::Dynamic;
+
+use super::super::util::dyn_lifetime::*;
 use std::any::Any;
 
 pub trait SymbolDefinition: Any + Dynamic + std::fmt::Debug {
     fn get_name(&self) -> &Name;
 
-    fn calc_type(&self) -> Type;
+    fn calc_type(&self, prog_lifetime: Lifetime) -> Type;
 }
 
 impl SymbolDefinition for Declaration {
@@ -14,9 +16,9 @@ impl SymbolDefinition for Declaration {
         &self.variable
     }
 
-    fn calc_type(&self) -> Type {
+    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
 
-        self.variable_type.clone()
+        prog_lifetime.cast(self.variable_type).borrow().clone()
     }
 }
 
@@ -26,7 +28,7 @@ impl SymbolDefinition for Label {
         &self.label
     }
 
-    fn calc_type(&self) -> Type {
+    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
 
         Type::JumpLabel
     }
@@ -38,15 +40,15 @@ impl SymbolDefinition for Function {
         &self.identifier
     }
 
-    fn calc_type(&self) -> Type {
+    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
 
-        Type::Function(
-            self.params
+        Type::Function(FunctionType {
+            param_types: self.params
                 .iter()
-                .map(|p| Box::new(p.variable_type.clone()))
+                .map(|p| p.variable_type)
                 .collect(),
-            self.return_type.clone().map(Box::new),
-        )
+            return_type: self.return_type,
+        })
     }
 }
 
@@ -58,7 +60,7 @@ impl SymbolDefinition for Name {
         self
     }
 
-    fn calc_type(&self) -> Type {
+    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
 
         Type::TestType
     }
@@ -72,7 +74,7 @@ impl SymbolDefinition for (Name, Type) {
         &self.0
     }
 
-    fn calc_type(&self) -> Type {
+    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
 
         self.1.clone()
     }

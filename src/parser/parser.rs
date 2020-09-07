@@ -1,51 +1,54 @@
 use super::super::language::prelude::*;
 use super::super::lexer::tokens::{Stream, Token};
 use super::parser_gen::Flatten;
-use super::{Build, Parseable, Parser};
+use super::{Build, Parseable, Parser, TopLevelParser};
+
+use super::super::util::dyn_lifetime::*;
+use std::cell::RefCell;
 
 impl Parseable for Program {
     type ParseOutputType = Self;
 }
 
-impl Build<(Vec<Function>,)> for Program {
-    fn build(_pos: TextPosition, param: (Vec<Function>,)) -> Self::ParseOutputType {
-
-        Program {
-            items: param.0.into_iter().map(&Box::new).collect(),
+impl TopLevelParser for Program {
+    fn parse(stream: &mut Stream) -> Result<Program, CompileError> {
+        stream.skip_next(&Token::BOF);
+        let mut result = Program {
+            types: TypeVec::new(),
+            items: Vec::new()
+        };
+        while Function::is_applicable(stream) {
+            result.items.push(Box::new(Function::parse(stream, &mut result.types)?));
         }
+        stream.skip_next(&Token::EOF);
+        return Ok(result);
     }
 }
 
 impl Parseable for Type {
-    type ParseOutputType = Self;
+    type ParseOutputType = DynRef<RefCell<Type>>;
+}
+
+fn create_array_type(param: TypeNodeNoView) -> ArrayType {
+    ArrayType {
+        dimension: (param.1).1.map(|x| (x.1).0 as usize).unwrap_or(0),
+        base: PrimitiveType::Int
+    }
 }
 
 impl Build<TypeNodeNoView> for Type {
-    fn build(_pos: TextPosition, param: TypeNodeNoView) -> Self::ParseOutputType {
-
-        if let Some(dimensions) = (param.1).1 {
-
-            Type::Array(PrimitiveType::Int, (dimensions.1).0)
-        } else {
-
-            Type::Primitive(PrimitiveType::Int)
-        }
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: TypeNodeNoView) -> Self::ParseOutputType {
+        match (param.1).0 { PrimitiveTypeNode::IntTypeNode(_) => {}, _ => unimplemented!() };
+        types.push(RefCell::from(Type::Array(create_array_type(param))))
     }
 }
 
 impl Build<TypeNodeView> for Type {
-    fn build(pos: TextPosition, param: TypeNodeView) -> Self::ParseOutputType {
-
-        let view_count = (param.1).0 + 1;
-
-        let mut result = Type::build(pos, (param.1).1);
-
-        for _i in 0..view_count {
-
-            result = Type::View(Box::new(result));
-        }
-
-        return result;
+    fn build(pos: TextPosition, types: &mut TypeVec, param: TypeNodeView) -> Self::ParseOutputType {
+        types.push(RefCell::from(Type::View(ViewType {
+            base: create_array_type((param.1).0),
+            concrete: None
+        })))
     }
 }
 
@@ -59,7 +62,7 @@ impl Parser for Name {
         stream.is_next_identifier()
     }
 
-    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         let identifier_string = stream.next_ident()?;
 
@@ -82,7 +85,7 @@ impl Parseable for Variable {
 }
 
 impl Build<Name> for Variable {
-    fn build(pos: TextPosition, param: Name) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: Name) -> Self::ParseOutputType {
 
         Variable {
             pos: pos,
@@ -101,7 +104,7 @@ impl Parser for Literal {
         stream.is_next_literal()
     }
 
-    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         Ok(Literal {
             pos: stream.pos().clone(),
@@ -114,8 +117,8 @@ impl Parseable for Declaration {
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, Type)> for Declaration {
-    fn build(pos: TextPosition, param: (Name, Type)) -> Self::ParseOutputType {
+impl Build<(Name, <Type as Parseable>::ParseOutputType)> for Declaration {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name, <Type as Parseable>::ParseOutputType)) -> Self::ParseOutputType {
 
         Declaration {
             pos: pos,
@@ -129,10 +132,10 @@ impl Parseable for Function {
     type ParseOutputType = Self;
 }
 
-impl Build<(Name, Vec<DeclarationListNode>, Option<Type>, FunctionImpl)> for Function {
+impl Build<(Name, Vec<DeclarationListNode>, Option<<Type as Parseable>::ParseOutputType>, FunctionImpl)> for Function {
     fn build(
-        pos: TextPosition,
-        param: (Name, Vec<DeclarationListNode>, Option<Type>, FunctionImpl),
+        pos: TextPosition, types: &mut TypeVec,
+        param: (Name, Vec<DeclarationListNode>, Option<<Type as Parseable>::ParseOutputType>, FunctionImpl),
     ) -> Self::ParseOutputType {
 
         let block = if let FunctionImpl::Block(block) = param.3 {
@@ -149,7 +152,7 @@ impl Build<(Name, Vec<DeclarationListNode>, Option<Type>, FunctionImpl)> for Fun
             params: param
                 .1
                 .into_iter()
-                .map(|p| Declaration::build(p.0, p.1))
+                .map(|p| Declaration::build(p.0, types, p.1))
                 .collect(),
             return_type: param.2,
             body: block,
@@ -162,7 +165,7 @@ impl Parseable for Block {
 }
 
 impl Build<(Vec<Box<dyn Statement>>,)> for Block {
-    fn build(pos: TextPosition, param: (Vec<Box<dyn Statement>>,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: (Vec<Box<dyn Statement>>,)) -> Self::ParseOutputType {
 
         Block {
             pos: pos,
@@ -176,7 +179,7 @@ impl Parseable for dyn Statement {
 }
 
 impl Build<ExpressionNode> for dyn Statement {
-    fn build(_pos: TextPosition, param: ExpressionNode) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: ExpressionNode) -> Self::ParseOutputType {
 
         Box::new((param.1).0)
     }
@@ -188,7 +191,7 @@ impl Parseable for If {
 
 impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for If {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (<Expression as Parseable>::ParseOutputType, Block),
     ) -> Self::ParseOutputType {
 
@@ -201,7 +204,7 @@ impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for If {
 }
 
 impl Build<If> for dyn Statement {
-    fn build(_pos: TextPosition, param: If) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: If) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -213,7 +216,7 @@ impl Parseable for While {
 
 impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for While {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (<Expression as Parseable>::ParseOutputType, Block),
     ) -> Self::ParseOutputType {
 
@@ -226,7 +229,7 @@ impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for While {
 }
 
 impl Build<While> for dyn Statement {
-    fn build(_pos: TextPosition, param: While) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: While) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -237,7 +240,7 @@ impl Parseable for Label {
 }
 
 impl Build<(Name,)> for Label {
-    fn build(pos: TextPosition, param: (Name,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
 
         Label {
             pos: pos,
@@ -247,7 +250,7 @@ impl Build<(Name,)> for Label {
 }
 
 impl Build<Label> for dyn Statement {
-    fn build(_pos: TextPosition, param: Label) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: Label) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -258,7 +261,7 @@ impl Parseable for Goto {
 }
 
 impl Build<(Name,)> for Goto {
-    fn build(pos: TextPosition, param: (Name,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
 
         Goto {
             pos: pos,
@@ -268,14 +271,14 @@ impl Build<(Name,)> for Goto {
 }
 
 impl Build<Goto> for dyn Statement {
-    fn build(_pos: TextPosition, param: Goto) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: Goto) -> Self::ParseOutputType {
 
         Box::new(param)
     }
 }
 
 impl Build<Block> for dyn Statement {
-    fn build(_pos: TextPosition, param: Block) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: Block) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -287,7 +290,7 @@ impl Parseable for Return {
 
 impl Build<(Option<<Expression as Parseable>::ParseOutputType>,)> for Return {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (Option<<Expression as Parseable>::ParseOutputType>,),
     ) -> Self::ParseOutputType {
 
@@ -299,7 +302,7 @@ impl Build<(Option<<Expression as Parseable>::ParseOutputType>,)> for Return {
 }
 
 impl Build<Return> for dyn Statement {
-    fn build(_pos: TextPosition, param: Return) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: Return) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -312,28 +315,28 @@ impl Parseable for LocalVariableDeclaration {
 impl
     Build<(
         Name,
-        Type,
+        <Type as Parseable>::ParseOutputType,
         Option<<Expression as Parseable>::ParseOutputType>,
     )> for LocalVariableDeclaration
 {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (
             Name,
-            Type,
+            <Type as Parseable>::ParseOutputType,
             Option<<Expression as Parseable>::ParseOutputType>,
         ),
     ) -> Self::ParseOutputType {
 
         LocalVariableDeclaration {
-            declaration: Declaration::build(pos, (param.0, param.1)),
+            declaration: Declaration::build(pos, types, (param.0, param.1)),
             value: param.2,
         }
     }
 }
 
 impl Build<LocalVariableDeclaration> for dyn Statement {
-    fn build(_pos: TextPosition, param: LocalVariableDeclaration) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: LocalVariableDeclaration) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -350,7 +353,7 @@ impl
     )> for Assignment
 {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (
             <Expression as Parseable>::ParseOutputType,
             <Expression as Parseable>::ParseOutputType,
@@ -366,7 +369,7 @@ impl
 }
 
 impl Build<Assignment> for dyn Statement {
-    fn build(_pos: TextPosition, param: Assignment) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: Assignment) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -378,7 +381,7 @@ impl Parseable for ArrayEntryAccess {
 
 impl Build<(Option<RWModifier>, Vec<Expression>, Option<Alias>)> for ArrayEntryAccess {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (Option<RWModifier>, Vec<Expression>, Option<Alias>),
     ) -> Self::ParseOutputType {
 
@@ -398,7 +401,7 @@ impl Parseable for ArrayAccessPattern {
 
 impl Build<(Vec<ArrayEntryAccess>, Expression)> for ArrayAccessPattern {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (Vec<ArrayEntryAccess>, Expression),
     ) -> Self::ParseOutputType {
 
@@ -416,7 +419,7 @@ impl Parseable for ParallelFor {
 
 impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)> for ParallelFor {
     fn build(
-        pos: TextPosition,
+        pos: TextPosition, types: &mut TypeVec,
         param: (Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block),
     ) -> Self::ParseOutputType {
 
@@ -426,7 +429,7 @@ impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)> for Paral
             index_variables: param
                 .0
                 .into_iter()
-                .map(|node| Declaration::build(node.0, node.1))
+                .map(|node| Declaration::build(node.0, types, node.1))
                 .collect(),
             body: param.2,
         }
@@ -434,7 +437,7 @@ impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)> for Paral
 }
 
 impl Build<ParallelFor> for dyn Statement {
-    fn build(_pos: TextPosition, param: ParallelFor) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: ParallelFor) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -460,19 +463,20 @@ fn build_function_call(
     }))
 }
 
-fn build_expr<T, I>(
-    pos: TextPosition,
+fn build_expr<T>(
+    pos: TextPosition, 
+    types: &mut TypeVec,
     function: BuiltInIdentifier,
     first: T,
-    mut others: I,
+    others: Vec<T>,
 ) -> <Expression as Parseable>::ParseOutputType
 where
     Expression: Build<T>,
-    I: Iterator<Item = T>,
     T: AstNode,
 {
 
-    let second: Option<T> = others.next();
+    let mut data = others.into_iter();
+    let second: Option<T> = data.next();
 
     if let Some(sec) = second {
 
@@ -481,19 +485,19 @@ where
             function,
             std::iter::once(first)
                 .chain(std::iter::once(sec))
-                .chain(others)
-                .map(|e| Expression::build(e.pos().clone(), e))
+                .chain(data)
+                .map(|e| Expression::build(e.pos().clone(), types, e))
                 .collect(),
         )
     } else {
 
-        Expression::build(pos, first)
+        Expression::build(pos, types, first)
     }
 }
 
 impl Build<<Expression as Parseable>::ParseOutputType> for Expression {
     fn build(
-        _pos: TextPosition,
+        _pos: TextPosition, _types: &mut TypeVec,
         param: <Expression as Parseable>::ParseOutputType,
     ) -> Self::ParseOutputType {
 
@@ -502,60 +506,62 @@ impl Build<<Expression as Parseable>::ParseOutputType> for Expression {
 }
 
 impl Build<ExprNodeLevelOr> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelOr) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelOr) -> Self::ParseOutputType {
 
         build_expr(
             pos,
+            types,
             BuiltInIdentifier::FunctionOr,
             (param.1).0,
-            (param.1).1.into_iter().map(|n| (n.1).0),
+            (param.1).1.into_iter().map(|n| (n.1).0).collect(),
         )
     }
 }
 
 impl Build<ExprNodeLevelAnd> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelAnd) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelAnd) -> Self::ParseOutputType {
 
         build_expr(
             pos,
+            types,
             BuiltInIdentifier::FunctionAnd,
             (param.1).0,
-            (param.1).1.into_iter().map(|n| (n.1).0),
+            (param.1).1.into_iter().map(|n| (n.1).0).collect(),
         )
     }
 }
 
 impl Build<ExprNodeLevelCmp> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelCmp) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelCmp) -> Self::ParseOutputType {
 
         (param.1).1.into_iter().fold(
-            Expression::build(pos.clone(), *(param.1).0),
+            Expression::build(pos.clone(), types, *(param.1).0),
             |current, next| {
 
                 let (function, parameter) = match next {
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartEq(node) => (
                         BuiltInIdentifier::FunctionEq,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartNeq(node) => (
                         BuiltInIdentifier::FunctionNeq,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartLeq(node) => (
                         BuiltInIdentifier::FunctionLeq,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartGeq(node) => (
                         BuiltInIdentifier::FunctionGeq,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartLs(node) => (
                         BuiltInIdentifier::FunctionLs,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                     ExprNodeLevelCmpPart::ExprNodeLevelCmpPartGt(node) => (
                         BuiltInIdentifier::FunctionGt,
-                        Expression::build(node.0, *(node.1).0),
+                        Expression::build(node.0, types, *(node.1).0),
                     ),
                 };
 
@@ -566,9 +572,9 @@ impl Build<ExprNodeLevelCmp> for Expression {
 }
 
 impl Build<ExprNodeLevelAdd> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelAdd) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelAdd) -> Self::ParseOutputType {
 
-        let mut start_expr = Expression::build(param.0.clone(), (param.1).1);
+        let mut start_expr = Expression::build(param.0.clone(), types, (param.1).1);
 
         if let Some(unary_negation) = (param.1).0 {
 
@@ -578,48 +584,52 @@ impl Build<ExprNodeLevelAdd> for Expression {
                 vec![start_expr],
             );
         }
-
+        let others = (param.1).2.into_iter().map(|node| match node {
+            ExprNodeLevelAddPart::ExprNodeLevelAddPartAdd(part) => {
+                Expression::build(part.0, types, (part.1).0)
+            }
+            ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => build_function_call(
+                part.0.clone(),
+                BuiltInIdentifier::FunctionUnaryNeg,
+                vec![Expression::build(part.0, types, (part.1).0)],
+            ),
+        }).collect();
         build_expr(
             pos,
+            types,
             BuiltInIdentifier::FunctionAdd,
             start_expr,
-            (param.1).2.into_iter().map(|node| match node {
-                ExprNodeLevelAddPart::ExprNodeLevelAddPartAdd(part) => {
-                    Expression::build(part.0, (part.1).0)
-                }
-                ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => build_function_call(
-                    part.0.clone(),
-                    BuiltInIdentifier::FunctionUnaryNeg,
-                    vec![Expression::build(part.0, (part.1).0)],
-                ),
-            }),
+            others,
         )
     }
 }
 
 impl Build<ExprNodeLevelMul> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelMul) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelMul) -> Self::ParseOutputType {
 
+        let first = Expression::build(param.0, types, (param.1).0);
+        let others = (param.1).1.into_iter().map(|node| match node {
+            ExprNodeLevelMulPart::ExprNodeLevelMulPartMul(part) => {
+                Expression::build(part.0, types, (part.1).0)
+            }
+            ExprNodeLevelMulPart::ExprNodeLevelMulPartDiv(part) => build_function_call(
+                part.0.clone(),
+                BuiltInIdentifier::FunctionUnaryDiv,
+                vec![Expression::build(part.0, types, (part.1).0)],
+            ),
+        }).collect();
         build_expr(
             pos,
+            types,
             BuiltInIdentifier::FunctionMul,
-            Expression::build(param.0, (param.1).0),
-            (param.1).1.into_iter().map(|node| match node {
-                ExprNodeLevelMulPart::ExprNodeLevelMulPartMul(part) => {
-                    Expression::build(part.0, (part.1).0)
-                }
-                ExprNodeLevelMulPart::ExprNodeLevelMulPartDiv(part) => build_function_call(
-                    part.0.clone(),
-                    BuiltInIdentifier::FunctionUnaryDiv,
-                    vec![Expression::build(part.0, (part.1).0)],
-                ),
-            }),
+            first,
+            others,
         )
     }
 }
 
 impl Build<ExprNodeLevelCall> for Expression {
-    fn build(pos: TextPosition, param: ExprNodeLevelCall) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, types: &mut TypeVec, param: ExprNodeLevelCall) -> Self::ParseOutputType {
 
         let call_chain = (param.1).1;
 
@@ -628,7 +638,7 @@ impl Build<ExprNodeLevelCall> for Expression {
         call_chain
             .into_iter()
             .fold(
-                Expression::build(pos, start_expr),
+                Expression::build(pos, types, start_expr),
                 |current, next_call| match next_call {
                     FunctionCallOrIndexAccess::IndexAccessParameters(index_access) => {
 
@@ -655,7 +665,7 @@ impl Build<ExprNodeLevelCall> for Expression {
 }
 
 impl Build<BaseExpr> for Expression {
-    fn build(_pos: TextPosition, param: BaseExpr) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: BaseExpr) -> Self::ParseOutputType {
 
         match param {
             BaseExpr::BracketExpr(node) => (node.1).0,
@@ -665,17 +675,19 @@ impl Build<BaseExpr> for Expression {
     }
 }
 
-impl_parse! { Program := Token#BOF { Function } Token#EOF }
-
 impl_parse! { Type := TypeNodeView | TypeNodeNoView }
 
-grammar_rule! { TypeNodeView := Token#View { Token#View } TypeNodeNoView }
+grammar_rule! { TypeNodeView := Token#View TypeNodeNoView }
 
 grammar_rule! { TypeNodeNoView := PrimitiveTypeNode [ Dimensions ] }
 
 grammar_rule! { Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
 
-grammar_rule! { PrimitiveTypeNode := Token#Int }
+grammar_rule! { PrimitiveTypeNode := IntTypeNode | FloatTypeNode }
+
+grammar_rule! { IntTypeNode := Token#Int }
+
+grammar_rule! { FloatTypeNode := Token#Comma }
 
 impl_parse! { Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon Type ] FunctionImpl }
 
@@ -699,60 +711,54 @@ impl Parser for dyn Statement {
             || ParallelFor::is_applicable(stream)
     }
 
-    fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         let pos = stream.pos().clone();
 
         if If::is_applicable(stream) {
-
-            Ok(Statement::build(pos, If::parse(stream)?))
+            let statement = If::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if While::is_applicable(stream) {
-
-            Ok(Statement::build(pos, While::parse(stream)?))
+            let statement = While::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if Return::is_applicable(stream) {
-
-            Ok(Statement::build(pos, Return::parse(stream)?))
+            let statement = Return::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if Block::is_applicable(stream) {
-
-            Ok(Statement::build(pos, Block::parse(stream)?))
+            let statement = Block::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if LocalVariableDeclaration::is_applicable(stream) {
-
+            let statement = LocalVariableDeclaration::parse(stream, types)?;
             Ok(Statement::build(
-                pos,
-                LocalVariableDeclaration::parse(stream)?,
+                pos, types,
+                statement,
             ))
         } else if Label::is_applicable(stream) {
-
-            Ok(Statement::build(pos, Label::parse(stream)?))
+            let statement = Label::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if Goto::is_applicable(stream) {
-
-            Ok(Statement::build(pos, Goto::parse(stream)?))
+            let statement = Goto::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else if ParallelFor::is_applicable(stream) {
-
-            Ok(Statement::build(pos, ParallelFor::parse(stream)?))
+            let statement = ParallelFor::parse(stream, types)?;
+            Ok(Statement::build(pos, types, statement))
         } else {
-
-            let expr = Expression::parse(stream)?;
-
+            let expr = Expression::parse(stream, types)?;
             if stream.is_next(&Token::Assign) {
-
                 stream.skip_next(&Token::Assign)?;
-
-                let value = Expression::parse(stream)?;
-
+                let value = Expression::parse(stream, types)?;
                 stream.skip_next(&Token::Semicolon)?;
-
+                let statement = Assignment::build(pos.clone(), types, (expr, value)); 
                 return Ok(Statement::build(
-                    pos.clone(),
-                    Assignment::build(pos, (expr, value)),
+                    pos, types,
+                    statement,
                 ));
             } else {
-
                 stream.skip_next(&Token::Semicolon)?;
-
+                let statement = ExpressionNode::build(pos.clone(), types, (expr,)); 
                 return Ok(Statement::build(
-                    pos.clone(),
-                    ExpressionNode::build(pos, (expr,)),
+                    pos, types,
+                    statement,
                 ));
             }
         }
@@ -865,12 +871,13 @@ fn test_parser() {
     let ast = Program::parse(&mut lex_str(program)).unwrap();
 
     assert_eq!(1, ast.items.len());
+    assert_eq!(3, ast.types.len());
 
     assert_eq!(
         Declaration {
             pos: NONEXISTING,
             variable: Name::l("a"),
-            variable_type: Type::Array(PrimitiveType::Int, 1)
+            variable_type: ast.types.at(0)
         },
         ast.items[0].params[0]
     );
@@ -886,7 +893,7 @@ fn test_parser() {
         Declaration {
             pos: NONEXISTING,
             variable: Name::l("c"),
-            variable_type: Type::Primitive(PrimitiveType::Int)
+            variable_type: ast.types.at(2)
         },
         pfor.index_variables[0]
     );
@@ -911,7 +918,7 @@ fn test_parse_index_expressions() {
 
     let text = "a[b,]";
 
-    let expr = Expression::parse(&mut fragment_lex(text)).unwrap();
+    let expr = Expression::parse(&mut fragment_lex(text), &mut TypeVec::new()).unwrap();
 
     assert_eq!(
         Expression::Call(Box::new(FunctionCall {

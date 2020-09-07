@@ -4,6 +4,8 @@ use super::super::language::compiler::OutputError;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;
+
+use super::super::util::dyn_lifetime::*;
 use std::collections::HashMap;
 
 pub trait CudaContext<'data, 'ast: 'data> {
@@ -12,6 +14,8 @@ pub trait CudaContext<'data, 'ast: 'data> {
     fn set_device(&mut self);
 
     fn set_host(&mut self);
+
+    fn ast_lifetime(&self) -> Lifetime<'ast>;
 
     fn get_scopes(&self) -> &DefinitionScopeStack<'data, 'ast>;
 
@@ -29,7 +33,7 @@ pub trait CudaContext<'data, 'ast: 'data> {
 
     fn calculate_type(&self, expr: &Expression) -> Type {
 
-        expr.calculate_type(self.get_scopes()).internal_error()
+        expr.calculate_type(self.get_scopes(), self.ast_lifetime()).internal_error()
     }
 }
 
@@ -54,7 +58,7 @@ impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {
         self.get_scopes()
             .get_defined(variable, pos)
             .unwrap()
-            .calc_type()
+            .calc_type(self.ast_lifetime())
     }
 }
 
@@ -110,12 +114,20 @@ impl<'data, 'ast: 'data, T: CudaContext<'data, 'ast>> CudaContext<'data, 'ast> f
 
         (**self).get_scopes_mut_do_not_use_outside_of_cuda_context()
     }
+
+    fn ast_lifetime(
+        &self,
+    ) -> Lifetime<'ast> {
+
+        (**self).ast_lifetime()
+    }
 }
 
 pub struct CudaContextImpl<'data, 'ast> {
     device_context: bool,
     scopes: DefinitionScopeStack<'data, 'ast>,
     function: Option<&'ast Function>,
+    ast_lifetime: Lifetime<'ast>,
     functions: &'data HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
     kernels: &'data HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
 }
@@ -133,6 +145,7 @@ impl<'data, 'ast: 'data> CudaContextImpl<'data, 'ast> {
             function: None,
             functions: functions,
             kernels: kernels,
+            ast_lifetime: global.types.get_lifetime()
         }
     }
 
@@ -157,6 +170,7 @@ impl<'data, 'ast: 'data> CudaContextImpl<'data, 'ast> {
             function: None,
             functions: Box::leak(Box::new(functions)),
             kernels: Box::leak(Box::new(kernels)),
+            ast_lifetime: global.types.get_lifetime()
         })
     }
 }
@@ -207,5 +221,9 @@ impl<'data, 'ast: 'data> CudaContext<'data, 'ast> for CudaContextImpl<'data, 'as
     ) -> &mut DefinitionScopeStack<'data, 'ast> {
 
         &mut self.scopes
+    }
+
+    fn ast_lifetime(&self) -> Lifetime<'ast> {
+        self.ast_lifetime
     }
 }

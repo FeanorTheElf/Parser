@@ -39,10 +39,11 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
 ) -> Result<CudaKernel, OutputError> {
 
     let name = CudaIdentifier::Kernel(kernel.kernel_name);
+    let ast_lifetime = context.ast_lifetime();
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        let var_type = var.calc_type().with_view();
+        let var_type = Type::View(var.calc_type(ast_lifetime).expect_array(pfor.pos()).internal_error().clone().reference_view());
 
         let parameter_variables = gen_variables(pfor.pos(), var.get_name(), &var_type);
 
@@ -214,20 +215,20 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
     // First: calculate the size of the arrays, not the standard postfix size products
     for access_pattern in &pfor.access_pattern {
 
-        let array_type = context.calculate_type(&access_pattern.array);
+        let access_pattern_array_type = context.calculate_type(&access_pattern.array);
 
-        let (_, dim) = expect_array_type(&array_type);
+        let array_type = access_pattern_array_type.expect_indexable(access_pattern.pos()).internal_error();
 
-        array_dim_counts.push(dim);
+        array_dim_counts.push(array_type.dimension);
 
         let size_exprs =
-            gen_simple_expr_array_size(&access_pattern.array, &array_type).collect::<Vec<_>>();
+            gen_simple_expr_array_size(&access_pattern.array, &access_pattern_array_type).collect::<Vec<_>>();
 
-        assert_eq!(size_exprs.len() as u32, dim);
+        assert_eq!(size_exprs.len(), array_type.dimension);
 
-        for d in 0..dim {
+        for d in 0..array_type.dimension {
 
-            let value = if d + 1 == dim {
+            let value = if d + 1 == array_type.dimension {
 
                 size_exprs[d as usize].1.clone()
             } else {
@@ -246,7 +247,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
                     ptr: false,
                     constant: true
                 },
-                var: CudaIdentifier::TmpArrayShapeVar(local_array_id as u32, d),
+                var: CudaIdentifier::TmpArrayShapeVar(local_array_id as u32, d as u32),
             }));
         }
 
@@ -267,7 +268,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
 
                 CudaExpression::Identifier(CudaIdentifier::TmpArrayShapeVar(
                     local_array_id as u32,
-                    d,
+                    d as u32,
                 ))
             })
             .collect::<Vec<_>>();
@@ -365,7 +366,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
     // Fourth: collect the parameters
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        gen_variables_for_view(pfor.pos(), var.get_name(), &var.calc_type())
+        gen_variables_for_view(pfor.pos(), var.get_name(), &var.calc_type(context.ast_lifetime()))
             .map(|(_, expr)| expr)
             .collect::<Vec<_>>()
             .into_iter()
@@ -501,24 +502,22 @@ fn gen_implemented_function<'data, 'ast: 'data>(
     let scope_levels = context.get_scopes().get_scope_levels();
 
     let function_info = context.get_function_data(function);
-
+    let ast_lifetime = context.ast_lifetime();
     let standard_params = function
         .params
         .iter()
-        .flat_map(|p| gen_variables(p.pos(), &p.variable, &p.variable_type));
+        .flat_map(|p| gen_variables(p.pos(), &p.variable, &*ast_lifetime.cast(p.variable_type).borrow()).collect::<Vec<_>>().into_iter());
 
-    let result = if is_generated_with_output_parameter(function.return_type.as_ref().as_ref()) {
+    let result = if is_generated_with_output_parameter(function.return_type.map(|t| ast_lifetime.cast(t))) {
 
         let params = if let Some(return_type) = &function.return_type {
-
             standard_params
                 .chain(gen_output_parameter_declaration(
                     function.pos(),
-                    return_type,
+                    ast_lifetime.cast(*return_type).borrow().expect_array(function.pos()).internal_error(),
                 ))
                 .collect::<Vec<_>>()
         } else {
-
             standard_params.collect::<Vec<_>>()
         };
 
@@ -536,39 +535,35 @@ fn gen_implemented_function<'data, 'ast: 'data>(
             body: gen_block(body, context)?,
         })
     } else {
-
-        let return_type = match &function.return_type {
-            Some(Type::Array(base, dim)) => {
-
-                assert_eq!(*dim, 0);
-                CudaType {
-                    base: gen_primitive_type(*base),
-                    owned: false,
-                    ptr: false,
-                    constant: false
-                }
+        let ast_lifetime = context.ast_lifetime();
+        let return_type = if let Some(ty) = &function.return_type.map(|x| ast_lifetime.cast(x)) {
+            match &*ty.borrow() {
+                Type::Array(arr) => {
+                    assert_eq!(arr.dimension, 0);
+                    CudaType {
+                        base: gen_primitive_type(arr.base),
+                        owned: false,
+                        ptr: false,
+                        constant: false
+                    }
+                },
+                Type::Function(_) => {
+                    return Err(OutputError::UnsupportedCode(
+                        function.pos().clone(),
+                        format!("Functions that return functions are not supported in cuda backend"),
+                    ))
+                },
+                Type::JumpLabel => error_jump_label_var_type(function.pos()).throw(),
+                Type::TestType => error_test_type(function.pos()),
+                Type::View(_viewn) => error_return_view(function.pos()).throw(),
             }
-            Some(Type::Function(_, _)) => {
-                return Err(OutputError::UnsupportedCode(
-                    function.pos().clone(),
-                    format!("Functions that return functions are not supported in cuda backend"),
-                ))
-            }
-            Some(Type::JumpLabel) => error_jump_label_var_type(function.pos()).throw(),
-            Some(Type::Primitive(base)) => CudaType {
-                base: gen_primitive_type(*base),
-                owned: false,
-                ptr: false,
-                constant: false
-            },
-            Some(Type::TestType) => error_test_type(function.pos()),
-            Some(Type::View(_viewn)) => error_return_view(function.pos()).throw(),
-            None => CudaType {
+        } else {
+            CudaType {
                 base: CudaPrimitiveType::Void,
                 owned: false,
                 ptr: false,
                 constant: false
-            },
+            }
         };
 
         Ok(CudaFunction {
@@ -620,19 +615,18 @@ use std::iter::FromIterator;
 #[test]
 
 fn test_gen_kernel() {
-
+    let mut types = TypeVec::new();
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    ",
-    ))
+    "), &mut types)
     .unwrap();
 
-    let declaration_a = (Name::l("a"), Type::Array(PrimitiveType::Int, 1));
+    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }));
 
-    let declaration_b = (Name::l("b"), Type::Primitive(PrimitiveType::Int));
+    let declaration_b = (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }));
 
     let defs = [declaration_a, declaration_b];
 
@@ -647,7 +641,7 @@ fn test_gen_kernel() {
         ),
     };
 
-    let program = Program { items: vec![] };
+    let program = Program { items: vec![], types: types };
 
     let mut output = "".to_owned();
 
@@ -684,13 +678,14 @@ fn test_gen_kernel_call() {
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    ",
-    ))
+    "), &mut TypeVec::new())
     .unwrap();
 
-    let declaration_a = (Name::l("a"), Type::Array(PrimitiveType::Int, 1));
+    let mut program = Program { items: vec![], types: TypeVec::new() };
 
-    let declaration_b = (Name::l("b"), Type::Primitive(PrimitiveType::Int));
+    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }));
+
+    let declaration_b = (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }));
 
     let defs = [declaration_a, declaration_b];
 
@@ -705,7 +700,6 @@ fn test_gen_kernel_call() {
         ),
     };
 
-    let program = Program { items: vec![] };
 
     let mut output = "".to_owned();
 
@@ -740,11 +734,10 @@ fn test_gen_kernel_call_complex() {
         pfor i: int, j: int, with this[2 * i + j, j,], this[2 * i + j + 1, j,], in a {
             a[2 * i + j + 1, j,] = a[2 * i + j, j,];
         }
-    ",
-    ))
+    "), &mut TypeVec::new())
     .unwrap();
 
-    let declaration_a = (Name::l("a"), Type::Array(PrimitiveType::Int, 2));
+    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 }));
 
     let defs = [declaration_a];
 
@@ -759,7 +752,7 @@ fn test_gen_kernel_call_complex() {
         ),
     };
 
-    let program = Program { items: vec![] };
+    let program = Program { items: vec![], types: TypeVec::new() };
 
     let mut output = "".to_owned();
 

@@ -24,11 +24,11 @@ mod lexer;
 mod parser;
 mod transformation;
 mod cuda;
-mod cli;
+//mod cli;
 
-use cli::cli_backend::*;
-use cli::cuda::*;
+//use cli::cli_backend::*;
+//use cli::cuda::*;
 
 fn main() {
-    create_cuda_exe_backend().run(MultiStageBackendOptions::from("E:\\Users\\Simon\\Documents\\Projekte\\Parser\\example")).unwrap();
+//    create_cuda_exe_backend().run(MultiStageBackendOptions::from("E:\\Users\\Simon\\Documents\\Projekte\\Parser\\example")).unwrap();
 }

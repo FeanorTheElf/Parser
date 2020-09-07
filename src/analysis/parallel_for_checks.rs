@@ -193,7 +193,7 @@ fn test_check_collision() {
 
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "pfor a: int, with write this[2 * a, ], read this[2 * a + 1, ], in array {}",
-    ))
+    ), &mut TypeVec::new())
     .unwrap();
 
     assert_eq!((), check_pfor_data_races(&pfor).internal_error());
@@ -205,7 +205,7 @@ fn test_check_collision_with_collision() {
 
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "pfor a: int, b: int, with write this[2 * a + b, ], read this[2 * a + 1, ], in array {}",
-    ))
+    ), &mut TypeVec::new())
     .unwrap();
 
     assert!(check_pfor_data_races(&pfor).is_err());

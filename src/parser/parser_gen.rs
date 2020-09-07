@@ -58,30 +58,30 @@ macro_rules! debug_assert_at_most_one_of_applicable {
 }
 
 macro_rules! impl_grammar_variant_parse {
-    ($stream:ident;) =>
+    ($stream:ident; $progcontainer:ident; ) =>
     {
 		()
     };
-    ($stream:ident; Token#$token:ident $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; Token#$token:ident $($tail:tt)*) =>
     {
-        {($stream).skip_next(&Token::$token)?; impl_grammar_variant_parse!($stream; $($tail)*)}
+        {($stream).skip_next(&Token::$token)?; impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)}
     };
-    ($stream:ident; $name:ident $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; $name:ident $($tail:tt)*) =>
     {
-        ($name::parse($stream)?, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+        ($name::parse($stream, $progcontainer)?, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
     };
-    ($stream:ident; { $name:ident } $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; { $name:ident } $($tail:tt)*) =>
     {
         ({
 			let mut els = Vec::new();
 			while $name::is_applicable($stream) {
-				els.push($name::parse($stream)?);
+				els.push($name::parse($stream, $progcontainer)?);
 			}
 			els
-		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
     };
     // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
-    ($stream:ident; { Token#$token:ident } $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; { Token#$token:ident } $($tail:tt)*) =>
     {
         ({
 			let mut count: u32 = 0;
@@ -90,44 +90,44 @@ macro_rules! impl_grammar_variant_parse {
 				count += 1;
 			}
 			count
-		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
     };
-    ($stream:ident; { $name:ident Token#$token:ident } $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; { $name:ident Token#$token:ident } $($tail:tt)*) =>
     {
         ({
 			let mut els = Vec::new();
 			while $name::is_applicable($stream) {
-                els.push($name::parse($stream)?);
+                els.push($name::parse($stream, $progcontainer)?);
                 ($stream).skip_next(&Token::$token)?;
 			}
 			els
-		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
     };
     // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
-    ($stream:ident; [ $name:ident ] $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; [ $name:ident ] $($tail:tt)*) =>
     {
         ({
 			if $name::is_applicable($stream) {
-				Some($name::parse($stream)?)
+				Some($name::parse($stream, $progcontainer)?)
 			} else {
 				None
 			}
-		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
 	};
-    ($stream:ident; [ Token#$token:ident $name:ident ] $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; [ Token#$token:ident $name:ident ] $($tail:tt)*) =>
     {
         ({
 			if ($stream).is_next(&Token::$token) {
                 ($stream).skip_next(&Token::$token)?;
-                Some($name::parse($stream)?)
+                Some($name::parse($stream, $progcontainer)?)
 			} else {
 				None
 			}
-		}, impl_grammar_variant_parse!($stream; $($tail)*)).flatten()
+		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
     };
 }
 
-macro_rules! impl_grammar_variant_guess_can_parse
+macro_rules! impl_grammar_variant_is_applicable
 {
     ($stream:ident; Token#$token:ident $($tail:tt)*) =>
     {
@@ -145,43 +145,45 @@ macro_rules! impl_grammar_variant_guess_can_parse
     // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
     ($stream:ident; { $name:ident } $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
     };
     ($stream:ident; { $name:ident Token#$token:ident } $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
     };
 
     // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
     ($stream:ident; [ $name:ident ] $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
     };
     ($stream:ident; [ $name:ident Token#$token:ident ] $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_guess_can_parse!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
     };
 }
 
 macro_rules! impl_grammar_rule_parse_wrapper
 {
-    ($stream:ident; $result:ty; $expected_string:expr; $variant:ident) =>
+    ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident) =>
     {
         if <$variant>::is_applicable($stream) {
-			let pos = ($stream).pos().clone();
-			Ok(<$result>::build(pos, $variant::parse($stream)?))
+            let pos = ($stream).pos().clone();
+            let parts = $variant::parse($stream, $progcontainer)?;
+			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
 			Err(CompileError::new(($stream.pos()),
 				format!("{} or {}, got {} while parsing {}", $expected_string, stringify!($variant), ($stream).peek().unwrap(), stringify!($result)), ErrorType::SyntaxError))
 		}
     };
-    ($stream:ident; $result:ty; $expected_string:expr; $variant:ident | $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident | $($tail:tt)*) =>
     {
         if <$variant>::is_applicable($stream) {
-			let pos = ($stream).pos().clone();
-			Ok(<$result>::build(pos, $variant::parse($stream)?))
+            let pos = ($stream).pos().clone();
+            let parts = $variant::parse($stream, $progcontainer)?;
+			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
-			impl_grammar_rule_parse_wrapper!($stream; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
+			impl_grammar_rule_parse_wrapper!($stream; $progcontainer; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
 		}
     };
 }
@@ -207,10 +209,10 @@ macro_rules! impl_parse
 				$($variant::is_applicable(stream))||*
             }
 
-            fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
+            fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
             {
                 debug_assert_at_most_one_of_applicable!(stream; $($variant)|*);
-                impl_grammar_rule_parse_wrapper!(stream; $result; "Expected"; $($variant)|*)
+                impl_grammar_rule_parse_wrapper!(stream; types; $result; "Expected"; $($variant)|*)
 			}
 		}
     };
@@ -220,13 +222,14 @@ macro_rules! impl_parse
         {
             fn is_applicable(stream: &Stream) -> bool
             {
-                impl_grammar_variant_guess_can_parse!(stream; $($tail)*)
+                impl_grammar_variant_is_applicable!(stream; $($tail)*)
             }
 
-            fn parse(stream: &mut Stream) -> Result<Self::ParseOutputType, CompileError>
+            fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
             {
                 let pos = stream.pos().clone();
-			    Ok(Self::build(pos, impl_grammar_variant_parse!(stream; $($tail)*)))
+                let parts = impl_grammar_variant_parse!(stream; types; $($tail)*);
+			    Ok(Self::build(pos, types, parts))
 			}
 		}
     }
@@ -295,7 +298,7 @@ macro_rules! generate_grammar_rule_temporary_node
         $(
             impl Build<<$variant as Parseable>::ParseOutputType> for $result
             {
-                fn build(_pos: TextPosition, params: <$variant as Parseable>::ParseOutputType) -> Self::ParseOutputType
+                fn build(_pos: TextPosition, _types: &mut TypeVec, params: <$variant as Parseable>::ParseOutputType) -> Self::ParseOutputType
                 {
                     $result::$variant(params)
                 }
@@ -329,7 +332,7 @@ macro_rules! generate_grammar_rule_temporary_node
 
         impl Build<extract_grammar_variant_children_types_as_tupel!($($tail)*)> for $result
         {
-            fn build(pos: TextPosition, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
+            fn build(pos: TextPosition, _types: &mut TypeVec, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
             {
                 Self(pos, params)
             }
@@ -362,7 +365,7 @@ macro_rules! generate_grammar_rule_temporary_node
 
         impl Build<extract_grammar_variant_children_types_as_tupel!($($tail)*)> for $result
         {
-            fn build(pos: TextPosition, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
+            fn build(pos: TextPosition, _types: &mut TypeVec, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
             {
                 Box::new(Self(pos, params))
             }
