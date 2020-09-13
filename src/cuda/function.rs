@@ -274,7 +274,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
             .collect::<Vec<_>>();
 
         let zeros = (0..array_dim_counts[local_array_id])
-            .map(|d| CudaExpression::FloatLiteral(0.))
+            .map(|_d| CudaExpression::FloatLiteral(0.))
             .collect::<Vec<_>>();
 
         for entry_access in &access_pattern.entry_accesses {
@@ -611,53 +611,38 @@ use super::context::CudaContextImpl;
 use std::collections::BTreeSet;
 #[cfg(test)]
 use std::iter::FromIterator;
+#[cfg(test)]
+use super::super::analysis::defs_test::*;
+#[cfg(test)]
+use super::context_test::*;
 
 #[test]
-
 fn test_gen_kernel() {
-    let mut types = TypeVec::new();
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 1)
+        .add_array_def("b", PrimitiveType::Int, 0);
+
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    "), &mut types)
+    "), environment.types())
     .unwrap();
 
-    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }));
-
-    let declaration_b = (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }));
-
-    let defs = [declaration_a, declaration_b];
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
         called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(
-            defs.iter()
-                .map(|d| d as &dyn SymbolDefinition)
-                .map(SortByNameSymbolDefinition::from),
+            vec![defs.get("a"), defs.get("b")].into_iter().map(SortByNameSymbolDefinition::from)
         ),
     };
-
-    let program = Program { items: vec![], types: types };
-
-    let mut output = "".to_owned();
-
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_kernel(&pfor, &kernel_info, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
 
     assert_eq!("
 
@@ -666,109 +651,71 @@ __global__ inline void kernel0(int* a_, unsigned int a_d0, int* b_, const unsign
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel0d0) {
         a_[i_] = a_[i_] * b_;
     };
-}", output);
+}", output(&gen_kernel(&pfor, &kernel_info, &mut *context).unwrap()));
 }
 
 #[test]
-
 fn test_gen_kernel_call() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 1)
+        .add_array_def("b", PrimitiveType::Int, 0);
 
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    "), &mut TypeVec::new())
+    "), environment.types())
     .unwrap();
 
-    let mut program = Program { items: vec![], types: TypeVec::new() };
-
-    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }));
-
-    let declaration_b = (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }));
-
-    let defs = [declaration_a, declaration_b];
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
         called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(
-            defs.iter()
-                .map(|d| d as &dyn SymbolDefinition)
-                .map(SortByNameSymbolDefinition::from),
+            vec![defs.get("a"), defs.get("b")].into_iter().map(SortByNameSymbolDefinition::from)
         ),
     };
-
-
-    let mut output = "".to_owned();
-
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_kernel_call(&pfor, &kernel_info, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
 
     assert_eq!("{
     const unsigned int array0shape0 = a_d0;
     const int kernel0o0 = round(min(array0shape0, 0));
     const unsigned int kernel0d0 = round(max(array0shape0, 0)) - kernel0o0;
     kernel0 <<< dim3((kernel0d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, &b_, kernel0d0, kernel0o0);
-}", output);
+}", output(&*gen_kernel_call(&pfor, &kernel_info, &mut *context).unwrap()));
 }
 
 #[test]
-
 fn test_gen_kernel_call_complex() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 2);
 
     let pfor = ParallelFor::parse(&mut fragment_lex(
         "
         pfor i: int, j: int, with this[2 * i + j, j,], this[2 * i + j + 1, j,], in a {
             a[2 * i + j + 1, j,] = a[2 * i + j, j,];
         }
-    "), &mut TypeVec::new())
+    "), environment.types())
     .unwrap();
 
-    let declaration_a = (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 }));
-
-    let defs = [declaration_a];
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
         called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(
-            defs.iter()
-                .map(|d| d as &dyn SymbolDefinition)
-                .map(SortByNameSymbolDefinition::from),
+            vec![defs.get("a")].into_iter().map(SortByNameSymbolDefinition::from)
         ),
     };
-
-    let program = Program { items: vec![], types: TypeVec::new() };
-
-    let mut output = "".to_owned();
-
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_kernel_call(&pfor, &kernel_info, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
 
     assert_eq!("{
     const unsigned int array0shape0 = a_d0 / a_d1;
@@ -778,5 +725,5 @@ fn test_gen_kernel_call_complex() {
     const int kernel0o1 = round(min(array0shape1, array0shape1, 0, 0, array0shape1, array0shape1, 0, 0));
     const unsigned int kernel0d1 = round(max(array0shape1, array0shape1, 0, 0, array0shape1, array0shape1, 0, 0)) - kernel0o1;
     kernel0 <<< dim3(kernel0d0 * ((kernel0d1 - 1) / 256 + 1)), dim3(256), 0 >>> (a_, a_d0, a_d1, kernel0d0, kernel0d1, kernel0o0, kernel0o1);
-}", output);
+}", output(&*gen_kernel_call(&pfor, &kernel_info, &mut *context).unwrap()));
 }

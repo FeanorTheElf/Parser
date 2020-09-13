@@ -13,7 +13,7 @@ impl Name {
 
     #[cfg(test)]
 
-    pub fn l(name: &'static str) -> Name {
+    pub fn l(name: &str) -> Name {
 
         Name::new(name.to_owned(), 0)
     }

@@ -119,13 +119,11 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
 }
 
 #[cfg(test)]
-
 pub struct TupleDefinitionsIter<'a> {
     iter: std::slice::Iter<'a, (Name, Type)>,
 }
 
 #[cfg(test)]
-
 impl<'a> Iterator for TupleDefinitionsIter<'a> {
     type Item = &'a dyn SymbolDefinition;
 
@@ -136,7 +134,6 @@ impl<'a> Iterator for TupleDefinitionsIter<'a> {
 }
 
 #[cfg(test)]
-
 impl<'a> EnumerateDefinitions<'a> for &'a [(Name, Type)] {
     type IntoIter = TupleDefinitionsIter<'a>;
 
@@ -160,7 +157,6 @@ pub type NameScopeStack<'a> = ScopeStack<'a, NoData>;
 pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
 
 #[derive(Debug, Clone)]
-
 struct ScopeNode<T> {
     definitions: HashMap<Name, T>,
 }
@@ -199,7 +195,6 @@ impl<'a, T> Iterator for ScopeStackIter<'a, T> {
 }
 
 #[derive(Debug, Clone)]
-
 pub struct ScopeStack<'a, T> {
     parent: Option<&'a ScopeStack<'a, T>>,
     scopes: Vec<ScopeNode<T>>,
@@ -341,33 +336,5 @@ impl<'a, T> ScopeStack<'a, T> {
                 ErrorType::UndefinedSymbol,
             )
         })
-    }
-}
-
-#[cfg(test)]
-
-pub struct StringDefinitionsIter<'a> {
-    iter: std::slice::Iter<'a, Name>,
-}
-
-#[cfg(test)]
-
-impl<'a> Iterator for StringDefinitionsIter<'a> {
-    type Item = &'a dyn SymbolDefinition;
-
-    fn next(&mut self) -> Option<Self::Item> {
-
-        self.iter.next().map(|param| param as &dyn SymbolDefinition)
-    }
-}
-
-#[cfg(test)]
-
-impl<'a> EnumerateDefinitions<'a> for &'a [Name] {
-    type IntoIter = StringDefinitionsIter<'a>;
-
-    fn enumerate(self) -> Self::IntoIter {
-
-        StringDefinitionsIter { iter: self.iter() }
     }
 }

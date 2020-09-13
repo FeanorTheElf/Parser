@@ -9,7 +9,7 @@ use super::super::util::dyn_lifetime::*;
 
 use std::cell::RefCell;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Program {
     pub items: Vec<Box<Function>>,
     pub types: TypeVec

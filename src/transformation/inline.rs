@@ -367,13 +367,13 @@ fn test_inline() {
     let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[]);
 
     let predefined_variables = [
-        Name::l("b"),
-        Name::l("c"),
-        Name::l("other_func"),
-        Name::l("some_func"),
+        (Name::l("b"), Type::TestType),
+        (Name::l("c"), Type::TestType),
+        (Name::l("other_func"), Type::TestType),
+        (Name::l("some_func"), Type::TestType),
     ];
 
-    let scope_stack = parent_scope_stack.child_scope(&predefined_variables as &[Name]);
+    let scope_stack = parent_scope_stack.child_scope(&predefined_variables[..]);
 
     let mut test = Inliner::new(|_, _| true);
 
@@ -499,7 +499,7 @@ fn test_process_inline_body() {
 
     let parent_scopes = NameScopeStack::new(&[]);
 
-    let scopes = parent_scopes.child_scope(&[Name::l("result")] as &[Name]);
+    let scopes = parent_scopes.child_scope(&[(Name::l("result"), Type::TestType)][..]);
 
     process_inlined_function_body(
         &mut body,
@@ -554,7 +554,7 @@ fn test_process_inline_body() {
     assert_eq!(expected_mapping, rename_mapping);
 }
 
-//#[test]
+#[test]
 fn test_inline_all() {
 
     let mut test = Inliner::new(|_, _| true);
@@ -632,5 +632,5 @@ fn test_inline_all() {
     "))
     .unwrap();
 
-    assert!(&expected == &program);
+    assert_ast_eq!(expected, program);
 }

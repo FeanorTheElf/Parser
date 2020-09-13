@@ -148,31 +148,6 @@ impl<'data, 'ast: 'data> CudaContextImpl<'data, 'ast> {
             ast_lifetime: global.types.get_lifetime()
         }
     }
-
-    #[cfg(test)]
-
-    pub fn build_with_leak(
-        global: &'ast Program,
-    ) -> Result<CudaContextImpl<'data, 'ast>, OutputError> {
-
-        let mut counter: u32 = 0;
-
-        let (functions, kernels) = collect_functions(global, &mut || {
-
-            counter += 1;
-
-            counter
-        })?;
-
-        Ok(CudaContextImpl {
-            device_context: false,
-            scopes: ScopeStack::new(&*global.items),
-            function: None,
-            functions: Box::leak(Box::new(functions)),
-            kernels: Box::leak(Box::new(kernels)),
-            ast_lifetime: global.types.get_lifetime()
-        })
-    }
 }
 
 impl<'data, 'ast: 'data> CudaContext<'data, 'ast> for CudaContextImpl<'data, 'ast> {

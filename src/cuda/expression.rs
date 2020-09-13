@@ -3,8 +3,7 @@ use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::ast::*;
 use super::context::CudaContext;
-use super::super::util::dyn_lifetime::*;
-use std::cell::{RefCell, Ref};
+use std::cell::RefCell;
 
 fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
 
@@ -925,294 +924,155 @@ use super::super::lexer::lexer::fragment_lex;
 #[cfg(test)]
 use super::super::parser::Parser;
 #[cfg(test)]
+use super::kernel_data::collect_functions_global;
+#[cfg(test)]
 use super::context::CudaContextImpl;
+#[cfg(test)]
+use super::super::analysis::defs_test::EnvironmentBuilder;
+#[cfg(test)]
+use super::context_test::*;
 
 #[test]
-
 fn test_gen_expression() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 0)
+        .add_array_def("b", PrimitiveType::Int, 0)
+        .add_array_def("c", PrimitiveType::Int, 0)
+        .add_array_def("d", PrimitiveType::Int, 1)
+        .add_array_def("e", PrimitiveType::Int, 0);
 
-    let mut types = TypeVec::new();
-    let expr = Expression::parse(&mut fragment_lex("(a + b * c) / d[e,]"), &mut types).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("(a + b * c) / d[e,]"), environment.types()).unwrap();
 
-    let mut output = "".to_owned();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut program = Program { items: Vec::new(), types: types };
-
-    let defs = [
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-        (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-        (Name::l("d"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
-        (Name::l("e"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_expression(&expr, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
-
-    assert_eq!("(a_ + b_ * c_) / d_[e_]", output);
+    assert_eq!("(a_ + b_ * c_) / d_[e_]", output(&gen_expression(&expr, &mut *context).unwrap()));
 }
 
 #[test]
 
 fn test_gen_expression_function_call() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_func_def("a").add_view_param(PrimitiveType::Int, 1).return_type(PrimitiveType::Int, 1)
+        .add_array_def("foo", PrimitiveType::Int, 2)
+        .add_array_def("b", PrimitiveType::Int, 0)
+        .add_array_def("c", PrimitiveType::Int, 0);
 
-    let expr = Expression::parse(&mut fragment_lex("foo[a(b,), c,]"), &mut TypeVec::new()).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo[a(b,), c,]"), environment.types()).unwrap();
 
-    let mut output = "".to_owned();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut program = Program { items: vec![], types: TypeVec::new() };
-    let types = &mut program.types;
-
-    let defs = [
-        (
-            Name::l("a"),
-            Type::Function(FunctionType {
-                param_types: vec![types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }))],
-                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 }))),
-            }),
-        ),
-        (Name::l("foo"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
-        (Name::l("b"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_expression(&expr, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
-
-    assert_eq!("&foo_[a_(b_, b_d0) * foo_d1 + c_]", output);
+    assert_eq!("&foo_[a_(b_, b_d0) * foo_d1 + c_]", output(&gen_expression(&expr, &mut *context).unwrap()));
 }
 
 #[test]
 
 fn test_gen_expression_pass_index_expression_by_view() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_func_def("foo").add_view_param(PrimitiveType::Int, 0).return_type(PrimitiveType::Int, 0)
+        .add_array_def("a", PrimitiveType::Int, 0);
 
-    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), &mut TypeVec::new()).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), environment.types()).unwrap();
 
-    let mut output = "".to_owned();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut program = Program { items: vec![], types: TypeVec::new() };
-    let types = &mut program.types;
-
-    let defs = [
-        (
-            Name::l("foo"),
-            Type::Function(FunctionType {
-                param_types: vec![types.push_from(Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 0 }, concrete: None }))],
-                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }))),
-            }),
-        ),
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_expression(&expr, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
-
-    assert_eq!("foo_(&a_[0])", output);
+    assert_eq!("foo_(&a_[0])", output(&gen_expression(&expr, &mut *context).unwrap()));
 }
 
 #[test]
 
 fn test_gen_expression_pass_index_expression_by_value() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_func_def("foo").add_array_param(PrimitiveType::Int, 0).return_type(PrimitiveType::Int, 0)
+        .add_array_def("a", PrimitiveType::Int, 0);
 
-    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), &mut TypeVec::new()).unwrap();
+    let expr = Expression::parse(&mut fragment_lex("foo(a[0,],)"), environment.types()).unwrap();
 
-    let mut output = "".to_owned();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut program = Program { items: vec![], types: TypeVec::new() };
-    let types = &mut program.types;
-
-    let defs = [
-        (
-            Name::l("foo"),
-            Type::Function(FunctionType {
-                param_types: vec![types.push(RefCell::from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })))],
-                return_type: Some(types.push(RefCell::from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })))),
-            }),
-        ),
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_expression(&expr, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
-
-    assert_eq!("foo_(a_[0])", output);
+    assert_eq!("foo_(a_[0])", output(&gen_expression(&expr, &mut *context).unwrap()));
 }
 
 #[test]
 fn test_gen_assignment_var_to_var() {
-    let assignment = Statement::parse(&mut fragment_lex("a = b;"), &mut TypeVec::new())
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 2)
+        .add_array_def("b", PrimitiveType::Int, 2);
+
+    let assignment = Statement::parse(&mut fragment_lex("a = b;"), environment.types())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
         .unwrap();
-        
-    let mut output = "".to_owned();
-    let mut target = StringWriter::new(&mut output);
-    let mut writer = CodeWriter::new(&mut target);
-    let program = Program { items: vec![], types: TypeVec::new() };
 
-    let defs = [
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
-        (Name::l("b"),Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_assignment(&*assignment, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     assert_eq!(
         "{
     a_ = std::move(b_);
     a_d0 = b_d0;
     a_d1 = b_d1;
-}",
-        output
-    );
+}", output(&*gen_assignment(&*assignment, &mut *context).unwrap()));
 }
 
 #[test]
-
 fn test_gen_assignment_array_view_to_array() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_array_def("a", PrimitiveType::Int, 2)
+        .add_view_def("b", PrimitiveType::Int, 2);
 
-    let assignment = Statement::parse(&mut fragment_lex("a = b;"), &mut TypeVec::new())
+    let assignment = Statement::parse(&mut fragment_lex("a = b;"), environment.types())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
         .unwrap();
 
-    let mut output = "".to_owned();
-
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let program = Program { items: vec![], types: TypeVec::new() };
-
-    let defs = [
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 })),
-        (
-            Name::l("b"),
-            Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 2 }, concrete: None }),
-        ),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_assignment(&*assignment, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     assert_eq!(
         "{
     assert(a_d0 == b_d0);
     assert(a_d1 == b_d1);
     checkCudaStatus(cudaMemcpy(a_, b_, sizeof(int) * a_d0, cudaMemcpyDeviceToDevice));
-}",
-        output
-    );
+}", output(&*gen_assignment(&*assignment, &mut *context).unwrap()));
 }
 
 #[test]
 
 fn test_gen_assignment_call_result_to_array_view() {
+    let mut environment = EnvironmentBuilder::new()
+        .add_func_def("foo").add_view_param(PrimitiveType::Int, 1).add_array_param(PrimitiveType::Int,0).return_type(PrimitiveType::Int, 2)
+        .add_view_def("b", PrimitiveType::Int, 2)
+        .add_array_def("a", PrimitiveType::Int, 1)
+        .add_view_def("c", PrimitiveType::Int, 0);
 
-    let assignment = Statement::parse(&mut fragment_lex("b = foo(a, c,);"), &mut TypeVec::new())
+    let assignment = Statement::parse(&mut fragment_lex("b = foo(a, c,);"), environment.types())
         .unwrap()
         .dynamic_box()
         .downcast::<Assignment>()
         .unwrap();
 
-    let mut output = "".to_owned();
-
-    let mut target = StringWriter::new(&mut output);
-
-    let mut writer = CodeWriter::new(&mut target);
-
-    let mut program = Program { items: vec![], types: TypeVec::new() };
-    let types = &mut program.types;
-
-    let defs = [
-        (
-            Name::l("foo"),
-            Type::Function(FunctionType {
-                param_types: vec![
-                    types.push_from(Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 1 }, concrete: None })),
-                    types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-                ],
-                return_type: Some(types.push_from(Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 2 }))),
-            }),
-        ),
-        (Name::l("a"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 1 })),
-        (Name::l("c"), Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 })),
-        (
-            Name::l("b"),
-            Type::View(ViewType { base: ArrayType { base: PrimitiveType::Int, dimension: 2 }, concrete: None }),
-        ),
-    ];
-
-    let mut context: Box<dyn CudaContext> =
-        Box::new(CudaContextImpl::build_with_leak(&program).unwrap());
-
-    context.enter_scope(&defs[..]);
-
-    gen_assignment(&*assignment, &mut *context)
-        .unwrap()
-        .write(&mut writer)
-        .unwrap();
+    let (program, defs) = mock_program(environment);
+    let (functions, kernels) = collect_functions_global(&program).unwrap();
+    let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
+    context.enter_scope(&defs);
 
     assert_eq!(
         "{
@@ -1223,7 +1083,5 @@ fn test_gen_assignment_call_result_to_array_view() {
     assert(b_d0 == tmpd0);
     assert(b_d1 == tmpd1);
     checkCudaStatus(cudaMemcpy(b_, tmp, sizeof(int) * b_d0, cudaMemcpyDeviceToDevice));
-}",
-        output
-    );
+}", output(&*gen_assignment(&*assignment, &mut *context).unwrap()));
 }

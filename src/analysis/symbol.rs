@@ -40,8 +40,7 @@ impl SymbolDefinition for Function {
         &self.identifier
     }
 
-    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
-
+    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
         Type::Function(FunctionType {
             param_types: self.params
                 .iter()
@@ -53,29 +52,34 @@ impl SymbolDefinition for Function {
 }
 
 #[cfg(test)]
-
 impl SymbolDefinition for Name {
     fn get_name(&self) -> &Name {
-
         self
     }
 
     fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-
         Type::TestType
     }
 }
 
 #[cfg(test)]
-
 impl SymbolDefinition for (Name, Type) {
     fn get_name(&self) -> &Name {
-
         &self.0
     }
 
     fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-
         self.1.clone()
+    }
+}
+
+#[cfg(test)]
+impl SymbolDefinition for (Name, DynRef<std::cell::RefCell<Type>>) {
+    fn get_name(&self) -> &Name {
+        &self.0
+    }
+
+    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
+        prog_lifetime.cast(self.1).borrow().clone()
     }
 }

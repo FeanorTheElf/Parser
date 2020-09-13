@@ -9,10 +9,10 @@ pub trait AstWriter {
 fn get_priority(expr: &Expression) -> i32 {
     match expr {
         Expression::Call(call) => match &call.function {
-            Expression::Call(subcall) => get_priority(&call.function),
+            Expression::Call(_subcall) => get_priority(&call.function),
             Expression::Literal(_) => panic!("Literal not callable"),
             Expression::Variable(var) => match &var.identifier {
-                Identifier::Name(name) => i32::MAX,
+                Identifier::Name(_name) => i32::MAX,
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => i32::MAX,
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionMul) | 
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryDiv) => 1,
@@ -33,7 +33,7 @@ fn get_priority(expr: &Expression) -> i32 {
     }
 }
 
-fn write_non_builtin_call(call: &FunctionCall, function: &Expression, out: &mut CodeWriter) -> Result<(), OutputError> {
+fn write_non_builtin_call(call: &FunctionCall, out: &mut CodeWriter) -> Result<(), OutputError> {
     write_expression(&call.function, i32::MAX - 1, out)?;
     write!(out, "(")?;
     for param in &call.parameters {
@@ -76,10 +76,10 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
     match expr {
         Expression::Call(call) => match &call.function {
             Expression::Variable(var) => match &var.identifier {
-                Identifier::Name(_) => write_non_builtin_call(&**call, &call.function, out)?,
+                Identifier::Name(_) => write_non_builtin_call(&**call, out)?,
                 Identifier::BuiltIn(op) => write_builtin_call(call, get_priority(expr), *op, out)?
             },
-            func => write_non_builtin_call(&**call, func, out)?
+            func => write_non_builtin_call(&**call, out)?
         },
         Expression::Literal(lit) => write!(out, "{}", lit.value)?,
         Expression::Variable(var) => match &var.identifier {
@@ -94,7 +94,7 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
 }
 
 impl AstWriter for Expression {
-    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write_expression(self, i32::MIN, out)
     }
 }
@@ -120,7 +120,7 @@ impl AstWriter for While {
 }
 
 impl AstWriter for Return {
-    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "return")?;
         if let Some(val) = &self.value {
             write!(out, " ")?;
@@ -208,7 +208,7 @@ impl AstWriter for LocalVariableDeclaration {
 }
 
 impl AstWriter for Assignment {
-    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write_expression(&self.assignee, i32::MIN, out)?;
         write!(out, " = ")?;
         write_expression(&self.value, i32::MIN, out)?;
@@ -217,14 +217,14 @@ impl AstWriter for Assignment {
 }
 
 impl AstWriter for Label {
-    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "@{}:", self.label)?;
         return Ok(());
     }
 }
 
 impl AstWriter for Goto {
-    fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
+    fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "goto {};", self.target)?;
         return Ok(());
     }

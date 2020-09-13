@@ -12,7 +12,7 @@ impl Parseable for Program {
 
 impl TopLevelParser for Program {
     fn parse(stream: &mut Stream) -> Result<Program, CompileError> {
-        stream.skip_next(&Token::BOF);
+        stream.skip_next(&Token::BOF)?;
         let mut result = Program {
             types: TypeVec::new(),
             items: Vec::new()
@@ -20,7 +20,7 @@ impl TopLevelParser for Program {
         while Function::is_applicable(stream) {
             result.items.push(Box::new(Function::parse(stream, &mut result.types)?));
         }
-        stream.skip_next(&Token::EOF);
+        stream.skip_next(&Token::EOF)?;
         return Ok(result);
     }
 }
@@ -29,26 +29,17 @@ impl Parseable for Type {
     type ParseOutputType = DynRef<RefCell<Type>>;
 }
 
-fn create_array_type(param: TypeNodeNoView) -> ArrayType {
-    ArrayType {
-        dimension: (param.1).1.map(|x| (x.1).0 as usize).unwrap_or(0),
-        base: PrimitiveType::Int
-    }
-}
-
 impl Build<TypeNodeNoView> for Type {
     fn build(_pos: TextPosition, types: &mut TypeVec, param: TypeNodeNoView) -> Self::ParseOutputType {
         match (param.1).0 { PrimitiveTypeNode::IntTypeNode(_) => {}, _ => unimplemented!() };
-        types.push(RefCell::from(Type::Array(create_array_type(param))))
+        types.get_array_type(PrimitiveType::Int, (param.1).1.map(|x| (x.1).0 as usize).unwrap_or(0))
     }
 }
 
 impl Build<TypeNodeView> for Type {
     fn build(pos: TextPosition, types: &mut TypeVec, param: TypeNodeView) -> Self::ParseOutputType {
-        types.push(RefCell::from(Type::View(ViewType {
-            base: create_array_type((param.1).0),
-            concrete: None
-        })))
+        let type_node = (param.1).0;
+        types.get_view_type(PrimitiveType::Int, (type_node.1).1.map(|x| (x.1).0 as usize).unwrap_or(0))
     }
 }
 
@@ -871,16 +862,13 @@ fn test_parser() {
     let ast = Program::parse(&mut lex_str(program)).unwrap();
 
     assert_eq!(1, ast.items.len());
-    assert_eq!(3, ast.types.len());
 
-    assert_eq!(
-        Declaration {
-            pos: NONEXISTING,
-            variable: Name::l("a"),
-            variable_type: ast.types.at(0)
-        },
-        ast.items[0].params[0]
-    );
+    let param0 = &ast.items[0].params[0];
+    assert_eq!(Name::l("a"), param0.variable);
+    assert_eq!(Type::Array(ArrayType {
+        base: PrimitiveType::Int,
+        dimension: 1
+    }), *ast.types.get_lifetime().cast(param0.variable_type).borrow());
 
     assert_eq!(None, ast.items[0].return_type);
 
@@ -889,14 +877,12 @@ fn test_parser() {
         .downcast_ref::<ParallelFor>()
         .unwrap();
 
-    assert_eq!(
-        Declaration {
-            pos: NONEXISTING,
-            variable: Name::l("c"),
-            variable_type: ast.types.at(2)
-        },
-        pfor.index_variables[0]
-    );
+    let index_var = &pfor.index_variables[0];
+    assert_eq!(Name::l("c"), index_var.variable);
+    assert_eq!(Type::Array(ArrayType {
+        base: PrimitiveType::Int,
+        dimension: 0
+    }), *ast.types.get_lifetime().cast(index_var.variable_type).borrow());
 
     let assignment = pfor.body.statements[0]
         .dynamic()

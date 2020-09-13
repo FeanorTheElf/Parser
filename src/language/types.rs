@@ -5,7 +5,58 @@ use super::super::util::dyn_lifetime::*;
 use std::cell::RefCell;
 use std::any::Any;
 
-pub type TypeVec = DynRefVec<RefCell<Type>>;
+pub type TypePtr = DynRef<RefCell<Type>>;
+
+#[derive(Debug)]
+pub struct TypeVec {
+    types: DynRefVec<RefCell<Type>>,
+    array_types: Vec<DynRef<RefCell<Type>>>
+}
+
+impl TypeVec {
+    pub fn new() -> Self {
+        TypeVec {
+            types: DynRefVec::new(),
+            array_types: Vec::new()
+        }
+    }
+
+    pub fn get_array_type(&mut self, base: PrimitiveType, dimension_count: usize) -> TypePtr {
+        while self.array_types.len() <= dimension_count {
+            let type_ref = self.types.push(RefCell::from(Type::Array(ArrayType {
+                base: base,
+                dimension: self.array_types.len()
+            })));
+            self.array_types.push(type_ref);
+        }
+        return self.array_types[dimension_count];
+    }
+
+    pub fn get_view_type(&mut self, base: PrimitiveType, dimension_count: usize) -> TypePtr {
+        self.types.push(RefCell::from(Type::View(ViewType {
+            base : ArrayType {
+                base: base,
+                dimension: dimension_count
+            },
+            concrete: None
+        })))
+    }
+
+    pub fn get_function_type(&mut self, params: Vec<TypePtr>, return_type: Option<TypePtr>) -> TypePtr {
+        self.types.push(RefCell::from(Type::Function(FunctionType {
+            param_types: params,
+            return_type: return_type
+        })))
+    }
+
+    pub fn get_primitive_type(&mut self, ty: PrimitiveType) -> DynRef<RefCell<Type>> {
+        return self.get_array_type(ty, 0);
+    }
+
+    pub fn get_lifetime<'a>(&'a self) -> Lifetime<'a> {
+        self.types.get_lifetime()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveType {

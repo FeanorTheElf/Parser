@@ -138,6 +138,22 @@ pub struct FunctionInfo<'a> {
     pub called_from_host: bool,
 }
 
+pub fn collect_functions_global<'a, 'ast>(
+    program: &'ast Program,
+) -> Result<
+    (
+        HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
+        HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+    ),
+    OutputError,
+> {
+    let mut counter: u32 = 0;
+    collect_functions(program, &mut || {
+        counter += 1;
+        return counter;
+    })
+}
+
 pub fn collect_functions<'a, 'ast, U>(
     program: &'ast Program,
     unique_generator: &'a mut U,
