@@ -295,7 +295,7 @@ fn test_ref_remove_get_negative() {
 }
 
 #[cfg(test)]
-fn test_compile_errors() {
+fn _test_compile_errors() {
     let mut vec: DynRefVec<i32> = DynRefVec::new();
 
     let r0 = vec.push(0);

@@ -21,8 +21,6 @@ macro_rules! singleton {
     };
 }
 
-use std::cell::RefCell;
-
 #[test]
 fn test_singleton() {
     fn foo() -> &'static str {

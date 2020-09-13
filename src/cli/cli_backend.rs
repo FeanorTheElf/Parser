@@ -1,7 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::compiler::*;
 use super::super::lexer::lexer::lex;
-use super::super::parser::Parser;
+use super::super::parser::TopLevelParser;
 use super::super::util::skip_last;
 use std::path::{Path, PathBuf};
 use std::fs::File;

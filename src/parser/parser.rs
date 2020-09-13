@@ -37,7 +37,7 @@ impl Build<TypeNodeNoView> for Type {
 }
 
 impl Build<TypeNodeView> for Type {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: TypeNodeView) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, types: &mut TypeVec, param: TypeNodeView) -> Self::ParseOutputType {
         let type_node = (param.1).0;
         types.get_view_type(PrimitiveType::Int, (type_node.1).1.map(|x| (x.1).0 as usize).unwrap_or(0))
     }
@@ -53,7 +53,7 @@ impl Parser for Name {
         stream.is_next_identifier()
     }
 
-    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, _types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         let identifier_string = stream.next_ident()?;
 
@@ -76,7 +76,7 @@ impl Parseable for Variable {
 }
 
 impl Build<Name> for Variable {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: Name) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, _types: &mut TypeVec, param: Name) -> Self::ParseOutputType {
 
         Variable {
             pos: pos,
@@ -95,7 +95,7 @@ impl Parser for Literal {
         stream.is_next_literal()
     }
 
-    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, _types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         Ok(Literal {
             pos: stream.pos().clone(),
@@ -109,7 +109,7 @@ impl Parseable for Declaration {
 }
 
 impl Build<(Name, <Type as Parseable>::ParseOutputType)> for Declaration {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name, <Type as Parseable>::ParseOutputType)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, _types: &mut TypeVec, param: (Name, <Type as Parseable>::ParseOutputType)) -> Self::ParseOutputType {
 
         Declaration {
             pos: pos,
@@ -156,7 +156,7 @@ impl Parseable for Block {
 }
 
 impl Build<(Vec<Box<dyn Statement>>,)> for Block {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: (Vec<Box<dyn Statement>>,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, _types: &mut TypeVec, param: (Vec<Box<dyn Statement>>,)) -> Self::ParseOutputType {
 
         Block {
             pos: pos,
@@ -170,7 +170,7 @@ impl Parseable for dyn Statement {
 }
 
 impl Build<ExpressionNode> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: ExpressionNode) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: ExpressionNode) -> Self::ParseOutputType {
 
         Box::new((param.1).0)
     }
@@ -182,7 +182,7 @@ impl Parseable for If {
 
 impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for If {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (<Expression as Parseable>::ParseOutputType, Block),
     ) -> Self::ParseOutputType {
 
@@ -195,7 +195,7 @@ impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for If {
 }
 
 impl Build<If> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: If) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: If) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -207,7 +207,7 @@ impl Parseable for While {
 
 impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for While {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (<Expression as Parseable>::ParseOutputType, Block),
     ) -> Self::ParseOutputType {
 
@@ -220,7 +220,7 @@ impl Build<(<Expression as Parseable>::ParseOutputType, Block)> for While {
 }
 
 impl Build<While> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: While) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: While) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -231,7 +231,7 @@ impl Parseable for Label {
 }
 
 impl Build<(Name,)> for Label {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, _types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
 
         Label {
             pos: pos,
@@ -241,7 +241,7 @@ impl Build<(Name,)> for Label {
 }
 
 impl Build<Label> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: Label) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: Label) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -252,7 +252,7 @@ impl Parseable for Goto {
 }
 
 impl Build<(Name,)> for Goto {
-    fn build(pos: TextPosition, types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
+    fn build(pos: TextPosition, _types: &mut TypeVec, param: (Name,)) -> Self::ParseOutputType {
 
         Goto {
             pos: pos,
@@ -262,14 +262,14 @@ impl Build<(Name,)> for Goto {
 }
 
 impl Build<Goto> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: Goto) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: Goto) -> Self::ParseOutputType {
 
         Box::new(param)
     }
 }
 
 impl Build<Block> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: Block) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: Block) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -281,7 +281,7 @@ impl Parseable for Return {
 
 impl Build<(Option<<Expression as Parseable>::ParseOutputType>,)> for Return {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (Option<<Expression as Parseable>::ParseOutputType>,),
     ) -> Self::ParseOutputType {
 
@@ -293,7 +293,7 @@ impl Build<(Option<<Expression as Parseable>::ParseOutputType>,)> for Return {
 }
 
 impl Build<Return> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: Return) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: Return) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -327,7 +327,7 @@ impl
 }
 
 impl Build<LocalVariableDeclaration> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: LocalVariableDeclaration) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: LocalVariableDeclaration) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -344,7 +344,7 @@ impl
     )> for Assignment
 {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (
             <Expression as Parseable>::ParseOutputType,
             <Expression as Parseable>::ParseOutputType,
@@ -360,7 +360,7 @@ impl
 }
 
 impl Build<Assignment> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: Assignment) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: Assignment) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -372,7 +372,7 @@ impl Parseable for ArrayEntryAccess {
 
 impl Build<(Option<RWModifier>, Vec<Expression>, Option<Alias>)> for ArrayEntryAccess {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (Option<RWModifier>, Vec<Expression>, Option<Alias>),
     ) -> Self::ParseOutputType {
 
@@ -392,7 +392,7 @@ impl Parseable for ArrayAccessPattern {
 
 impl Build<(Vec<ArrayEntryAccess>, Expression)> for ArrayAccessPattern {
     fn build(
-        pos: TextPosition, types: &mut TypeVec,
+        pos: TextPosition, _types: &mut TypeVec,
         param: (Vec<ArrayEntryAccess>, Expression),
     ) -> Self::ParseOutputType {
 
@@ -428,7 +428,7 @@ impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPattern>, Block)> for Paral
 }
 
 impl Build<ParallelFor> for dyn Statement {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: ParallelFor) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: ParallelFor) -> Self::ParseOutputType {
 
         Box::new(param)
     }
@@ -656,7 +656,7 @@ impl Build<ExprNodeLevelCall> for Expression {
 }
 
 impl Build<BaseExpr> for Expression {
-    fn build(_pos: TextPosition, types: &mut TypeVec, param: BaseExpr) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _types: &mut TypeVec, param: BaseExpr) -> Self::ParseOutputType {
 
         match param {
             BaseExpr::BracketExpr(node) => (node.1).0,
