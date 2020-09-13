@@ -79,7 +79,7 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
                 Identifier::Name(_) => write_non_builtin_call(&**call, out)?,
                 Identifier::BuiltIn(op) => write_builtin_call(call, get_priority(expr), *op, out)?
             },
-            func => write_non_builtin_call(&**call, out)?
+            _func => write_non_builtin_call(&**call, out)?
         },
         Expression::Literal(lit) => write!(out, "{}", lit.value)?,
         Expression::Variable(var) => match &var.identifier {

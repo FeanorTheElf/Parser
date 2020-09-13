@@ -406,13 +406,7 @@ impl ArrayEntryAccess {
         &'a self,
         index_variables: &'b Vec<Declaration>,
     ) -> Result<Ref<'a, Matrix<i32>>, CompileError> {
-
         self.get_transformation_matrix_iter(index_variables.iter().map(|d| &d.variable))
-    }
-
-    pub fn get_indices(&self) -> &Vec<Expression> {
-
-        &self.indices
     }
 }
 
