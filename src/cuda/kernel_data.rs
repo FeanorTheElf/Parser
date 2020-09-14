@@ -137,6 +137,7 @@ pub struct FunctionInfo<'a> {
     pub called_from_host: bool,
 }
 
+#[cfg(test)]
 pub fn collect_functions_global<'a, 'ast>(
     program: &'ast Program,
 ) -> Result<

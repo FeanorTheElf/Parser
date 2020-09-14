@@ -7,6 +7,13 @@
 #include "native.cuh"
 
 
+__global__ inline void kernel1(int* a_, unsigned int a_d0, int* result_, unsigned int result_d0, const unsigned int kernel1d0, const int kernel1o0) {
+    const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel1o0;
+    if (threadIdx.x + blockIdx.x * blockDim.x < kernel1d0) {
+        result_[i_] = a_[i_];
+    };
+}
+
 __global__ inline void kernel3(int* a_, unsigned int a_d0, int* b_, unsigned int b_d0, const unsigned int kernel3d0, const int kernel3o0) {
     const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel3o0;
     if (threadIdx.x + blockIdx.x * blockDim.x < kernel3d0) {
@@ -21,10 +28,13 @@ __global__ inline void kernel2(int* a_, unsigned int a_d0, const unsigned int ke
     };
 }
 
-__global__ inline void kernel1(int* a_, unsigned int a_d0, int* result_, unsigned int result_d0, const unsigned int kernel1d0, const int kernel1o0) {
-    const int i_ = static_cast<int>(threadIdx.x + blockIdx.x * blockDim.x) + kernel1o0;
-    if (threadIdx.x + blockIdx.x * blockDim.x < kernel1d0) {
-        result_[i_] = a_[i_];
+__host__ inline void vec_add_(int* a_, unsigned int a_d0, int* b_, unsigned int b_d0) {
+    {
+        const unsigned int array0shape0 = a_d0;
+        const unsigned int array1shape0 = b_d0;
+        const int kernel3o0 = round(min(array0shape0, 0, array1shape0, 0));
+        const unsigned int kernel3d0 = round(max(array0shape0, 0, array1shape0, 0)) - kernel3o0;
+        kernel3 <<< dim3((kernel3d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, b_, b_d0, kernel3d0, kernel3o0);
     };
 }
 
@@ -49,16 +59,6 @@ __host__ inline void copy_(int* a_, unsigned int a_d0, DevPtr<int>* result, unsi
         *result = std::move(result_);
         *result0 = result_d0;
         return;
-    };
-}
-
-__host__ inline void vec_add_(int* a_, unsigned int a_d0, int* b_, unsigned int b_d0) {
-    {
-        const unsigned int array0shape0 = a_d0;
-        const unsigned int array1shape0 = b_d0;
-        const int kernel3o0 = round(min(array0shape0, 0, array1shape0, 0));
-        const unsigned int kernel3d0 = round(max(array0shape0, 0, array1shape0, 0)) - kernel3o0;
-        kernel3 <<< dim3((kernel3d0 - 1) / 256 + 1), dim3(256), 0 >>> (a_, a_d0, b_, b_d0, kernel3d0, kernel3o0);
     };
 }
 

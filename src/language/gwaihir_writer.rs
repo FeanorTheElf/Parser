@@ -1,6 +1,5 @@
 use super::prelude::*;
 use super::compiler::*;
-use super::super::util::dyn_lifetime::*;
 
 pub trait AstWriter {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError>;

@@ -3,7 +3,6 @@ use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::ast::*;
 use super::context::CudaContext;
-use std::cell::RefCell;
 
 fn error_call_dynamic_expression(pos: &TextPosition) -> OutputError {
 

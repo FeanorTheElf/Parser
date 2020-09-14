@@ -2,8 +2,6 @@ use super::super::language::prelude::*;
 use super::scope::*;
 use super::type_error::*;
 
-use super::super::util::dyn_lifetime::*;
-
 pub trait Typed {
     fn calculate_type<'a, 'b>(
         &self,

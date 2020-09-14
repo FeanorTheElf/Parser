@@ -17,10 +17,6 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn lifetime<'a>(&'a self) -> Lifetime<'a> {
-        self.types.get_lifetime()
-    }
-
     pub fn work<'a>(&'a mut self) -> (&'a mut Vec<Box<Function>>, Lifetime<'a>) {
         (&mut self.items, self.types.get_lifetime())
     }

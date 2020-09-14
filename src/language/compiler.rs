@@ -85,7 +85,6 @@ impl<'a, 'b> Write for FormatterWriter<'a, 'b> {
 
 impl<'a> StringWriter<'a> {
     pub fn new(target: &'a mut String) -> StringWriter<'a> {
-
         StringWriter { out: target }
     }
 }

@@ -1,8 +1,6 @@
 use super::super::language::prelude::*;
 use super::super::analysis::defs_test::{EnvironmentBuilder, Definitions};
 use super::ast::Writable;
-use super::kernel_data::*;
-use super::context::{CudaContext, CudaContextImpl};
 
 pub fn output<T: ?Sized + Writable>(ast: &T) -> String {
     let mut output = "".to_owned();

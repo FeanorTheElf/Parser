@@ -1,5 +1,3 @@
-
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::str;
@@ -32,10 +30,6 @@ impl WinCLConfig {
 
     pub fn devcmd_path(&self) -> PathBuf {
         Path::join(&self.installation_path(), "Common7\\Tools\\VsDevCmd.bat")
-    }
-
-    pub fn cl_path(&self) -> PathBuf {
-        unimplemented!()
     }
 
     fn vswhere_at<P>(path: P) -> Result<Vec<WinCLConfig>, Error> 
