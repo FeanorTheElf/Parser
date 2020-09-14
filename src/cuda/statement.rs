@@ -10,20 +10,21 @@ pub fn gen_return<'stack, 'ast: 'stack>(
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
 
     let ast_lifetime = context.ast_lifetime();
+
     if is_generated_with_output_parameter(
-        context.get_current_function().return_type.map(|t| ast_lifetime.cast(t)),
+        context.get_current_function().get_type(ast_lifetime).return_type(ast_lifetime),
     ) {
 
-        if let Some(return_type) = context.get_current_function().return_type.as_ref() {
+        if let Some(return_type) = context.get_current_function().get_type(ast_lifetime).return_type(ast_lifetime) {
 
             let assignments = std::iter::once(CudaAssignment {
                 assignee: CudaExpression::deref(CudaExpression::Identifier(
                     CudaIdentifier::OutputValueVar,
                 )),
-                value: CudaExpression::Move(Box::new(gen_simple_expr(statement.value.as_ref().unwrap(), &*context.ast_lifetime().cast(*return_type).borrow()).1)),
+                value: CudaExpression::Move(Box::new(gen_simple_expr(statement.value.as_ref().unwrap(), &*return_type).1)),
             })
             .chain(
-                gen_simple_expr_array_size(statement.value.as_ref().unwrap(), &*context.ast_lifetime().cast(*return_type).borrow())
+                gen_simple_expr_array_size(statement.value.as_ref().unwrap(), &*return_type)
                     .enumerate()
                     .map(|(dim, (_ty, expr))| CudaAssignment {
                         assignee: CudaExpression::deref(CudaExpression::Identifier(

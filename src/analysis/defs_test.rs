@@ -1,8 +1,6 @@
 use super::super::language::prelude::*;
 use super::symbol::SymbolDefinition;
 use super::scope::EnumerateDefinitions;
-use super::super::util::dyn_lifetime::*;
-use std::cell::RefCell;
 
 pub struct EnvironmentBuilder {
     types: TypeVec,
@@ -25,14 +23,19 @@ impl EnvironmentBuilder {
     }
 
     pub fn add_array_def(mut self, name: &str, base: PrimitiveType, dimension_count: usize) -> Self {
-        let ty = self.types.get_array_type(base, dimension_count);
+        let ty = self.types.get_array_type(base, dimension_count, true);
         self.defs.defs.push(Box::new((Name::l(name), ty)));
         return self;
     }
 
     pub fn add_view_def(mut self, name: &str, base: PrimitiveType, dimension_count: usize) -> Self {
-        let ty = self.types.get_view_type(base, dimension_count);
+        let ty = self.types.get_view_type(base, dimension_count, true);
         self.defs.defs.push(Box::new((Name::l(name), ty)));
+        return self;
+    }
+
+    pub fn add_test_def(mut self, name: &str) -> Self {
+        self.defs.defs.push(Box::new((Name::l(name), self.types.get_test_type_type())));
         return self;
     }
 
@@ -88,17 +91,17 @@ pub struct FunctionDefBuilder {
 
 impl FunctionDefBuilder {
     pub fn add_array_param(mut self, base: PrimitiveType, dimension_count: usize) -> Self {
-        self.params.push(self.parent_defs.types.get_array_type(base, dimension_count));
+        self.params.push(self.parent_defs.types.get_array_type(base, dimension_count, true));
         return self;
     }
 
     pub fn add_view_param(mut self, base: PrimitiveType, dimension_count: usize) -> Self {
-        self.params.push(self.parent_defs.types.get_view_type(base, dimension_count));
+        self.params.push(self.parent_defs.types.get_view_type(base, dimension_count, true));
         return self;
     }
 
     pub fn return_type(mut self, base: PrimitiveType, dimension_count: usize) -> EnvironmentBuilder {
-        let return_type = Some(self.parent_defs.types.get_array_type(base, dimension_count));
+        let return_type = Some(self.parent_defs.types.get_array_type(base, dimension_count, true));
         let ty = self.parent_defs.types.get_function_type(self.params, return_type);
         self.parent_defs.defs.defs.push(Box::new((self.function_name, ty)));
         return self.parent_defs;

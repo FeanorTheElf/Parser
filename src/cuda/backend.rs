@@ -7,10 +7,7 @@ use super::context::{CudaContext, CudaContextImpl};
 use super::expression::*;
 use super::function::*;
 use super::kernel_data::*;
-use super::statement::*;
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fs;
+use std::collections::HashMap;
 
 pub struct CudaBackend {
     header_template: Option<String>,
@@ -18,8 +15,8 @@ pub struct CudaBackend {
 
 fn topological_sort<'ast>(
     function_kernels_order: &mut Vec<TargetLanguageFunction<'ast>>,
-    functions: &HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-    kernels: &HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+    functions: &HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+    kernels: &HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
 ) {
 
     for _i in 0..(functions.len() + kernels.len()) {
@@ -90,22 +87,16 @@ impl CudaBackend {
 
 impl Compiler for CudaBackend {
     fn init(&mut self) -> Result<(), OutputError> {
-
-        self.header_template = Some(fs::read_to_string("./cuda/template.cuh")?);
-
+        self.header_template = Some(std::fs::read_to_string("./cuda/template.cuh")?);
         Ok(())
     }
 
     fn transform_program(&mut self, program: &mut Program) -> Result<(), OutputError> {
-
-        let prog_lifetime = program.types.get_lifetime();
-
+        let (items, prog_lifetime) = program.work();
         let mut extractor = extraction::Extractor::new(|_, function| {
-            is_generated_with_output_parameter(function.return_type.as_ref().map(|x| prog_lifetime.cast(*x)))
+            is_generated_with_output_parameter(function.get_type(prog_lifetime).return_type(prog_lifetime))
         });
-
-        extractor.extract_calls_in_program(&mut program.items);
-
+        extractor.extract_calls_in_program((items, prog_lifetime));
         return Ok(());
     }
 
@@ -233,7 +224,6 @@ use super::super::parser::TopLevelParser;
 use std::iter::FromIterator;
 
 #[test]
-
 fn test_topological_sort() {
 
     let mut program = Program::parse(&mut lex_str("

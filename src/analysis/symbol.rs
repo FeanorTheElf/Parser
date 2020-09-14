@@ -1,13 +1,10 @@
 use super::super::language::prelude::*;
 use super::super::util::dynamic::Dynamic;
 
-use super::super::util::dyn_lifetime::*;
-use std::any::Any;
-
 pub trait SymbolDefinition: Any + Dynamic + std::fmt::Debug {
     fn get_name(&self) -> &Name;
 
-    fn calc_type(&self, prog_lifetime: Lifetime) -> Type;
+    fn get_type(&self) -> TypePtr;
 }
 
 impl SymbolDefinition for Declaration {
@@ -16,9 +13,8 @@ impl SymbolDefinition for Declaration {
         &self.variable
     }
 
-    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
-
-        prog_lifetime.cast(self.variable_type).borrow().clone()
+    fn get_type(&self,) -> TypePtr {
+        self.variable_type
     }
 }
 
@@ -28,9 +24,8 @@ impl SymbolDefinition for Label {
         &self.label
     }
 
-    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-
-        Type::JumpLabel
+    fn get_type(&self) -> TypePtr {
+        unimplemented!()
     }
 }
 
@@ -40,14 +35,8 @@ impl SymbolDefinition for Function {
         &self.identifier
     }
 
-    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-        Type::Function(FunctionType {
-            param_types: self.params
-                .iter()
-                .map(|p| p.variable_type)
-                .collect(),
-            return_type: self.return_type,
-        })
+    fn get_type(&self) -> TypePtr {
+        self.function_type
     }
 }
 
@@ -57,19 +46,8 @@ impl SymbolDefinition for Name {
         self
     }
 
-    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-        Type::TestType
-    }
-}
-
-#[cfg(test)]
-impl SymbolDefinition for (Name, Type) {
-    fn get_name(&self) -> &Name {
-        &self.0
-    }
-
-    fn calc_type(&self, _prog_lifetime: Lifetime) -> Type {
-        self.1.clone()
+    fn get_type(&self) -> TypePtr {
+        unimplemented!()
     }
 }
 
@@ -79,7 +57,7 @@ impl SymbolDefinition for (Name, DynRef<std::cell::RefCell<Type>>) {
         &self.0
     }
 
-    fn calc_type(&self, prog_lifetime: Lifetime) -> Type {
-        prog_lifetime.cast(self.1).borrow().clone()
+    fn get_type(&self) -> TypePtr {
+        self.1
     }
 }

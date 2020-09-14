@@ -3,6 +3,7 @@ pub mod dynamic;
 pub mod iterable;
 pub mod ref_eq;
 pub mod dyn_lifetime;
+pub mod ref_handling;
 #[macro_use] pub mod singleton;
 
 #[allow(unused)]

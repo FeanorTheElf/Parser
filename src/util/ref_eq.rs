@@ -6,7 +6,7 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 
-pub struct Ref<'a, T: ?Sized> {
+pub struct Ptr<'a, T: ?Sized> {
     data: RefEq<'a, T>,
 }
 
@@ -19,14 +19,14 @@ where
     data: &'a T,
 }
 
-impl<'a, T: ?Sized> Clone for Ref<'a, T> {
+impl<'a, T: ?Sized> Clone for Ptr<'a, T> {
     fn clone(&self) -> Self {
 
         *self
     }
 }
 
-impl<'a, T: ?Sized> Copy for Ref<'a, T> {}
+impl<'a, T: ?Sized> Copy for Ptr<'a, T> {}
 
 impl<'a, T: ?Sized> Clone for RefEq<'a, T> {
     fn clone(&self) -> Self {
@@ -37,7 +37,7 @@ impl<'a, T: ?Sized> Clone for RefEq<'a, T> {
 
 impl<'a, T: ?Sized> Copy for RefEq<'a, T> {}
 
-impl<'a, T: ?Sized> Deref for Ref<'a, T> {
+impl<'a, T: ?Sized> Deref for Ptr<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -46,7 +46,7 @@ impl<'a, T: ?Sized> Deref for Ref<'a, T> {
     }
 }
 
-impl<'a, 'b: 'a, T> Borrow<RefEq<'a, T>> for Ref<'b, T>
+impl<'a, 'b: 'a, T> Borrow<RefEq<'a, T>> for Ptr<'b, T>
 where
     T: ?Sized,
 {
@@ -56,13 +56,13 @@ where
     }
 }
 
-impl<'a, T> From<&'a T> for Ref<'a, T>
+impl<'a, T> From<&'a T> for Ptr<'a, T>
 where
     T: ?Sized,
 {
     fn from(reference: &'a T) -> Self {
 
-        Ref {
+        Ptr {
             data: RefEq { data: reference },
         }
     }
@@ -100,19 +100,19 @@ where
     }
 }
 
-impl<'a, 'b, T> PartialEq<Ref<'b, T>> for Ref<'a, T>
+impl<'a, 'b, T> PartialEq<Ptr<'b, T>> for Ptr<'a, T>
 where
     T: ?Sized,
 {
-    fn eq(&self, other: &Ref<'b, T>) -> bool {
+    fn eq(&self, other: &Ptr<'b, T>) -> bool {
 
         self.data == other.data
     }
 }
 
-impl<'a, 'b, T> Eq for Ref<'a, T> where T: ?Sized {}
+impl<'a, 'b, T> Eq for Ptr<'a, T> where T: ?Sized {}
 
-impl<'a, T> Hash for Ref<'a, T>
+impl<'a, T> Hash for Ptr<'a, T>
 where
     T: ?Sized,
 {

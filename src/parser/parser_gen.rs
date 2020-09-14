@@ -57,30 +57,20 @@ macro_rules! debug_assert_at_most_one_of_applicable {
     };
 }
 
-macro_rules! impl_grammar_variant_parse {
+macro_rules! impl_parse_ast_generation {
     ($stream:ident; $progcontainer:ident; ) =>
     {
 		()
     };
     ($stream:ident; $progcontainer:ident; Token#$token:ident $($tail:tt)*) =>
     {
-        {($stream).skip_next(&Token::$token)?; impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)}
+        {($stream).skip_next(&Token::$token)?; impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)}
     };
     ($stream:ident; $progcontainer:ident; $name:ident $($tail:tt)*) =>
     {
-        ($name::parse($stream, $progcontainer)?, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
+        ($name::parse($stream, $progcontainer)?, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
     };
-    ($stream:ident; $progcontainer:ident; { $name:ident } $($tail:tt)*) =>
-    {
-        ({
-			let mut els = Vec::new();
-			while $name::is_applicable($stream) {
-				els.push($name::parse($stream, $progcontainer)?);
-			}
-			els
-		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
-    };
-    // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
+    // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal } or { terminal }
     ($stream:ident; $progcontainer:ident; { Token#$token:ident } $($tail:tt)*) =>
     {
         ({
@@ -90,7 +80,7 @@ macro_rules! impl_grammar_variant_parse {
 				count += 1;
 			}
 			count
-		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
     };
     ($stream:ident; $progcontainer:ident; { $name:ident Token#$token:ident } $($tail:tt)*) =>
     {
@@ -101,9 +91,19 @@ macro_rules! impl_grammar_variant_parse {
                 ($stream).skip_next(&Token::$token)?;
 			}
 			els
-		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
     };
-    // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
+    ($stream:ident; $progcontainer:ident; { $name:ident } $($tail:tt)*) =>
+    {
+        ({
+			let mut els = Vec::new();
+			while $name::is_applicable($stream) {
+				els.push($name::parse($stream, $progcontainer)?);
+			}
+			els
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
+    };
+    // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ] or [ terminal ]
     ($stream:ident; $progcontainer:ident; [ $name:ident ] $($tail:tt)*) =>
     {
         ({
@@ -112,7 +112,7 @@ macro_rules! impl_grammar_variant_parse {
 			} else {
 				None
 			}
-		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
 	};
     ($stream:ident; $progcontainer:ident; [ Token#$token:ident $name:ident ] $($tail:tt)*) =>
     {
@@ -123,11 +123,22 @@ macro_rules! impl_grammar_variant_parse {
 			} else {
 				None
 			}
-		}, impl_grammar_variant_parse!($stream; $progcontainer; $($tail)*)).flatten()
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
     };
+    ($stream:ident; $progcontainer:ident; [ Token#$token:ident ] $($tail:tt)*) =>
+    {
+        ({
+			if ($stream).is_next(&Token::$token) {
+                ($stream).skip_next(&Token::$token);
+				true
+			} else {
+				false
+			}
+		}, impl_parse_ast_generation!($stream; $progcontainer; $($tail)*)).flatten()
+	};
 }
 
-macro_rules! impl_grammar_variant_is_applicable
+macro_rules! impl_is_applicable_predicate
 {
     ($stream:ident; Token#$token:ident $($tail:tt)*) =>
     {
@@ -145,25 +156,25 @@ macro_rules! impl_grammar_variant_is_applicable
     // Repeated symbols: { <nonterminal> } or { <nonterminal> terminal }
     ($stream:ident; { $name:ident } $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_is_applicable_predicate!($stream; $($tail)*)
     };
     ($stream:ident; { $name:ident Token#$token:ident } $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_is_applicable_predicate!($stream; $($tail)*)
     };
 
     // Optional symbols: [ <nonterminal> ] or [ <nonterminal> terminal ]
     ($stream:ident; [ $name:ident ] $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_is_applicable_predicate!($stream; $($tail)*)
     };
     ($stream:ident; [ $name:ident Token#$token:ident ] $($tail:tt)*) =>
     {
-        $name::is_applicable($stream) || impl_grammar_variant_is_applicable!($stream; $($tail)*)
+        $name::is_applicable($stream) || impl_is_applicable_predicate!($stream; $($tail)*)
     };
 }
 
-macro_rules! impl_grammar_rule_parse_wrapper
+macro_rules! impl_parse_function
 {
     ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident) =>
     {
@@ -183,7 +194,7 @@ macro_rules! impl_grammar_rule_parse_wrapper
             let parts = $variant::parse($stream, $progcontainer)?;
 			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
-			impl_grammar_rule_parse_wrapper!($stream; $progcontainer; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
+			impl_parse_function!($stream; $progcontainer; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
 		}
     };
 }
@@ -199,7 +210,7 @@ macro_rules! impl_grammar_rule_parse_wrapper
  *         Build<Vi::OutputType> for all Vi
  */
 
-macro_rules! impl_parse
+macro_rules! impl_parse_trait
 {
     ($result:ty := $($variant:ident)|*) => {
         impl Parser for $result
@@ -212,7 +223,7 @@ macro_rules! impl_parse
             fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
             {
                 debug_assert_at_most_one_of_applicable!(stream; $($variant)|*);
-                impl_grammar_rule_parse_wrapper!(stream; types; $result; "Expected"; $($variant)|*)
+                impl_parse_function!(stream; types; $result; "Expected"; $($variant)|*)
 			}
 		}
     };
@@ -222,13 +233,13 @@ macro_rules! impl_parse
         {
             fn is_applicable(stream: &Stream) -> bool
             {
-                impl_grammar_variant_is_applicable!(stream; $($tail)*)
+                impl_is_applicable_predicate!(stream; $($tail)*)
             }
 
             fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
             {
                 let pos = stream.pos().clone();
-                let parts = impl_grammar_variant_parse!(stream; types; $($tail)*);
+                let parts = impl_parse_ast_generation!(stream; types; $($tail)*);
 			    Ok(Self::build(pos, types, parts))
 			}
 		}
@@ -264,6 +275,10 @@ macro_rules! extract_grammar_variant_children_types_as_tupel
     ([ $name:ident ] $($tail:tt)*) =>
     {
         <(Option<<$name as Parseable>::ParseOutputType>, extract_grammar_variant_children_types_as_tupel!($($tail)*)) as Flatten>::Flattened
+	};
+    ([ Token#$token:ident ] $($tail:tt)*) =>
+    {
+        <(bool, extract_grammar_variant_children_types_as_tupel!($($tail)*)) as Flatten>::Flattened
 	};
     ([ Token#$token:ident $name:ident ] $($tail:tt)*) =>
     {
@@ -376,18 +391,20 @@ macro_rules! generate_grammar_rule_temporary_node
 /**
  * Supported syntax:
  * - box? N := V1 ... Vn
- *   where V1, ..., Vn are either 'Token#<token>' or names of types implementing parse
- * - 'N := V1 | ... | Vn'
+ *   where V1, ..., Vn are either 'Token#<token>', names of types implementing parse
+ *   or a repetition bracket (either [] or {}) with a single type name, a single token
+ *   or a type name followed a token as content
+ * - N := V1 | ... | Vn
  *   where V1, ..., Vn are names of types implementing parse
  */
 
 macro_rules! grammar_rule {
     (box $result:ident := $($tail:tt)*) => {
         generate_grammar_rule_temporary_node!(box $result := $($tail)*);
-        impl_parse!($result := $($tail)*);
+        impl_parse_trait!($result := $($tail)*);
     };
     ($result:ident := $($tail:tt)*) => {
         generate_grammar_rule_temporary_node!($result := $($tail)*);
-        impl_parse!($result := $($tail)*);
+        impl_parse_trait!($result := $($tail)*);
     };
 }

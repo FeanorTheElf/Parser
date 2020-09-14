@@ -31,15 +31,25 @@ impl Parseable for Type {
 
 impl Build<TypeNodeNoView> for Type {
     fn build(_pos: TextPosition, types: &mut TypeVec, param: TypeNodeNoView) -> Self::ParseOutputType {
-        match (param.1).0 { PrimitiveTypeNode::IntTypeNode(_) => {}, _ => unimplemented!() };
-        types.get_array_type(PrimitiveType::Int, (param.1).1.map(|x| (x.1).0 as usize).unwrap_or(0))
+        match (param.1).1 { PrimitiveTypeNode::IntTypeNode(_) => {}, _ => unimplemented!() };
+        let mutable = (param.1).0.map(|rw| match rw {
+            ReadWrite::TypeRead(_) => false,
+            ReadWrite::TypeWrite(_) => true
+        }).unwrap_or(false);
+        let dimension_count = (param.1).2.map(|x| (x.1).0 as usize).unwrap_or(0);
+        types.get_array_type(PrimitiveType::Int, dimension_count, mutable)
     }
 }
 
 impl Build<TypeNodeView> for Type {
     fn build(_pos: TextPosition, types: &mut TypeVec, param: TypeNodeView) -> Self::ParseOutputType {
         let type_node = (param.1).0;
-        types.get_view_type(PrimitiveType::Int, (type_node.1).1.map(|x| (x.1).0 as usize).unwrap_or(0))
+        let mutable = (type_node.1).0.map(|rw| match rw {
+            ReadWrite::TypeRead(_) => false,
+            ReadWrite::TypeWrite(_) => true
+        }).unwrap_or(false);
+        let dimension_count = (type_node.1).2.map(|x| (x.1).0 as usize).unwrap_or(0);
+        types.get_view_type(PrimitiveType::Int, dimension_count, mutable)
     }
 }
 
@@ -130,22 +140,18 @@ impl Build<(Name, Vec<DeclarationListNode>, Option<<Type as Parseable>::ParseOut
     ) -> Self::ParseOutputType {
 
         let block = if let FunctionImpl::Block(block) = param.3 {
-
             Some(block)
         } else {
-
             None
         };
+        let params: Vec<Declaration> = param.1.into_iter().map(|p| Declaration::build(p.0, types, p.1)).collect();
+        let function_type = types.get_function_type(params.iter().map(|p| p.variable_type).collect(), param.2);
 
         Function {
             pos: pos,
             identifier: param.0,
-            params: param
-                .1
-                .into_iter()
-                .map(|p| Declaration::build(p.0, types, p.1))
-                .collect(),
-            return_type: param.2,
+            params: params,
+            function_type: function_type,
             body: block,
         }
     }
@@ -666,11 +672,17 @@ impl Build<BaseExpr> for Expression {
     }
 }
 
-impl_parse! { Type := TypeNodeView | TypeNodeNoView }
+impl_parse_trait! { Type := TypeNodeView | TypeNodeNoView }
+
+grammar_rule! { TypeRead := Token#Read }
+
+grammar_rule! { TypeWrite := Token#Write }
+
+grammar_rule! { ReadWrite := TypeRead | TypeWrite }
 
 grammar_rule! { TypeNodeView := Token#View TypeNodeNoView }
 
-grammar_rule! { TypeNodeNoView := PrimitiveTypeNode [ Dimensions ] }
+grammar_rule! { TypeNodeNoView := [ ReadWrite ] PrimitiveTypeNode [ Dimensions ] }
 
 grammar_rule! { Dimensions := Token#SquareBracketOpen { Token#Comma } Token#SquareBracketClose }
 
@@ -680,7 +692,7 @@ grammar_rule! { IntTypeNode := Token#Int }
 
 grammar_rule! { FloatTypeNode := Token#Comma }
 
-impl_parse! { Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon Type ] FunctionImpl }
+impl_parse_trait! { Function := Token#Fn Name Token#BracketOpen { DeclarationListNode } Token#BracketClose [ Token#Colon Type ] FunctionImpl }
 
 grammar_rule! { DeclarationListNode := Name Token#Colon Type Token#Comma }
 
@@ -690,7 +702,6 @@ grammar_rule! { NativeFunction := Token#Native Token#Semicolon }
 
 impl Parser for dyn Statement {
     fn is_applicable(stream: &Stream) -> bool {
-
         If::is_applicable(stream)
             || While::is_applicable(stream)
             || Return::is_applicable(stream)
@@ -756,29 +767,29 @@ impl Parser for dyn Statement {
     }
 }
 
-impl_parse! { Block := Token#CurlyBracketOpen { Statement } Token#CurlyBracketClose }
+impl_parse_trait! { Block := Token#CurlyBracketOpen { Statement } Token#CurlyBracketClose }
 
-impl_parse! { If := Token#If Expression Block }
+impl_parse_trait! { If := Token#If Expression Block }
 
-impl_parse! { While := Token#While Expression Block }
+impl_parse_trait! { While := Token#While Expression Block }
 
-impl_parse! { Return := Token#Return [ Expression ] Token#Semicolon }
+impl_parse_trait! { Return := Token#Return [ Expression ] Token#Semicolon }
 
-impl_parse! { Label := Token#Target Name }
+impl_parse_trait! { Label := Token#Target Name }
 
-impl_parse! { Goto := Token#Goto Name Token#Semicolon }
+impl_parse_trait! { Goto := Token#Goto Name Token#Semicolon }
 
 grammar_rule! { ExpressionNode := Expression Token#Semicolon }
 
-impl_parse! { LocalVariableDeclaration := Token#Let Name Token#Colon Type [Token#Assign Expression] Token#Semicolon }
+impl_parse_trait! { LocalVariableDeclaration := Token#Let Name Token#Colon Type [Token#Assign Expression] Token#Semicolon }
 
 grammar_rule! { Alias := Token#As Name }
 
-impl_parse! { ArrayEntryAccess := [ RWModifier ] Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
+impl_parse_trait! { ArrayEntryAccess := [ RWModifier ] Token#This Token#SquareBracketOpen { Expression Token#Comma } Token#SquareBracketClose [ Alias ] }
 
-impl_parse! { ArrayAccessPattern := Token#With { ArrayEntryAccess Token#Comma } Token#In Expression }
+impl_parse_trait! { ArrayAccessPattern := Token#With { ArrayEntryAccess Token#Comma } Token#In Expression }
 
-impl_parse! { ParallelFor := Token#PFor { DeclarationListNode } { ArrayAccessPattern } Block }
+impl_parse_trait! { ParallelFor := Token#PFor { DeclarationListNode } { ArrayAccessPattern } Block }
 
 grammar_rule! { RWModifier := ReadModifier | WriteModifier }
 
@@ -786,7 +797,7 @@ grammar_rule! { ReadModifier := Token#Read }
 
 grammar_rule! { WriteModifier := Token#Write }
 
-impl_parse! { Expression := ExprNodeLevelOr }
+impl_parse_trait! { Expression := ExprNodeLevelOr }
 
 grammar_rule! { ExprNodeLevelOr := ExprNodeLevelAnd { ExprNodeLevelOrPart } }
 
@@ -842,7 +853,7 @@ grammar_rule! { BaseExpr := Variable | Literal | BracketExpr }
 
 grammar_rule! { BracketExpr := Token#BracketOpen Expression Token#BracketClose }
 
-impl_parse! { Variable := Name }
+impl_parse_trait! { Variable := Name }
 
 #[cfg(test)]
 use super::super::language::position::NONEXISTING;
@@ -867,10 +878,14 @@ fn test_parser() {
     assert_eq!(Name::l("a"), param0.variable);
     assert_eq!(Type::Array(ArrayType {
         base: PrimitiveType::Int,
-        dimension: 1
+        dimension: 1,
+        mutable: false
     }), *ast.types.get_lifetime().cast(param0.variable_type).borrow());
 
-    assert_eq!(None, ast.items[0].return_type);
+    assert_eq!(Type::Function(FunctionType {
+        param_types: ast.items[0].params.iter().map(|d| d.variable_type).collect(),
+        return_type: None
+    }), *ast.types.get_lifetime().cast(ast.items[0].function_type).borrow());
 
     let pfor = ast.items[0].body.as_ref().unwrap().statements[0]
         .dynamic()
@@ -881,7 +896,8 @@ fn test_parser() {
     assert_eq!(Name::l("c"), index_var.variable);
     assert_eq!(Type::Array(ArrayType {
         base: PrimitiveType::Int,
-        dimension: 0
+        dimension: 0,
+        mutable: false
     }), *ast.types.get_lifetime().cast(index_var.variable_type).borrow());
 
     let assignment = pfor.body.statements[0]

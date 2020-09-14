@@ -14,28 +14,25 @@ pub trait Typed {
 
 impl Typed for Variable {
     fn calculate_type(&self, context: &DefinitionScopeStack, prog_lifetime: Lifetime) -> Result<Type, CompileError> {
-
-        Ok(context
+        Ok(prog_lifetime.cast(context
             .get(&self.identifier.unwrap_name())
             .ok_or_else(|| error_undefined_symbol(&self))?
-            .calc_type(prog_lifetime))
+            .get_type()).borrow().clone())
     }
 }
 
 impl Typed for Expression {
     fn calculate_type(&self, context: &DefinitionScopeStack, prog_lifetime: Lifetime) -> Result<Type, CompileError> {
-
         Ok(match self {
             Expression::Call(call) => {
                 match &call.function.expect_identifier().unwrap().identifier {
                     Identifier::Name(name) => {
 
                         let function = context.get(name).ok_or_else(|| {
-
                             error_undefined_symbol(&call.function.expect_identifier().unwrap())
                         })?;
 
-                        let return_type = function.calc_type(prog_lifetime).expect_callable(call.function.pos())?
+                        let return_type = prog_lifetime.cast(function.get_type()).borrow().expect_callable(call.function.pos())?
                             .return_type.map(|t| prog_lifetime.cast(t).borrow().clone());
 
                         return Ok(return_type.clone().unwrap());
@@ -50,12 +47,23 @@ impl Typed for Expression {
 
                         let array_type = call.parameters[0].calculate_type(context, prog_lifetime)?;
 
-                        Type::View(ViewType { base: ArrayType { base: array_type.expect_indexable(call.pos())?.base, dimension: 0 }, concrete: None })
+                        Type::View(ViewType { 
+                            base: ArrayType { 
+                                base: array_type.expect_indexable(call.pos())?.base, 
+                                dimension: 0,
+                                mutable: false
+                            }, 
+                            concrete: None 
+                        })
                     }
                     _ => unimplemented!(),
                 }
             }
-            Expression::Literal(_) => Type::Array(ArrayType { base: PrimitiveType::Int, dimension: 0 }),
+            Expression::Literal(_) => Type::Array(ArrayType { 
+                base: PrimitiveType::Int, 
+                dimension: 0,
+                mutable: false
+            }),
             Expression::Variable(var) => var.calculate_type(context, prog_lifetime)?,
         })
     }

@@ -4,6 +4,7 @@
 #![feature(fn_traits)]
 #![feature(iter_map_while)]
 #![feature(min_const_generics)]
+#![feature(impl_trait_in_bindings)]
 
 extern crate take_mut;
 

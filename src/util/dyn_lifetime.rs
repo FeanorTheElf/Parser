@@ -10,6 +10,9 @@ use std::iter::FromIterator;
 /// object of this type, where the lifetime parameter is at least the lifetime of the container. Therefore, each
 /// reference with this dynamic lifetime is valid for at least lifetime 'a.
 /// 
+/// An instance of this object can also be thought of a proof that references with a certain lifetime id are
+/// valid for 'a.
+/// 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lifetime<'a> {
     lifetime_id: u32,
@@ -17,14 +20,14 @@ pub struct Lifetime<'a> {
 }
 
 impl<'a> Lifetime<'a> {
-    pub fn lifetime_cast<'b, T: ?Sized>(&'b self, r: DynRef<T>) -> Option<&'b T> {
-        if r.id != self.lifetime_id {
+    pub fn lifetime_cast<T: ?Sized>(self, r: DynRef<T>) -> Option<&'a T> {
+        if r.id != self.lifetime_id && r.id != STATIC_LIFETIME.lifetime_id {
             return None;
         }
         return Some(unsafe { r.target.as_ref() }.unwrap());
     }
 
-    pub fn cast<'b, T: ?Sized>(&'b self, r: DynRef<T>) -> &'b T {
+    pub fn cast<T: ?Sized>(self, r: DynRef<T>) -> &'a T {
         self.lifetime_cast(r).unwrap()
     }
 }
@@ -59,6 +62,17 @@ impl<T: ?Sized> DynRef<T> {
     pub fn get_target(&self) -> *const T {
         self.target
     }
+
+    ///
+    /// Given a reference that is valid for the static lifetime, this constructs
+    /// a corresponding dynamic reference with dynamic lifetime STATIC_LIFETIME
+    /// 
+    pub fn from_static(data: &'static T) -> DynRef<T> {
+        DynRef {
+            id: STATIC_LIFETIME.lifetime_id,
+            target: data
+        }
+    }
 }
 
 unsafe impl<T: ?Sized + Sync> Send for DynRef<T> {}
@@ -73,7 +87,12 @@ pub struct DynRefTargetData {
     lifetime_id: u32
 }
 
-static LIFETIME_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+static LIFETIME_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+pub const STATIC_LIFETIME: Lifetime<'static> = Lifetime {
+    lifetime_id: 0,
+    phantom: PhantomData
+};
 
 impl DynRefTargetData {
 

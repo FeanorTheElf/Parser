@@ -8,6 +8,11 @@ pub use super::program_parallel_for::*;
 pub use super::types::*;
 pub use super::AstNode;
 
+pub use std::any::Any;
+pub use std::cell::{Ref, RefCell};
+pub use super::super::util::dyn_lifetime::*;
+
 pub use super::gwaihir_writer::DisplayWrapper;
+
 #[cfg(test)]
 pub use super::ast_test::*;

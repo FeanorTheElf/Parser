@@ -8,14 +8,13 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
-
 pub enum TargetLanguageFunction<'a> {
-    Kernel(Ref<'a, ParallelFor>),
-    Function(Ref<'a, Function>),
+    Kernel(Ptr<'a, ParallelFor>),
+    Function(Ptr<'a, Function>),
 }
 
 impl<'a> TargetLanguageFunction<'a> {
-    pub fn unwrap_kernel(&self) -> Ref<'a, ParallelFor> {
+    pub fn unwrap_kernel(&self) -> Ptr<'a, ParallelFor> {
 
         match self {
             TargetLanguageFunction::Kernel(ker) => *ker,
@@ -25,7 +24,7 @@ impl<'a> TargetLanguageFunction<'a> {
         }
     }
 
-    pub fn unwrap_function(&self) -> Ref<'a, Function> {
+    pub fn unwrap_function(&self) -> Ptr<'a, Function> {
 
         match self {
             TargetLanguageFunction::Kernel(_) => {
@@ -142,8 +141,8 @@ pub fn collect_functions_global<'a, 'ast>(
     program: &'ast Program,
 ) -> Result<
     (
-        HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-        HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+        HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+        HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
     ),
     OutputError,
 > {
@@ -159,8 +158,8 @@ pub fn collect_functions<'a, 'ast, U>(
     unique_generator: &'a mut U,
 ) -> Result<
     (
-        HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-        HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+        HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+        HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
     ),
     OutputError,
 >
@@ -168,14 +167,14 @@ where
     U: FnMut() -> u32,
 {
 
-    let mut functions: HashMap<Ref<'ast, Function>, FunctionInfo<'ast>> = HashMap::new();
+    let mut functions: HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>> = HashMap::new();
 
-    let mut kernels: HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>> = HashMap::new();
+    let mut kernels: HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>> = HashMap::new();
 
     for item in &program.items {
 
         functions.insert(
-            Ref::from(&**item),
+            Ptr::from(&**item),
             FunctionInfo {
                 function: item,
                 called_from: HashSet::new(),
@@ -193,7 +192,7 @@ where
 
             collect_calls_and_kernels(
                 body,
-                TargetLanguageFunction::Function(Ref::from(&**item)),
+                TargetLanguageFunction::Function(Ptr::from(&**item)),
                 &scopes.child_scope(&**item),
                 &mut functions,
                 &mut kernels,
@@ -209,8 +208,8 @@ fn collect_calls_and_kernels<'a, 'b, 'ast, U>(
     block: &'ast Block,
     parent: TargetLanguageFunction<'ast>,
     scopes: &ScopeStack<'b, &'ast dyn SymbolDefinition>,
-    functions: &mut HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-    kernels: &mut HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+    functions: &mut HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+    kernels: &mut HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
     unique_generator: &'a mut U,
 ) -> Result<(), OutputError>
 where
@@ -240,11 +239,11 @@ where
                 add_variable_uses(e, &mut kernel, &this_scopes)
             });
 
-            kernels.insert(Ref::from(pfor), kernel);
+            kernels.insert(Ptr::from(pfor), kernel);
 
             collect_calls_and_kernels(
                 &pfor.body,
-                TargetLanguageFunction::Kernel(Ref::from(pfor)),
+                TargetLanguageFunction::Kernel(Ptr::from(pfor)),
                 &this_scopes.child_scope(pfor),
                 functions,
                 kernels,
@@ -272,7 +271,7 @@ where
 fn set_called_from<'a, 'b>(
     expr: &'a Expression,
     parent: TargetLanguageFunction<'a>,
-    functions: &mut HashMap<Ref<'a, Function>, FunctionInfo<'a>>,
+    functions: &mut HashMap<Ptr<'a, Function>, FunctionInfo<'a>>,
     scopes: &ScopeStack<'b, &'a dyn SymbolDefinition>,
 ) -> Result<(), OutputError> {
 
@@ -400,16 +399,16 @@ fn test_collect_functions() {
 
     let mut expected_callers = HashSet::new();
 
-    expected_callers.insert(TargetLanguageFunction::Function(Ref::from(
+    expected_callers.insert(TargetLanguageFunction::Function(Ptr::from(
         kernel_caller.function,
     )));
 
-    expected_callers.insert(TargetLanguageFunction::Kernel(Ref::from(kernel.pfor)));
+    expected_callers.insert(TargetLanguageFunction::Kernel(Ptr::from(kernel.pfor)));
 
     assert_eq!(expected_callers, kernel_callee.called_from);
 
     assert_eq!(
-        Ref::from(kernel_caller.function),
+        Ptr::from(kernel_caller.function),
         kernel.called_from.unwrap_function()
     );
 

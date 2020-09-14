@@ -43,7 +43,7 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        let var_type = Type::View(var.calc_type(ast_lifetime).clone().reference_view(pfor.pos()).map_err(|e|
+        let var_type = Type::View(ast_lifetime.cast(var.get_type()).borrow().clone().reference_view(pfor.pos()).map_err(|e|
             CompileError::wrap(e, "Body of parallel for references outer variable of type for which no views exist")).internal_error());
 
         let parameter_variables = gen_variables(pfor.pos(), var.get_name(), &var_type);
@@ -367,7 +367,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
     // Fourth: collect the parameters
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        gen_variables_for_view(pfor.pos(), var.get_name(), &var.calc_type(context.ast_lifetime()))
+        gen_variables_for_view(pfor.pos(), var.get_name(), &*context.ast_lifetime().cast(var.get_type()).borrow())
             .map(|(_, expr)| expr)
             .collect::<Vec<_>>()
             .into_iter()
@@ -509,13 +509,13 @@ fn gen_implemented_function<'data, 'ast: 'data>(
         .iter()
         .flat_map(|p| gen_variables(p.pos(), &p.variable, &*ast_lifetime.cast(p.variable_type).borrow()).collect::<Vec<_>>().into_iter());
 
-    let result = if is_generated_with_output_parameter(function.return_type.map(|t| ast_lifetime.cast(t))) {
+    let result = if is_generated_with_output_parameter(function.get_type(ast_lifetime).return_type(ast_lifetime)) {
 
-        let params = if let Some(return_type) = &function.return_type {
+        let params = if let Some(return_type) = function.get_type(ast_lifetime).return_type(ast_lifetime) {
             standard_params
                 .chain(gen_output_parameter_declaration(
                     function.pos(),
-                    ast_lifetime.cast(*return_type).borrow().expect_array(function.pos()).internal_error(),
+                    return_type.expect_array(function.pos()).internal_error(),
                 ))
                 .collect::<Vec<_>>()
         } else {
@@ -537,8 +537,8 @@ fn gen_implemented_function<'data, 'ast: 'data>(
         })
     } else {
         let ast_lifetime = context.ast_lifetime();
-        let return_type = if let Some(ty) = &function.return_type.map(|x| ast_lifetime.cast(x)) {
-            match &*ty.borrow() {
+        let return_type = if let Some(ty) = function.get_type(ast_lifetime).return_type(ast_lifetime) {
+            match &*ty {
                 Type::Array(arr) => {
                     assert_eq!(arr.dimension, 0);
                     CudaType {
@@ -637,7 +637,7 @@ fn test_gen_kernel() {
     context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
-        called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
+        called_from: TargetLanguageFunction::Kernel(Ptr::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(
@@ -675,7 +675,7 @@ fn test_gen_kernel_call() {
     context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
-        called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
+        called_from: TargetLanguageFunction::Kernel(Ptr::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(
@@ -710,7 +710,7 @@ fn test_gen_kernel_call_complex() {
     context.enter_scope(&defs);
 
     let kernel_info = KernelInfo {
-        called_from: TargetLanguageFunction::Kernel(Ref::from(&pfor)),
+        called_from: TargetLanguageFunction::Kernel(Ptr::from(&pfor)),
         kernel_name: 0,
         pfor: &pfor,
         used_variables: BTreeSet::from_iter(

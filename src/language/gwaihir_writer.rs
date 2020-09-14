@@ -237,8 +237,8 @@ impl AstWriter for Function {
             write!(out, "{}: {}, ", param.variable, prog_lifetime.cast(param.variable_type).borrow())?;
         }
         write!(out, ")")?;
-        if let Some(return_type) = &self.return_type {
-            write!(out, ": {} ", prog_lifetime.cast(*return_type).borrow())?;
+        if let Some(return_type) = &self.get_type(prog_lifetime).return_type(prog_lifetime) {
+            write!(out, ": {} ", return_type)?;
         } else {
             write!(out, " ")?;
         }

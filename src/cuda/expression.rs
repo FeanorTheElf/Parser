@@ -22,11 +22,11 @@ pub fn is_mul_var_type(ty: &Type) -> bool {
     }
 }
 
-pub fn is_generated_with_output_parameter(return_type: Option<&RefCell<Type>>) -> bool
+pub fn is_generated_with_output_parameter<T>(return_type: Option<T>) -> bool
+    where T: std::ops::Deref<Target = Type>
 {
     return_type
-        .map(|ty| ty.borrow())
-        .map(|ty| is_mul_var_type(&ty))
+        .map(|ty| is_mul_var_type(&*ty))
         .unwrap_or(false)
 }
 
@@ -302,55 +302,53 @@ where
     debug_assert!(call.function == Identifier::Name(function_name.clone()));
 
     let ast_lifetime = context.ast_lifetime();
-    let param_types = function_type.param_types.iter().map(|r| ast_lifetime.cast(*r));
-    let return_type = function_type.return_type.map(|r| ast_lifetime.cast(r));
 
-    if !is_generated_with_output_parameter(return_type) {
-
+    if !is_generated_with_output_parameter(function_type.return_type(ast_lifetime)) {
         assert!(output_params.next().is_none());
     }
 
     let params = call
         .parameters
         .iter()
-        .zip(param_types)
-        .flat_map(|(param, formal_param)| match param {
-            Expression::Call(_) => {
+        .zip(function_type.param_types(ast_lifetime))
+        .flat_map(|(param, formal_param_ref)| {
+            let formal_param = &*formal_param_ref;
+            match param {
+                Expression::Call(_) => {
 
-                assert!(!is_generated_with_output_parameter(Some(formal_param)));
+                    assert!(!is_generated_with_output_parameter(Some(formal_param)));
 
-                if formal_param.borrow().is_view() {
+                    if formal_param.is_view() {
 
-                    Box::new(std::iter::once(gen_expression_for_view(param, context)))
-                        as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
-                } else {
-
-                    Box::new(std::iter::once(gen_expression_for_value(param, context)))
-                        as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
-                }
-            }
-            Expression::Literal(lit) => Box::new(std::iter::once(Ok(CudaExpression::IntLiteral(
-                lit.value as i64,
-            ))))
-                as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>,
-            Expression::Variable(var) => match &var.identifier {
-                Identifier::Name(name) => {
-                    if formal_param.borrow().is_view() {
-
-                        Box::new(
-                            gen_variables_for_view(var.pos(), name, &*formal_param.borrow())
-                                .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
+                        Box::new(std::iter::once(gen_expression_for_view(param, context)))
                             as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
                     } else {
 
-                        Box::new(
-                            gen_variables_for_value(var.pos(), name, &*formal_param.borrow())
-                                .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
+                        Box::new(std::iter::once(gen_expression_for_value(param, context)))
                             as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
                     }
                 }
-                Identifier::BuiltIn(_) => unimplemented!(),
-            },
+                Expression::Literal(lit) => Box::new(std::iter::once(Ok(CudaExpression::IntLiteral(
+                    lit.value as i64,
+                ))))
+                    as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>,
+                Expression::Variable(var) => match &var.identifier {
+                    Identifier::Name(name) => {
+                        if formal_param.is_view() {
+                            Box::new(
+                                gen_variables_for_view(var.pos(), name, &*formal_param)
+                                    .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
+                                as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+                        } else {
+                            Box::new(
+                                gen_variables_for_value(var.pos(), name, &*formal_param)
+                                    .map(|(_ty, p)| Ok(p)).collect::<Vec<_>>().into_iter())
+                                as Box<dyn Iterator<Item = Result<CudaExpression, OutputError>>>
+                        }
+                    }
+                    Identifier::BuiltIn(_) => unimplemented!(),
+                },
+            }
         })
         .chain(output_params.map(|expr| Ok(expr)));
 
@@ -497,7 +495,7 @@ where
 
                 let function = context.get_scopes().get_defined(name, call.pos()).unwrap();
 
-                gen_defined_function_call(call, name, &function.calc_type(context.ast_lifetime()).expect_callable(call.pos()).internal_error(), output_params, context)
+                gen_defined_function_call(call, name, &context.ast_lifetime().cast(function.get_type()).borrow().expect_callable(call.pos()).internal_error(), output_params, context)
             }
         },
     }
@@ -653,7 +651,7 @@ fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(
     context: &mut dyn CudaContext<'stack, 'ast>,
 ) -> Result<Box<dyn CudaStatement>, OutputError> {
 
-    let ty = context.calculate_var_type(assignee, pos);
+    let ty = context.calculate_var_type(assignee, pos).clone();
 
     Ok(Box::new(gen_function_call(
         value,
@@ -899,13 +897,11 @@ pub fn gen_assignment<'stack, 'ast: 'stack>(
             Identifier::BuiltIn(_) => error_rvalue_not_assignable(statement.pos()).throw(),
             Identifier::Name(name) => {
 
-                let ty = context.calculate_var_type(name, statement.pos());
+                let ty = context.calculate_var_type(name, statement.pos()).clone();
 
                 if is_mul_var_type(&ty) {
-
                     gen_array_assignment(statement.pos(), name, &ty, &statement.value, context)
                 } else {
-
                     Ok(Box::new(gen_scalar_assignment(
                         &statement.assignee,
                         &statement.value,

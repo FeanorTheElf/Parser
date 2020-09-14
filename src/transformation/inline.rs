@@ -42,18 +42,16 @@ where
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
+        prog_lifetime: Lifetime
     ) {
-
         let statement_indices_to_inline =
             self.extractor
-                .extract_calls_in_block_flat(block, parent_scopes, defined_functions);
+                .extract_calls_in_block_flat(block, parent_scopes, defined_functions, prog_lifetime);
 
         let scopes = parent_scopes.child_scope(block);
 
         {
-
             for extraction in &statement_indices_to_inline {
-
                 let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
                     .dynamic_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
@@ -65,10 +63,8 @@ where
         }
 
         for statement in &mut block.statements {
-
             for subblock in statement.iter_mut() {
-
-                self.inline_calls_in_block(subblock, &scopes, defined_functions);
+                self.inline_calls_in_block(subblock, &scopes, defined_functions, prog_lifetime);
             }
         }
     }
@@ -78,22 +74,15 @@ where
     ///
 
     pub fn inline_calls_in_program(&mut self, program: &mut Program) {
-
-        assert_ne!(program.items.len(), 0);
-
-        let scopes = NameScopeStack::new(&program.items[..]);
-
-        for i in 0..program.items.len() {
-
-            program.items.swap(0, i);
-
-            let (current, other) = program.items[..].split_at_mut(1);
-
+        let (items, prog_lifetime) = program.work();
+        assert_ne!(items.len(), 0);
+        let scopes = NameScopeStack::new(&items[..]);
+        for i in 0..items.len() {
+            items.swap(0, i);
+            let (current, other) = items[..].split_at_mut(1);
             let child_scopes = scopes.child_scope(&*current[0]);
-
             if let Some(body) = &mut current[0].body {
-
-                self.inline_calls_in_block(body, &child_scopes, other);
+                self.inline_calls_in_block(body, &child_scopes, other, prog_lifetime);
             }
         }
     }
@@ -359,6 +348,8 @@ where
 use super::super::lexer::lexer::{fragment_lex, lex_str};
 #[cfg(test)]
 use super::super::parser::{Parser, TopLevelParser};
+#[cfg(test)]
+use super::super::analysis::defs_test::*;
 
 #[test]
 
@@ -366,14 +357,9 @@ fn test_inline() {
 
     let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[]);
 
-    let predefined_variables = [
-        (Name::l("b"), Type::TestType),
-        (Name::l("c"), Type::TestType),
-        (Name::l("other_func"), Type::TestType),
-        (Name::l("some_func"), Type::TestType),
-    ];
+    let predefined_variables = EnvironmentBuilder::new().add_test_def("b").add_test_def("c").add_test_def("other_func").add_test_def("some_func");
 
-    let scope_stack = parent_scope_stack.child_scope(&predefined_variables[..]);
+    let scope_stack = parent_scope_stack.child_scope(&predefined_variables.destruct().1);
 
     let mut test = Inliner::new(|_, _| true);
 
@@ -418,6 +404,7 @@ fn test_inline() {
         &mut block,
         &scope_stack,
         &[Box::new(some_func), Box::new(other_func)],
+        types.get_lifetime()
     );
 
     let mut expected_types = TypeVec::new();
@@ -499,7 +486,7 @@ fn test_process_inline_body() {
 
     let parent_scopes = NameScopeStack::new(&[]);
 
-    let scopes = parent_scopes.child_scope(&[(Name::l("result"), Type::TestType)][..]);
+    let scopes = parent_scopes.child_scope(&EnvironmentBuilder::new().add_test_def("result").destruct().1);
 
     process_inlined_function_body(
         &mut body,

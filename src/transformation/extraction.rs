@@ -54,6 +54,7 @@ where
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
+        prog_lifetime: Lifetime
     ) -> Expression
     where
         G: FnMut(Name) -> Name,
@@ -62,7 +63,7 @@ where
 
         let pos = function_call.pos().clone();
 
-        if let Some(return_type) = &function_definition.return_type {
+        if let Some(return_type) = &function_definition.get_type(prog_lifetime).return_type {
 
             let variable_name = (*rename_disjunct)(Name::new(
                 format!("result_{}", function_definition.identifier.name),
@@ -81,6 +82,7 @@ where
                         rename_disjunct,
                         defined_functions,
                         previous_declaration_statements,
+                        prog_lifetime
                     ),
                 ))),
             };
@@ -98,6 +100,7 @@ where
                 rename_disjunct,
                 defined_functions,
                 previous_declaration_statements,
+                prog_lifetime
             )));
         }
     }
@@ -108,6 +111,7 @@ where
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
+        prog_lifetime: Lifetime
     ) -> FunctionCall
     where
         G: FnMut(Name) -> Name,
@@ -121,6 +125,7 @@ where
                 rename_disjunct,
                 defined_functions,
                 previous_declaration_statements,
+                prog_lifetime
             )
         };
 
@@ -135,6 +140,7 @@ where
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
+        prog_lifetime: Lifetime
     ) -> Expression
     where
         G: FnMut(Name) -> Name,
@@ -154,6 +160,7 @@ where
                             rename_disjunct,
                             defined_functions,
                             previous_declaration_statements,
+                            prog_lifetime
                         )
                     }
                     FunctionDefinition::UserDefined(_) => {
@@ -162,6 +169,7 @@ where
                             rename_disjunct,
                             defined_functions,
                             previous_declaration_statements,
+                            prog_lifetime
                         )))
                     }
                     _ => Expression::Call(Box::new(self.extract_calls_in_parameters(
@@ -169,6 +177,7 @@ where
                         rename_disjunct,
                         defined_functions,
                         previous_declaration_statements,
+                        prog_lifetime
                     ))),
                 }
             }
@@ -181,6 +190,7 @@ where
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
+        prog_lifetime: Lifetime
     ) -> Vec<ExtractionReport> {
 
         let scopes = parent_scopes.child_scope(block);
@@ -204,6 +214,7 @@ where
                         &mut rename_disjunct,
                         defined_functions,
                         &mut result_statements,
+                        prog_lifetime
                     )
                 });
             }
@@ -239,8 +250,9 @@ where
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
+        prog_lifetime: Lifetime
     ) {
-        let mut extractions = self.extract_calls_in_block_flat(block, parent_scopes, defined_functions);
+        let mut extractions = self.extract_calls_in_block_flat(block, parent_scopes, defined_functions, prog_lifetime);
         extractions.sort();
         extractions.reverse();
         for extraction in extractions {
@@ -253,28 +265,20 @@ where
         let child_scopes = parent_scopes.child_scope(block);
         for statement in &mut block.statements {
             for mut subblock in statement.iter_mut() {
-                self.extract_calls_in_block(&mut subblock, &child_scopes, defined_functions);
+                self.extract_calls_in_block(&mut subblock, &child_scopes, defined_functions, prog_lifetime);
             }
         }
     }
 
-    pub fn extract_calls_in_program(&mut self, items: &mut Vec<Box<Function>>) {
-
+    pub fn extract_calls_in_program(&mut self, (items, prog_lifetime): (&mut Vec<Box<Function>>, Lifetime)) {
         assert_ne!(items.len(), 0);
-
         let scopes = NameScopeStack::new(&items[..]);
-
         for i in 0..items.len() {
-
             items.swap(0, i);
-
             let (current, other) = items[..].split_at_mut(1);
-
             let child_scopes = scopes.child_scope(&*current[0]);
-
             if let Some(body) = &mut current[0].body {
-
-                self.extract_calls_in_block(body, &child_scopes, other);
+                self.extract_calls_in_block(body, &child_scopes, other, prog_lifetime);
             }
         }
     }
@@ -299,7 +303,7 @@ fn test_extract_calls_in_program() {
     }
     ")).unwrap();
 
-    Extractor::new(|_, _| true).extract_calls_in_program(&mut program.items);
+    Extractor::new(|_, _| true).extract_calls_in_program(program.work());
 
     let expected = Program::parse(&mut lex_str("
 

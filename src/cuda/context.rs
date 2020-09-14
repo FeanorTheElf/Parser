@@ -5,7 +5,6 @@ use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;
 
-use super::super::util::dyn_lifetime::*;
 use std::collections::HashMap;
 
 pub trait CudaContext<'data, 'ast: 'data> {
@@ -53,12 +52,8 @@ impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {
             .exit()
     }
 
-    pub fn calculate_var_type<'a>(&'a self, variable: &'a Name, pos: &'a TextPosition) -> Type {
-
-        self.get_scopes()
-            .get_defined(variable, pos)
-            .unwrap()
-            .calc_type(self.ast_lifetime())
+    pub fn calculate_var_type<'a>(&'a self, variable: &'a Name, pos: &'a TextPosition) -> Ref<'a, Type> {
+        self.ast_lifetime().cast(self.get_scopes().get_defined(variable, pos).unwrap().get_type()).borrow()
     }
 }
 
@@ -128,15 +123,15 @@ pub struct CudaContextImpl<'data, 'ast> {
     scopes: DefinitionScopeStack<'data, 'ast>,
     function: Option<&'ast Function>,
     ast_lifetime: Lifetime<'ast>,
-    functions: &'data HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-    kernels: &'data HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+    functions: &'data HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+    kernels: &'data HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
 }
 
 impl<'data, 'ast: 'data> CudaContextImpl<'data, 'ast> {
     pub fn new(
         global: &'ast Program,
-        functions: &'data HashMap<Ref<'ast, Function>, FunctionInfo<'ast>>,
-        kernels: &'data HashMap<Ref<'ast, ParallelFor>, KernelInfo<'ast>>,
+        functions: &'data HashMap<Ptr<'ast, Function>, FunctionInfo<'ast>>,
+        kernels: &'data HashMap<Ptr<'ast, ParallelFor>, KernelInfo<'ast>>,
     ) -> CudaContextImpl<'data, 'ast> {
 
         CudaContextImpl {

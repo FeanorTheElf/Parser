@@ -1,13 +1,14 @@
-use super::super::util::iterable::{Iterable, LifetimeIterable};
 use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
-use super::types::{Type, TypeVec};
+use super::types::{Type, FunctionType, TypePtr, TypeVec};
 use super::AstNode;
+
+use super::super::util::iterable::{Iterable, LifetimeIterable};
 use super::super::util::cmp::Comparing;
 use super::super::util::dyn_lifetime::*;
 
-use std::cell::RefCell;
+use std::cell::Ref;
 
 #[derive(Debug)]
 pub struct Program {
@@ -15,11 +16,21 @@ pub struct Program {
     pub types: TypeVec
 }
 
+impl Program {
+    pub fn lifetime<'a>(&'a self) -> Lifetime<'a> {
+        self.types.get_lifetime()
+    }
+
+    pub fn work<'a>(&'a mut self) -> (&'a mut Vec<Box<Function>>, Lifetime<'a>) {
+        (&mut self.items, self.types.get_lifetime())
+    }
+}
+
 #[derive(Debug, Eq, Clone)]
 pub struct Declaration {
     pub pos: TextPosition,
     pub variable: Name,
-    pub variable_type: DynRef<RefCell<Type>>,
+    pub variable_type: TypePtr,
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -27,8 +38,17 @@ pub struct Function {
     pub pos: TextPosition,
     pub identifier: Name,
     pub params: Vec<Declaration>,
-    pub return_type: Option<DynRef<RefCell<Type>>>,
+    pub function_type: TypePtr,
     pub body: Option<Block>,
+}
+
+impl Function {
+    pub fn get_type<'a, 'b: 'a>(&'a self, prog_lifetime: Lifetime<'b>) -> Ref<'a, FunctionType> {
+        Ref::map(prog_lifetime.cast(self.function_type).borrow(), |f| match f {
+            Type::Function(func) => func,
+            ty => panic!("Function definition has type {}", ty)
+        })
+    }
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -253,7 +273,7 @@ impl PartialEq for Function {
 
         self.identifier == rhs.identifier
             && self.params == rhs.params
-            && self.return_type == rhs.return_type
+            && self.function_type == rhs.function_type
             && self.body == rhs.body
     }
 }
