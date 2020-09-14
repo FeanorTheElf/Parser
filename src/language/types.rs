@@ -218,13 +218,20 @@ impl Type {
             )),
         }
     }
-}
 
-impl ArrayType {
-    pub fn reference_view(self) -> ViewType {
-        ViewType {
-            base: self,
-            concrete: None
+    
+    pub fn reference_view(self, pos: &TextPosition) -> Result<ViewType, CompileError> {
+        match self {
+            Type::Array(array_type) => Ok(ViewType {
+                base: array_type,
+                concrete: None
+            }),
+            Type::View(view) => Ok(view),
+            ty => Err(CompileError::new(
+                pos,
+                format!("Views on type {} do not exist", ty),
+                ErrorType::TypeError,
+            ))
         }
     }
 }

@@ -12,7 +12,13 @@ fn print_vec(a: &int[,],) native;
 
 fn zero_vec(len: int,): int[,] native;
 
+fn zero_mat(rows: int, cols: int,): int[,] native;
+
 fn len(a: &int[,],): int native;
+
+fn rows(a: &int[,,],): int native;
+
+fn cols(a: &int[,,],): int native;
 
 fn vec_add(a: &int[,], b: &int[,],) {
     pfor i: int, with this[i,], in a with this[i,], in b {

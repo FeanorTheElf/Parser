@@ -43,7 +43,8 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        let var_type = Type::View(var.calc_type(ast_lifetime).expect_array(pfor.pos()).internal_error().clone().reference_view());
+        let var_type = Type::View(var.calc_type(ast_lifetime).clone().reference_view(pfor.pos()).map_err(|e|
+            CompileError::wrap(e, "Body of parallel for references outer variable of type for which no views exist")).internal_error());
 
         let parameter_variables = gen_variables(pfor.pos(), var.get_name(), &var_type);
 

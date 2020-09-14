@@ -1,3 +1,5 @@
 /target
 **/*.rs.bk
 /.vs
+/examples/target
+/example/temp/out.cuh

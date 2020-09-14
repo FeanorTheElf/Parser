@@ -43,6 +43,14 @@ impl CompileError {
         }
     }
 
+    pub fn wrap(e: CompileError, msg: &str) -> Self {
+        CompileError {
+            pos: e.pos,
+            msg: format!("{}: {}", msg, e.msg),
+            error_type: e.error_type
+        }
+    }
+
     pub fn get_position(&self) -> &TextPosition {
 
         &self.pos
