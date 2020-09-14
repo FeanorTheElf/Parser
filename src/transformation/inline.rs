@@ -1,6 +1,7 @@
 use super::super::analysis::scope::NameScopeStack;
 use super::super::language::prelude::*;
 use super::extraction::Extractor;
+use super::renaming::*;
 use super::function_resolution::{find_function_definition, DefinedFunctions, FunctionDefinition};
 use std::collections::HashMap;
 
@@ -119,16 +120,24 @@ fn inline_single_function_call(
 
     let mut rename_mapping: HashMap<Name, Name> = HashMap::new();
 
-    let mut result_statements: Vec<Box<dyn Statement>> = inline_parameter_passing(
-        &mut rename_disjunct,
-        &mut rename_mapping,
-        call.parameters.into_iter(),
-        definition.params.iter(),
-    )
-    .map(to_statement)
-    .collect();
-
+    let mut result_block: Block = Block {
+        pos: call.pos().clone(),
+        statements: inline_parameter_passing(
+            &mut rename_disjunct,
+            &mut rename_mapping,
+            call.parameters.into_iter(),
+            definition.params.iter(),
+        )
+        .map(|decl| Box::new(decl) as Box<dyn Statement>)
+        .collect()
+    };
     let return_label_name: Name = rename_disjunct(definition.identifier.clone());
+
+    let return_label = Label {
+        pos: pos.clone(),
+        label: return_label_name.clone(),
+    };
+    result_block.statements.push(Box::new(return_label));
 
     let mut body = definition
         .body
@@ -136,27 +145,21 @@ fn inline_single_function_call(
         .expect("Cannot inline native function")
         .clone();
 
-    process_inlined_function_body(
+    let in_function_body_scopes = scopes.child_scope(&result_block);
+
+    let mut new_defs = in_function_body_scopes.non_global_definitions()
+        .map(|d| d.0).chain(rename_mapping.values()).map(Name::clone).collect();
+
+    fix_name_collisions(&mut body, &in_function_body_scopes, &mut new_defs, rename_mapping);
+
+    replace_return_in_inlined_function_body(
         &mut body,
         &declaration.declaration.variable,
-        &return_label_name,
-        &mut rename_disjunct,
-        &mut rename_mapping,
+        &return_label_name
     );
+    result_block.statements.insert(result_block.statements.len() - 1, Box::new(body));
 
-    let return_label = Label {
-        pos: pos.clone(),
-        label: return_label_name,
-    };
-
-    result_statements.push(Box::new(body));
-
-    result_statements.push(Box::new(return_label));
-
-    return Block {
-        pos: pos,
-        statements: result_statements,
-    };
+    return result_block;
 }
 
 fn inline_parameter_passing<'a, F, I, J>(
@@ -196,61 +199,23 @@ where
         })
 }
 
-fn to_statement<T: Statement>(value: T) -> Box<dyn Statement> {
-
-    Box::new(value)
-}
-
-fn process_inlined_function_body<F>(
+fn replace_return_in_inlined_function_body(
     block: &mut Block,
     result_variable_name: &Name,
     return_label: &Name,
-    rename_disjunct: &mut F,
-    rename_mapping: &mut HashMap<Name, Name>,
-) where
-    F: FnMut(Name) -> Name,
-{
-
+) {
     for statement in &mut block.statements {
-
         for subblock in statement.iter_mut() {
-
-            process_inlined_function_body(
+            replace_return_in_inlined_function_body(
                 subblock,
                 result_variable_name,
-                return_label,
-                rename_disjunct,
-                rename_mapping,
+                return_label
             );
         }
-
-        for expression in statement.iter_mut() {
-
-            recursive_rename_variables(expression, rename_disjunct, rename_mapping);
-        }
-
         if statement.dynamic().is::<Return>() {
-
             take_mut::take(statement, |statement| {
-
                 transform_inlined_return_statement(statement, result_variable_name, return_label)
             });
-        } else if let Some(declaration) = statement
-            .dynamic_mut()
-            .downcast_mut::<LocalVariableDeclaration>()
-        {
-
-            declaration.declaration.variable = rename_identifier(
-                &declaration.declaration.variable,
-                rename_disjunct,
-                rename_mapping,
-            );
-        } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
-
-            goto.target = rename_identifier(&goto.target, rename_disjunct, rename_mapping);
-        } else if let Some(label) = statement.dynamic_mut().downcast_mut::<Label>() {
-
-            label.label = rename_identifier(&label.label, rename_disjunct, rename_mapping);
         }
     }
 }
@@ -292,56 +257,6 @@ fn transform_inlined_return_statement(
     result.statements.push(Box::new(jump_out));
 
     return result;
-}
-
-fn recursive_rename_variables<F>(
-    expr: &mut Expression,
-    rename_disjunct: &mut F,
-    rename_mapping: &mut HashMap<Name, Name>,
-) where
-    F: FnMut(Name) -> Name,
-{
-
-    match expr {
-        Expression::Call(call) => {
-
-            recursive_rename_variables(&mut call.function, rename_disjunct, rename_mapping);
-
-            for param in &mut call.parameters {
-
-                recursive_rename_variables(param, rename_disjunct, rename_mapping);
-            }
-        }
-        Expression::Literal(_) => {}
-        Expression::Variable(var) => {
-            if let Identifier::Name(name) = &mut var.identifier {
-
-                *name = rename_identifier(&name, rename_disjunct, rename_mapping);
-            }
-        }
-    }
-}
-
-fn rename_identifier<F>(
-    name: &Name,
-    rename_disjunct: &mut F,
-    rename_mapping: &mut HashMap<Name, Name>,
-) -> Name
-where
-    F: FnMut(Name) -> Name,
-{
-
-    if let Some(replace) = rename_mapping.get(&name) {
-
-        return replace.clone();
-    } else {
-
-        let replace = rename_disjunct(name.clone());
-
-        rename_mapping.insert(name.clone(), replace.clone());
-
-        return replace;
-    }
 }
 
 #[cfg(test)]
@@ -454,91 +369,6 @@ fn test_inline() {
     .unwrap();
 
     assert_ast_frag_eq!(expected, block; expected_types.get_lifetime(), types.get_lifetime());
-}
-
-#[test]
-
-fn test_process_inline_body() {
-
-    let mut actual_types = TypeVec::new();
-    let mut body = Block::parse(&mut fragment_lex(
-        "
-    {
-        let result: int = 10;
-        while (1) {
-            if (result < 5) {
-                if (result == 0) {
-                    return result;
-                    goto result#1;
-                }
-                {
-                    result = result - 1;
-                    return result;
-                }
-                @result#1
-            }
-        }
-    }",
-    ), &mut actual_types)
-    .unwrap();
-
-    let mut rename_mapping = HashMap::new();
-
-    let parent_scopes = NameScopeStack::new(&[]);
-
-    let scopes = parent_scopes.child_scope(&EnvironmentBuilder::new().add_test_def("result").destruct().1);
-
-    process_inlined_function_body(
-        &mut body,
-        &Name::l("result"),
-        &Name::l("return_label"),
-        &mut scopes.rename_disjunct(),
-        &mut rename_mapping,
-    );
-
-    let mut expected_types = TypeVec::new();
-    let expected = Block::parse(&mut fragment_lex(
-        "
-    {
-        let result#1: int = 10;
-        while (1) {
-            if (result#1 < 5) {
-                if (result#1 == 0) {
-                    {
-                        result = result#1;
-                        goto return_label;
-                    }
-                    goto result#2;
-                }
-                {
-                    result#1 = result#1 - 1;
-                    {
-                        result = result#1;
-                        goto return_label;
-                    }
-                }
-                @result#2
-            }
-        }
-    }",
-    ), &mut expected_types)
-    .unwrap();
-
-    assert_ast_frag_eq!(expected, body; expected_types.get_lifetime(), actual_types.get_lifetime() );
-
-    let mut expected_mapping = HashMap::new();
-
-    expected_mapping.insert(
-        Name::new("result".to_owned(), 0),
-        Name::new("result".to_owned(), 1),
-    );
-
-    expected_mapping.insert(
-        Name::new("result".to_owned(), 1),
-        Name::new("result".to_owned(), 2),
-    );
-
-    assert_eq!(expected_mapping, rename_mapping);
 }
 
 #[test]

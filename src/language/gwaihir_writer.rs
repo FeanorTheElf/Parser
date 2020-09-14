@@ -1,5 +1,6 @@
 use super::prelude::*;
 use super::compiler::*;
+use super::super::util::cmp::Comparing;
 
 pub trait AstWriter {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError>;
@@ -12,6 +13,7 @@ fn get_priority(expr: &Expression) -> i32 {
             Expression::Literal(_) => panic!("Literal not callable"),
             Expression::Variable(var) => match &var.identifier {
                 Identifier::Name(_name) => i32::MAX,
+                Identifier::BuiltIn(BuiltInIdentifier::ViewZeros) => i32::MAX,
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => i32::MAX,
                 Identifier::BuiltIn(BuiltInIdentifier::FunctionMul) | 
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryDiv) => 1,
@@ -60,6 +62,14 @@ fn write_builtin_call(call: &FunctionCall, priority: i32, op: BuiltInIdentifier,
             debug_assert_eq!(call.parameters.len(), 1);
             write_expression(&call.parameters[0], priority, out)?;
         },
+        BuiltInIdentifier::ViewZeros => {
+            write!(out, "zeros(")?;
+            for index in call.parameters.iter() {
+                write_expression(index, i32::MIN, out)?;
+                write!(out, ", ")?;
+            }
+            write!(out, ")")?;
+        }
         op => {
             let symbol = op.get_symbol();
             out.write_separated(call.parameters.iter().map(|p| move |out: &mut CodeWriter| write_expression(p, priority, out)), |out| write!(out, "{}", symbol).map_err(OutputError::from))?;
@@ -252,7 +262,10 @@ impl AstWriter for Function {
 
 impl AstWriter for Program {
     fn write(&self, _: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        for item in &self.items {
+        let cmp_by_name = |lhs: &&Function, rhs: &&Function| lhs.identifier.cmp(&rhs.identifier);
+        let mut sorted_items = self.items.iter().map(|f| Comparing::new(&**f, cmp_by_name)).collect::<Vec<_>>();
+        sorted_items.sort();
+        for item in sorted_items {
             item.write(self.types.get_lifetime(), out)?;
             out.newline()?;
         }

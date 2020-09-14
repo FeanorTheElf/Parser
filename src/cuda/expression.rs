@@ -463,7 +463,8 @@ fn gen_builtin_function_call<'stack, 'ast: 'stack>(
                 Identifier::BuiltIn(op) => error_not_indexable_buildin_identifier(call.pos(), op).throw(),
                 Identifier::Name(name) => gen_index_expression(name, call.parameters.len() as u32 - 1, call.parameters.iter().skip(1), context).next().unwrap()?
             }
-        }
+        },
+        _ => unimplemented!()
     })
 }
 

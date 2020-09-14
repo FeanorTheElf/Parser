@@ -118,6 +118,7 @@ impl<'a> EnumerateDefinitions<'a> for &'a Vec<Box<dyn Statement>> {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct NoData;
 
 impl<'a> From<&'a dyn SymbolDefinition> for NoData {
@@ -231,11 +232,6 @@ impl<'a, T> ScopeStack<'a, T> {
         }
     }
 
-    pub fn is_global_scope<'b>(self: &'b Self) -> bool {
-
-        self.parent.is_none() && self.scopes.len() == 1
-    }
-
     pub fn get_scope_levels(&self) -> usize {
         if let Some(parent) = &self.parent {
             parent.get_scope_levels() + self.scopes.len()
@@ -244,22 +240,29 @@ impl<'a, T> ScopeStack<'a, T> {
         }
     }
 
-    fn non_global_stacks<'b>(&'b self) -> impl 'b + Iterator<Item = &'b ScopeStack<'b, T>> {
+    pub fn is_global_scope<'b>(self: &'b Self) -> bool {
 
-        self.all_stacks().filter(|stack| !stack.is_global_scope())
+        self.parent.is_none() && self.scopes.len() == 1
+    }
+    
+    fn non_global_stacks<'b>(&'b self) -> impl 'b + Iterator<Item = &'b ScopeNode<T>> {
+
+        self.all_stacks().flat_map(|stack| stack.scopes.iter().skip(if stack.parent.is_none() { 1 } else { 0 }))
+    }
+
+    fn this_scope_definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)>
+    {
+        self.scopes.iter().flat_map(|scope_node| scope_node.definitions.iter())
     }
 
     pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
-
         self.all_stacks()
-            .flat_map(|stack| stack.scopes.iter())
-            .flat_map(|scope_node| scope_node.definitions.iter())
+            .flat_map(|stack| stack.this_scope_definitions())
     }
 
     pub fn non_global_definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
 
         self.non_global_stacks()
-            .flat_map(|stack| stack.scopes.iter())
             .flat_map(|scope_node| scope_node.definitions.iter())
     }
 

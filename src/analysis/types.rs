@@ -11,6 +11,7 @@ pub trait Typed {
 }
 
 impl Typed for Variable {
+
     fn calculate_type(&self, context: &DefinitionScopeStack, prog_lifetime: Lifetime) -> Result<Type, CompileError> {
         Ok(prog_lifetime.cast(context
             .get(&self.identifier.unwrap_name())
@@ -34,13 +35,13 @@ impl Typed for Expression {
                             .return_type.map(|t| prog_lifetime.cast(t).borrow().clone());
 
                         return Ok(return_type.clone().unwrap());
-                    }
+                    },
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionAdd)
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionMul)
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryDiv)
                     | Identifier::BuiltIn(BuiltInIdentifier::FunctionUnaryNeg) => {
                         call.parameters[0].calculate_type(context, prog_lifetime)?.without_view()
-                    }
+                    },
                     Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex) => {
 
                         let array_type = call.parameters[0].calculate_type(context, prog_lifetime)?;

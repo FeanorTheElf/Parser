@@ -15,6 +15,7 @@ pub mod prelude;
 pub mod program;
 pub mod program_parallel_for;
 pub mod types;
+pub mod view;
 pub mod gwaihir_writer;
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 use super::super::analysis::scope::NameScopeStack;
 use super::super::language::prelude::*;
 use super::function_resolution::{find_function_definition, DefinedFunctions, FunctionDefinition};
+use super::renaming::*;
+use std::collections::HashSet;
 
 pub struct Extractor<F>
 where
@@ -45,6 +47,14 @@ where
     /// Returns a new local variable and inserts statements that initialize this variable with the result value of the
     /// given call to the given function into `previous_declaration_statements`. This is done recursivly on all parameters.
     /// If the call does not yield a result, only its parameters are modified (in this case, it is already "extracted")
+    /// 
+    /// Parameters:
+    /// - `function_call`: Call to extract 
+    /// - `function_definition`: Definition of the called function
+    /// - `rename_disjunct`: Closure that can rename identifiers in a way to be disjunct to all identifiers further up in the scope stack
+    /// - `previous_declaration_statements`: Vector to add all initialization statements to
+    /// - `prog_lifetime`: Dynamic lifetime description of the program data (as the type vector)+
+    /// - `new_definitions`: Insert here all names of newly created local variables  
     ///
 
     fn extract_function_call<'a, 'b, G>(
@@ -54,7 +64,8 @@ where
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        prog_lifetime: Lifetime
+        prog_lifetime: Lifetime,
+        new_definitions: &mut HashSet<Name>
     ) -> Expression
     where
         G: FnMut(Name) -> Name,
@@ -69,6 +80,7 @@ where
                 format!("result_{}", function_definition.identifier.name),
                 0,
             ));
+            new_definitions.insert(variable_name.clone());
 
             let declaration = LocalVariableDeclaration {
                 declaration: Declaration {
@@ -82,7 +94,8 @@ where
                         rename_disjunct,
                         defined_functions,
                         previous_declaration_statements,
-                        prog_lifetime
+                        prog_lifetime,
+                        new_definitions
                     ),
                 ))),
             };
@@ -100,7 +113,8 @@ where
                 rename_disjunct,
                 defined_functions,
                 previous_declaration_statements,
-                prog_lifetime
+                prog_lifetime,
+                new_definitions
             )));
         }
     }
@@ -111,7 +125,8 @@ where
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        prog_lifetime: Lifetime
+        prog_lifetime: Lifetime,
+        new_definitions: &mut HashSet<Name>
     ) -> FunctionCall
     where
         G: FnMut(Name) -> Name,
@@ -125,7 +140,8 @@ where
                 rename_disjunct,
                 defined_functions,
                 previous_declaration_statements,
-                prog_lifetime
+                prog_lifetime,
+                new_definitions
             )
         };
 
@@ -134,13 +150,26 @@ where
         return call;
     }
 
+    ///
+    /// Returns a new expression yielding the value of the given expression. However, if the expression is a function
+    /// call and should be extracted (the predicate returns true), the returned expression is just a local variable which
+    /// is declared earlier and assigned the correct value. This initialization statement is added to the given vector.
+    /// 
+    /// Parameters:
+    /// - `function_definition`: Definition of the called function
+    /// - `rename_disjunct`: Closure that can rename identifiers in a way to be disjunct to all identifiers further up in the scope stack
+    /// - `previous_declaration_statements`: Vector to add all initialization statements to
+    /// - `prog_lifetime`: Dynamic lifetime description of the program data (as the type vector)+
+    /// - `new_definitions`: Insert here all names of newly created local variables  
+    ///
     pub fn extract_expression_recursive<'a, 'b, G>(
         &mut self,
         expression: Expression,
         rename_disjunct: &'a mut G,
         defined_functions: &'b DefinedFunctions,
         previous_declaration_statements: &mut Vec<Box<dyn Statement>>,
-        prog_lifetime: Lifetime
+        prog_lifetime: Lifetime,
+        new_definitions: &mut HashSet<Name>
     ) -> Expression
     where
         G: FnMut(Name) -> Name,
@@ -160,24 +189,17 @@ where
                             rename_disjunct,
                             defined_functions,
                             previous_declaration_statements,
-                            prog_lifetime
+                            prog_lifetime,
+                            new_definitions
                         )
-                    }
-                    FunctionDefinition::UserDefined(_) => {
-                        Expression::Call(Box::new(self.extract_calls_in_parameters(
-                            *call,
-                            rename_disjunct,
-                            defined_functions,
-                            previous_declaration_statements,
-                            prog_lifetime
-                        )))
-                    }
+                    },
                     _ => Expression::Call(Box::new(self.extract_calls_in_parameters(
                         *call,
                         rename_disjunct,
                         defined_functions,
                         previous_declaration_statements,
-                        prog_lifetime
+                        prog_lifetime,
+                        new_definitions
                     ))),
                 }
             }
@@ -194,27 +216,22 @@ where
     ) -> Vec<ExtractionReport> {
 
         let scopes = parent_scopes.child_scope(block);
-
         let mut results = Vec::new();
-
         let mut result_statements: Vec<Box<dyn Statement>> = Vec::new();
-
         let mut rename_disjunct = scopes.rename_disjunct();
+        let mut new_definitions = HashSet::new();
 
         for mut statement in block.statements.drain(..) {
-
             let index_before = result_statements.len();
-
             for expression in statement.iter_mut() {
-
                 take_mut::take(expression, &mut |expr| {
-
                     self.extract_expression_recursive(
                         expr,
                         &mut rename_disjunct,
                         defined_functions,
                         &mut result_statements,
-                        prog_lifetime
+                        prog_lifetime,
+                        &mut new_definitions
                     )
                 });
             }
@@ -223,24 +240,27 @@ where
 
             // already allocate entries for the initialization of the extracted result variables
             for i in 0..(index_after - index_before) {
-
                 let init_block = Block {
                     pos: position::NONEXISTING,
                     statements: Vec::new(),
                 };
-
                 result_statements.push(Box::new(init_block));
-
                 results.push(ExtractionReport {
                     extracted_var_declaration_index: index_before + i,
                     extracted_var_value_assignment_index: index_after + i,
                 });
             }
-
             result_statements.push(statement);
         }
 
         block.statements = result_statements;
+
+        let child_scope_with_new_vars = parent_scopes.child_scope(block);
+        for statement in &mut block.statements {
+            for subblock in statement.iter_mut() {
+                fix_name_collisions(subblock, &child_scope_with_new_vars, &mut new_definitions, std::collections::HashMap::new());
+            }
+        }
 
         return results;
     }
@@ -313,10 +333,42 @@ fn test_extract_calls_in_program() {
     fn main(): int {
         let result_bar: int = bar(a,);
         let result_foo: int = foo(result_bar,);
-        if (result_bar) {
+        if (result_foo) {
             let result_foo#1: int = foo(a,);
             let result_bar#1: int = bar(result_foo#1,);
             return result_bar#1;
+        }
+    }
+    ")).unwrap();
+
+    assert_ast_eq!(expected, program);
+}
+
+#[test]
+fn test_extract_calls_new_var_name_collision_subscope() {
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn foo(a: int,): int native;
+
+    fn main(): int {
+        let x: int = foo(0,);
+        {
+            let result_foo: int = 1;
+        }
+    }
+    ")).unwrap();
+
+    Extractor::new(|_, _| true).extract_calls_in_program(program.work());
+
+    let expected = Program::parse(&mut lex_str("
+
+    fn foo(a: int,): int native;
+
+    fn main(): int {
+        let result_foo: int = foo(0,);
+        let x: int = result_foo;
+        {
+            let result_foo#1: int = 1;
         }
     }
     ")).unwrap();

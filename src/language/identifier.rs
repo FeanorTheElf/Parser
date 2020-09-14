@@ -68,6 +68,7 @@ pub enum BuiltInIdentifier {
     FunctionNeq,
     FunctionLs,
     FunctionGt,
+    ViewZeros,
 }
 
 impl BuiltInIdentifier {
@@ -87,6 +88,7 @@ impl BuiltInIdentifier {
             BuiltInIdentifier::FunctionNeq => "!=",
             BuiltInIdentifier::FunctionLs => "<",
             BuiltInIdentifier::FunctionGt => ">",
+            BuiltInIdentifier::ViewZeros => "zeros"
         }
     }
 

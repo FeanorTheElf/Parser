@@ -6,6 +6,7 @@ pub use super::position::TextPosition;
 pub use super::program::*;
 pub use super::program_parallel_for::*;
 pub use super::types::*;
+pub use super::view::*;
 pub use super::AstNode;
 
 pub use std::any::Any;
