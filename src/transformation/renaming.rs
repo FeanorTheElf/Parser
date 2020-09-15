@@ -43,25 +43,6 @@ fn rename_name<F>(name: &mut Name, rename_disjunct: &mut F, name_mappings: &mut 
     }
 }
 
-fn rename_in_expression<F>(expr: &mut Expression, rename_disjunct: &mut F, name_mappings: &mut NameMappingStack) 
-    where F: FnMut(Name) -> Name
-{
-    match expr {
-        Expression::Call(call) => {
-            rename_in_expression(&mut call.function, rename_disjunct, name_mappings);
-            for p in &mut call.parameters {
-                rename_in_expression(p, rename_disjunct, name_mappings);
-            }
-        },
-        Expression::Variable(var) => {
-            if let Identifier::Name(name) = &mut var.identifier {
-                rename_name(name, rename_disjunct, name_mappings);
-            }
-        },
-        Expression::Literal(_) => {}
-    };
-}
-
 fn rename_in_block(block: &mut Block, parent_scopes: &NameScopeStack, parent_name_mappings: &NameMappingStack)
 {
     let mut defs = HashSet::new();
@@ -72,20 +53,13 @@ fn rename_in_block(block: &mut Block, parent_scopes: &NameScopeStack, parent_nam
     };
     let mut rename_disjunct = parent_scopes.rename_disjunct();
     for statement in &mut block.statements {
-        for expression in statement.iter_mut() {
-            rename_in_expression(expression, &mut rename_disjunct, &mut child);
-        }
-        if let Some(declaration) = statement.dynamic_mut().downcast_mut::<LocalVariableDeclaration>() {
-            rename_name(&mut declaration.declaration.variable, &mut rename_disjunct, &mut child);
-        } else if let Some(goto) = statement.dynamic_mut().downcast_mut::<Goto>() {
-            rename_name(&mut goto.target, &mut rename_disjunct, &mut child);
-        } else if let Some(label) = statement.dynamic_mut().downcast_mut::<Label>() {
-            rename_name(&mut label.label, &mut rename_disjunct, &mut child);
+        for name in statement.names_mut() {
+            rename_name(name, &mut rename_disjunct, &mut child);
         }
     }
     let scopes = parent_scopes.child_scope(block);
     for statement in &mut block.statements {
-        for subblock in statement.iter_mut() {
+        for subblock in statement.subblocks_mut() {
             rename_in_block(subblock, &scopes, &mut child);
         }
     }

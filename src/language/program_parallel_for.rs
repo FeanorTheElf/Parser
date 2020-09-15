@@ -80,37 +80,39 @@ impl PartialEq for ArrayEntryAccess {
 
 impl Statement for ParallelFor {
     fn dyn_clone(&self) -> Box<dyn Statement> {
-
         Box::new(self.clone())
     }
-}
 
-impl<'a> LifetimeIterable<'a, Expression> for ParallelFor {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
+    fn subblocks<'a>(&'a self)-> Box<(dyn Iterator<Item = &'a Block> + 'a)> {
+        Box::new(std::iter::once(&self.body))
+    }
 
+    fn subblocks_mut<'a>(&'a mut self)-> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
+        Box::new(std::iter::once(&mut self.body))
+    }
+
+    fn expressions<'a>(&'a self)-> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(self.access_pattern.iter().map(|pattern| &pattern.array))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
-
+    fn expressions_mut<'a>(&'a mut self)-> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
         Box::new(
             self.access_pattern
                 .iter_mut()
                 .map(|pattern| &mut pattern.array),
         )
     }
-}
 
-impl<'a> LifetimeIterable<'a, Block> for ParallelFor {
-    fn iter(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)> {
-
-        Box::new(std::iter::once(&self.body))
+    fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
+        Box::new(self.index_variables.iter().map(|v| &v.variable)
+            .chain(self.access_pattern.iter().map(|pattern| &pattern.array).flat_map(|e| e.names())))
     }
 
-    fn iter_mut(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
-
-        Box::new(std::iter::once(&mut self.body))
+    fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
+        Box::new(self.index_variables.iter_mut().map(|v| &mut v.variable)
+            .chain(self.access_pattern.iter_mut().map(|pattern| &mut pattern.array).flat_map(|e| e.names_mut())))
     }
+    
 }
 
 pub const ACCESS_MATRIX_AFFINE_COLUMN: usize = 0;

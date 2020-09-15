@@ -223,7 +223,7 @@ where
 
         for mut statement in block.statements.drain(..) {
             let index_before = result_statements.len();
-            for expression in statement.iter_mut() {
+            for expression in statement.expressions_mut() {
                 take_mut::take(expression, &mut |expr| {
                     self.extract_expression_recursive(
                         expr,
@@ -257,7 +257,7 @@ where
 
         let child_scope_with_new_vars = parent_scopes.child_scope(block);
         for statement in &mut block.statements {
-            for subblock in statement.iter_mut() {
+            for subblock in statement.subblocks_mut() {
                 fix_name_collisions(subblock, &child_scope_with_new_vars, &mut new_definitions, std::collections::HashMap::new());
             }
         }
@@ -284,7 +284,7 @@ where
         }
         let child_scopes = parent_scopes.child_scope(block);
         for statement in &mut block.statements {
-            for mut subblock in statement.iter_mut() {
+            for mut subblock in statement.subblocks_mut() {
                 self.extract_calls_in_block(&mut subblock, &child_scopes, defined_functions, prog_lifetime);
             }
         }

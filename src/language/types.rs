@@ -83,6 +83,12 @@ pub enum PrimitiveType {
 
 pub trait ConcreteView : std::fmt::Debug + Any + DynEq + Dynamic {
     fn clone(&self) -> Box<dyn ConcreteView>;
+    ///
+    /// One or more alphanumeric characters that can be integrated e.g. into function names
+    /// during monomorphization (to distinguish between different instantiations of the same
+    /// function with different concrete views as parameter)
+    /// 
+    fn identifier(&self) -> String;
 }
 
 impl Clone for Box<dyn ConcreteView> {

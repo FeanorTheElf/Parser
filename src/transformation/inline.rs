@@ -64,7 +64,7 @@ where
         }
 
         for statement in &mut block.statements {
-            for subblock in statement.iter_mut() {
+            for subblock in statement.subblocks_mut() {
                 self.inline_calls_in_block(subblock, &scopes, defined_functions, prog_lifetime);
             }
         }
@@ -205,7 +205,7 @@ fn replace_return_in_inlined_function_body(
     return_label: &Name,
 ) {
     for statement in &mut block.statements {
-        for subblock in statement.iter_mut() {
+        for subblock in statement.subblocks_mut() {
             replace_return_in_inlined_function_body(
                 subblock,
                 result_variable_name,

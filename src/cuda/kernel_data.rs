@@ -220,9 +220,7 @@ where
     let this_scopes = scopes.child_scope(block);
 
     for statement in &block.statements {
-
-        for expr in statement.iter() {
-
+        for expr in statement.expressions() {
             set_called_from(expr, parent, functions, &this_scopes)?;
         }
 
@@ -252,7 +250,7 @@ where
             )?;
         } else {
 
-            for child_block in statement.iter() {
+            for child_block in statement.subblocks() {
 
                 collect_calls_and_kernels(
                     child_block,

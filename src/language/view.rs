@@ -9,6 +9,10 @@ impl ConcreteView for ReferenceView {
     fn clone(&self) -> Box<dyn ConcreteView> {
         Box::new(<ReferenceView as Clone>::clone(self))
     }
+
+    fn identifier(&self) -> String {
+        format!("r")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +24,10 @@ impl ConcreteView for ZeroView {
     fn clone(&self) -> Box<dyn ConcreteView> {
         Box::new(<ZeroView as Clone>::clone(self))
     }
+
+    fn identifier(&self) -> String {
+        format!("0")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,5 +38,9 @@ pub struct Template {
 impl ConcreteView for Template {
     fn clone(&self) -> Box<dyn ConcreteView> {
         Box::new(<Template as Clone>::clone(self))
+    }
+
+    fn identifier(&self) -> String {
+        format!("t")
     }
 }

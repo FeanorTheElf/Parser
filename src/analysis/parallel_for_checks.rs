@@ -24,12 +24,10 @@ where
     for statement in &block.statements {
 
         if let Some(pfor) = statement.dynamic().downcast_ref::<ParallelFor>() {
-
             f(pfor)?;
         }
 
-        for block in statement.iter() {
-
+        for block in statement.subblocks() {
             call_for_pfor_in_block(&block, f)?;
         }
     }
