@@ -114,10 +114,27 @@ pub enum Identifier {
 
 impl Identifier {
     pub fn unwrap_name(&self) -> &Name {
-
         match self {
             Identifier::BuiltIn(op) => panic!("Called unwrap_name() on builtin identifier {}", op),
             Identifier::Name(name) => name,
         }
+    }
+
+    pub fn unwrap_builtin(&self) -> &BuiltInIdentifier {
+        match self {
+            Identifier::BuiltIn(op) => op,
+            Identifier::Name(name) => panic!("Called unwrap_builtin() on name {}", name),
+        }
+    }
+
+    pub fn is_name(&self) -> bool {
+        match self {
+            Identifier::BuiltIn(_) => false,
+            Identifier::Name(_) => true
+        }
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        !self.is_name()
     }
 }

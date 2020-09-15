@@ -5,30 +5,33 @@ pub struct ReferenceView {
 
 }
 
-impl ConcreteView for ReferenceView {
-    fn clone(&self) -> Box<dyn ConcreteView> {
-        Box::new(<ReferenceView as Clone>::clone(self))
-    }
-
+impl ConcreteViewFuncs for ReferenceView {
     fn identifier(&self) -> String {
         format!("r")
     }
 }
+
+impl ConcreteView for ReferenceView {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZeroView {
 
 }
 
-impl ConcreteView for ZeroView {
-    fn clone(&self) -> Box<dyn ConcreteView> {
-        Box::new(<ZeroView as Clone>::clone(self))
+impl ZeroView {
+    pub fn new() -> ZeroView {
+        ZeroView { }
     }
+}
+
+impl ConcreteViewFuncs for ZeroView {
 
     fn identifier(&self) -> String {
         format!("0")
     }
 }
+
+impl ConcreteView for ZeroView {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Template {
@@ -43,12 +46,63 @@ impl Template {
     }
 }
 
-impl ConcreteView for Template {
-    fn clone(&self) -> Box<dyn ConcreteView> {
-        Box::new(<Template as Clone>::clone(self))
-    }
-
+impl ConcreteViewFuncs for Template {
     fn identifier(&self) -> String {
         format!("t{}", self.id)
+    }
+}
+
+impl ConcreteView for Template {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexView {
+    original_array_dims: usize
+}
+
+impl ConcreteViewFuncs for IndexView {
+    fn identifier(&self) -> String {
+        format!("i{}", self.original_array_dims)
+    }
+}
+
+impl ConcreteView for IndexView {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposedView {
+    chain: Vec<Box<dyn ConcreteView>>
+}
+
+impl ConcreteViewFuncs for ComposedView {
+
+    fn identifier(&self) -> String {
+        format!("c{}", self.chain.iter().fold(String::new(), |s, n| s + n.identifier().as_str()))
+    }
+}
+
+impl ConcreteView for ComposedView {}
+
+impl ComposedView {
+    pub fn compose<F, S>(first: F, second: S) -> ComposedView
+        where F: ConcreteView, S: ConcreteView
+    {
+        match (Box::new(first).dynamic_box().downcast_box::<ComposedView>(), Box::new(second).dynamic_box().downcast_box::<ComposedView>()) {
+            (Ok(mut first), Ok(mut second)) => {
+                first.chain.extend(second.chain.drain(..));
+                return *first;
+            },
+            (Ok(mut first), Err(second)) => {
+                first.chain.push(second);
+                return *first;
+            },
+            (Err(first), Ok(mut second)) => {
+                second.chain.insert(0, first);
+                return *second;
+            },
+            (Err(first), Err(second)) => {
+                return ComposedView {
+                    chain: vec![first, second]
+                };
+            }
+        };
     }
 }

@@ -1,6 +1,6 @@
 use super::error::*;
 use super::position::TextPosition;
-use super::super::util::dynamic::{DynEq, Dynamic};
+use super::super::util::dynamic::DynEq;
 use super::super::util::dyn_lifetime::*;
 use std::cell::{RefCell, Ref};
 use std::any::Any;
@@ -81,8 +81,9 @@ pub enum PrimitiveType {
     Int, Float
 }
 
-pub trait ConcreteView : std::fmt::Debug + Any + DynEq + Dynamic {
-    fn clone(&self) -> Box<dyn ConcreteView>;
+dynamic_trait!{ ConcreteView: ConcreteViewFuncs; ConcreteViewDynCastable }
+
+pub trait ConcreteViewFuncs : std::fmt::Debug + std::any::Any + DynEq {
     ///
     /// One or more alphanumeric characters that can be integrated e.g. into function names
     /// during monomorphization (to distinguish between different instantiations of the same
@@ -93,13 +94,13 @@ pub trait ConcreteView : std::fmt::Debug + Any + DynEq + Dynamic {
 
 impl Clone for Box<dyn ConcreteView> {
     fn clone(&self) -> Box<dyn ConcreteView> {
-        ConcreteView::clone(&**self)
+        self.dyn_clone()
     }
 }
 
 impl PartialEq for dyn ConcreteView {
     fn eq(&self, rhs: &dyn ConcreteView) -> bool {
-        self.dyn_eq(rhs.dynamic())
+        self.dyn_eq(rhs.any())
     }
 }
 

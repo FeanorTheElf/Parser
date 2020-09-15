@@ -1,9 +1,13 @@
 pub mod cmp;
+
+#[macro_use]
 pub mod dynamic;
 pub mod iterable;
 pub mod ref_eq;
 pub mod dyn_lifetime;
-#[macro_use] pub mod singleton;
+
+#[macro_use]
+pub mod singleton;
 
 #[allow(unused)]
 
