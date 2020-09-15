@@ -300,7 +300,9 @@ macro_rules! generate_grammar_rule_temporary_node
             type ParseOutputType = Self;
         }
 
-        impl AstNode for $result
+        impl AstNode for $result { }
+
+        impl AstNodeFuncs for $result
         {
             fn pos(&self) -> &TextPosition
             {
@@ -329,7 +331,9 @@ macro_rules! generate_grammar_rule_temporary_node
             type ParseOutputType = Self;
         }
 
-        impl AstNode for $result
+        impl AstNode for $result { }
+
+        impl AstNodeFuncs for $result
         {
             fn pos(&self) -> &TextPosition
             {
@@ -370,7 +374,9 @@ macro_rules! generate_grammar_rule_temporary_node
             }
         }
 
-        impl AstNode for $result
+        impl AstNode for $result {}
+
+        impl AstNodeFuncs for $result
         {
             fn pos(&self) -> &TextPosition
             {

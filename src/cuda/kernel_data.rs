@@ -224,7 +224,7 @@ where
             set_called_from(expr, parent, functions, &this_scopes)?;
         }
 
-        if let Some(pfor) = (**statement).dynamic().downcast_ref::<ParallelFor>() {
+        if let Some(pfor) = (**statement).any().downcast_ref::<ParallelFor>() {
 
             let mut kernel = KernelInfo {
                 pfor: pfor,

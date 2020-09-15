@@ -54,7 +54,7 @@ where
         {
             for extraction in &statement_indices_to_inline {
                 let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
-                    .dynamic_mut()
+                    .any_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
                     .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
 
@@ -212,7 +212,7 @@ fn replace_return_in_inlined_function_body(
                 return_label
             );
         }
-        if statement.dynamic().is::<Return>() {
+        if statement.any().is::<Return>() {
             take_mut::take(statement, |statement| {
                 transform_inlined_return_statement(statement, result_variable_name, return_label)
             });
@@ -226,7 +226,7 @@ fn transform_inlined_return_statement(
     return_label: &Name,
 ) -> Box<dyn Statement> {
 
-    let return_statement = statement.dynamic_box().downcast::<Return>().unwrap();
+    let return_statement = statement.any_box().downcast::<Return>().unwrap();
 
     let pos = return_statement.pos().clone();
 

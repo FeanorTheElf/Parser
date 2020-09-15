@@ -7,7 +7,7 @@ pub use super::program::*;
 pub use super::program_parallel_for::*;
 pub use super::types::*;
 pub use super::view::*;
-pub use super::AstNode;
+pub use super::{AstNode, AstNodeFuncs};
 
 pub use std::any::Any;
 pub use std::cell::{Ref, RefCell};

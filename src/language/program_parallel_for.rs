@@ -3,7 +3,7 @@ use super::error::*;
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
 use super::program::*;
-use super::AstNode;
+use super::{AstNode, AstNodeFuncs};
 use feanor_la::prelude::*;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
@@ -36,7 +36,9 @@ pub struct ParallelFor {
     pub body: Block,
 }
 
-impl AstNode for ParallelFor {
+impl AstNode for ParallelFor {}
+
+impl AstNodeFuncs for ParallelFor {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -50,7 +52,9 @@ impl PartialEq for ParallelFor {
     }
 }
 
-impl AstNode for ArrayAccessPattern {
+impl AstNode for ArrayAccessPattern {}
+
+impl AstNodeFuncs for ArrayAccessPattern {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -64,12 +68,13 @@ impl PartialEq for ArrayAccessPattern {
     }
 }
 
-impl AstNode for ArrayEntryAccess {
+impl AstNodeFuncs for ArrayEntryAccess {
     fn pos(&self) -> &TextPosition {
-
         &self.pos
     }
 }
+
+impl AstNode for ArrayEntryAccess {}
 
 impl PartialEq for ArrayEntryAccess {
     fn eq(&self, rhs: &ArrayEntryAccess) -> bool {
@@ -78,11 +83,10 @@ impl PartialEq for ArrayEntryAccess {
     }
 }
 
-impl Statement for ParallelFor {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for ParallelFor {}
 
+impl StatementFuncs for ParallelFor {
+    
     fn subblocks<'a>(&'a self)-> Box<(dyn Iterator<Item = &'a Block> + 'a)> {
         Box::new(std::iter::once(&self.body))
     }

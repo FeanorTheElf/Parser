@@ -2,7 +2,7 @@ use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
 use super::types::{Type, FunctionType, TypePtr, TypeVec};
-use super::AstNode;
+use super::{AstNode, AstNodeFuncs};
 
 use super::super::util::cmp::Comparing;
 use super::super::util::dyn_lifetime::*;
@@ -56,9 +56,7 @@ pub struct Block {
     pub statements: Vec<Box<dyn Statement>>,
 }
 
-pub trait Statement: AstNode {
-    fn dyn_clone(&self) -> Box<dyn Statement>;
-
+pub trait StatementFuncs: AstNode {
     ///
     /// Iterates over all blocks contained directly in this statement.
     /// 
@@ -122,9 +120,10 @@ pub trait Statement: AstNode {
     }
 }
 
+dynamic_subtrait_cloneable!{ Statement: StatementFuncs; StatementDynCastable }
+
 impl Clone for Box<dyn Statement> {
     fn clone(&self) -> Box<dyn Statement> {
-
         self.dyn_clone()
     }
 }
@@ -342,12 +341,13 @@ impl PartialEq<Identifier> for Expression {
     }
 }
 
-impl AstNode for Program {
+impl AstNodeFuncs for Program {
     fn pos(&self) -> &TextPosition {
-
         &BEGIN
     }
 }
+
+impl AstNode for Program {} 
 
 impl PartialEq for Program {
     fn eq(&self, rhs: &Program) -> bool {
@@ -368,9 +368,10 @@ impl PartialEq for Program {
     }
 }
 
-impl AstNode for Declaration {
-    fn pos(&self) -> &TextPosition {
+impl AstNode for Declaration {} 
 
+impl AstNodeFuncs for Declaration {
+    fn pos(&self) -> &TextPosition {
         &self.pos
     }
 }
@@ -382,7 +383,9 @@ impl PartialEq for Declaration {
     }
 }
 
-impl AstNode for Function {
+impl AstNode for Function {} 
+
+impl AstNodeFuncs for Function {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -399,7 +402,9 @@ impl PartialEq for Function {
     }
 }
 
-impl AstNode for Block {
+impl AstNode for Block {} 
+
+impl AstNodeFuncs for Block {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -408,21 +413,21 @@ impl AstNode for Block {
 
 impl PartialEq for Block {
     fn eq(&self, rhs: &Block) -> bool {
-
         self.statements == rhs.statements
     }
 }
 
 impl PartialEq for dyn Statement {
     fn eq(&self, rhs: &dyn Statement) -> bool {
-
-        self.dyn_eq(rhs.dynamic())
+        self.dyn_eq(rhs.any())
     }
 }
 
 impl Eq for dyn Statement {}
 
-impl AstNode for If {
+impl AstNode for If {} 
+
+impl AstNodeFuncs for If {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -436,7 +441,9 @@ impl PartialEq for If {
     }
 }
 
-impl AstNode for While {
+impl AstNode for While {} 
+
+impl AstNodeFuncs for While {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -450,7 +457,9 @@ impl PartialEq for While {
     }
 }
 
-impl AstNode for Assignment {
+impl AstNode for Assignment {} 
+
+impl AstNodeFuncs for Assignment {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -464,7 +473,9 @@ impl PartialEq for Assignment {
     }
 }
 
-impl AstNode for LocalVariableDeclaration {
+impl AstNode for LocalVariableDeclaration {} 
+
+impl AstNodeFuncs for LocalVariableDeclaration {
     fn pos(&self) -> &TextPosition {
 
         self.declaration.pos()
@@ -478,7 +489,9 @@ impl PartialEq for LocalVariableDeclaration {
     }
 }
 
-impl AstNode for Return {
+impl AstNode for Return {} 
+
+impl AstNodeFuncs for Return {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -492,7 +505,9 @@ impl PartialEq for Label {
     }
 }
 
-impl AstNode for Label {
+impl AstNode for Label {} 
+
+impl AstNodeFuncs for Label {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
@@ -513,18 +528,17 @@ impl PartialEq for Goto {
     }
 }
 
-impl AstNode for Goto {
+impl AstNode for Goto {} 
+
+impl AstNodeFuncs for Goto {
     fn pos(&self) -> &TextPosition {
 
         &self.pos
     }
 }
 
-impl Statement for Expression {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
-    
+impl StatementFuncs for Expression {
+
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::once(self))
     }
@@ -542,10 +556,9 @@ impl Statement for Expression {
     }
 }
 
-impl Statement for If {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for Expression {}
+
+impl StatementFuncs for If {
     
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::once(&self.condition))
@@ -564,10 +577,9 @@ impl Statement for If {
     }
 }
 
-impl Statement for While {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for If {}
+
+impl StatementFuncs for While {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::once(&self.condition))
@@ -586,10 +598,9 @@ impl Statement for While {
     }
 }
 
-impl Statement for Return {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for While {}
+
+impl StatementFuncs for Return {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         if let Some(ref val) = self.value {
@@ -616,10 +627,9 @@ impl Statement for Return {
     }
 }
 
-impl Statement for Block {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for Return {}
+
+impl StatementFuncs for Block {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::empty())
@@ -638,10 +648,9 @@ impl Statement for Block {
     }
 }
 
-impl Statement for LocalVariableDeclaration {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for Block {}
+
+impl StatementFuncs for LocalVariableDeclaration {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         if let Some(ref val) = self.value {
@@ -676,10 +685,9 @@ impl Statement for LocalVariableDeclaration {
     }
 }
 
-impl Statement for Assignment {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for LocalVariableDeclaration {}
+
+impl StatementFuncs for Assignment {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::once(&self.assignee).chain(std::iter::once(&self.value)))
@@ -698,10 +706,9 @@ impl Statement for Assignment {
     }
 }
 
-impl Statement for Label {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for Assignment {}
+
+impl StatementFuncs for Label {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::empty())
@@ -728,10 +735,9 @@ impl Statement for Label {
     }
 }
 
-impl Statement for Goto {
-    fn dyn_clone(&self) -> Box<dyn Statement> {
-        Box::new(self.clone())
-    }
+impl Statement for Label {}
+
+impl StatementFuncs for Goto {
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
         Box::new(std::iter::empty())
@@ -758,7 +764,11 @@ impl Statement for Goto {
     }
 }
 
-impl AstNode for Expression {
+impl Statement for Goto {}
+
+impl AstNode for Expression {} 
+
+impl AstNodeFuncs for Expression {
     fn pos(&self) -> &TextPosition {
         match self {
             Expression::Call(call) => call.pos(),
@@ -777,7 +787,9 @@ impl PartialEq<BuiltInIdentifier> for Expression {
     }
 }
 
-impl AstNode for FunctionCall {
+impl AstNode for FunctionCall {} 
+
+impl AstNodeFuncs for FunctionCall {
     fn pos(&self) -> &TextPosition {
         &self.pos
     }
@@ -795,7 +807,9 @@ impl PartialEq for Variable {
     }
 }
 
-impl AstNode for Variable {
+impl AstNode for Variable {} 
+
+impl AstNodeFuncs for Variable {
     fn pos(&self) -> &TextPosition {
         &self.pos
     }
@@ -807,7 +821,9 @@ impl PartialEq for Literal {
     }
 }
 
-impl AstNode for Literal {
+impl AstNode for Literal {} 
+
+impl AstNodeFuncs for Literal {
     fn pos(&self) -> &TextPosition {
         &self.pos
     }

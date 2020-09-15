@@ -52,11 +52,11 @@ impl<'a> Iterator for BlockDefinitionsIter<'a> {
 
         self.iter.find_map(|stmt| {
 
-            stmt.dynamic()
+            stmt.any()
                 .downcast_ref::<LocalVariableDeclaration>()
                 .map(|decl| &decl.declaration as &dyn SymbolDefinition)
                 .or(stmt
-                    .dynamic()
+                    .any()
                     .downcast_ref::<Label>()
                     .map(|decl| decl as &dyn SymbolDefinition))
         })

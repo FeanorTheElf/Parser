@@ -3,7 +3,6 @@ use super::position::TextPosition;
 use super::super::util::dynamic::DynEq;
 use super::super::util::dyn_lifetime::*;
 use std::cell::{RefCell, Ref};
-use std::any::Any;
 
 pub type TypePtr = DynRef<RefCell<Type>>;
 
@@ -81,7 +80,7 @@ pub enum PrimitiveType {
     Int, Float
 }
 
-dynamic_trait!{ ConcreteView: ConcreteViewFuncs; ConcreteViewDynCastable }
+dynamic_trait_cloneable!{ ConcreteView: ConcreteViewFuncs; ConcreteViewDynCastable }
 
 pub trait ConcreteViewFuncs : std::fmt::Debug + std::any::Any + DynEq {
     ///

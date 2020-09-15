@@ -1,12 +1,14 @@
 pub mod position;
 
-use super::util::dynamic::{DynEq, Dynamic};
+use super::util::dynamic::DynEq;
 use position::TextPosition;
 use std::any::Any;
 
-pub trait AstNode: std::fmt::Debug + Any + DynEq + Dynamic {
+pub trait AstNodeFuncs: std::fmt::Debug + Any + DynEq {
     fn pos(&self) -> &TextPosition;
 }
+
+dynamic_trait!{ AstNode: AstNodeFuncs; AstNodeDynCastable }
 
 pub mod compiler;
 pub mod error;

@@ -437,24 +437,24 @@ pub fn gen_block<'stack, 'ast: 'stack>(
 
     for statement in &block.statements {
 
-        if let Some(expr) = statement.dynamic().downcast_ref::<Expression>() {
+        if let Some(expr) = statement.any().downcast_ref::<Expression>() {
 
             result_statements
                 .push(Box::new(gen_expression(expr, context)?) as Box<dyn CudaStatement>);
-        } else if let Some(if_statement) = statement.dynamic().downcast_ref::<If>() {
+        } else if let Some(if_statement) = statement.any().downcast_ref::<If>() {
 
             result_statements.push(gen_if(if_statement, context)?);
-        } else if let Some(while_statement) = statement.dynamic().downcast_ref::<While>() {
+        } else if let Some(while_statement) = statement.any().downcast_ref::<While>() {
 
             result_statements.push(gen_while(while_statement, context)?);
-        } else if let Some(return_statement) = statement.dynamic().downcast_ref::<Return>() {
+        } else if let Some(return_statement) = statement.any().downcast_ref::<Return>() {
 
             result_statements.push(gen_return(return_statement, context)?);
-        } else if let Some(block) = statement.dynamic().downcast_ref::<Block>() {
+        } else if let Some(block) = statement.any().downcast_ref::<Block>() {
 
             result_statements.push(Box::new(gen_block(block, context)?));
         } else if let Some(declaration) = statement
-            .dynamic()
+            .any()
             .downcast_ref::<LocalVariableDeclaration>()
         {
 
@@ -462,16 +462,16 @@ pub fn gen_block<'stack, 'ast: 'stack>(
 
                 result_statements.push(v?);
             }
-        } else if let Some(assignment) = statement.dynamic().downcast_ref::<Assignment>() {
+        } else if let Some(assignment) = statement.any().downcast_ref::<Assignment>() {
 
             result_statements.push(gen_assignment(assignment, context)?);
-        } else if let Some(label) = statement.dynamic().downcast_ref::<Label>() {
+        } else if let Some(label) = statement.any().downcast_ref::<Label>() {
 
             result_statements.push(gen_label(label, context)?);
-        } else if let Some(goto) = statement.dynamic().downcast_ref::<Goto>() {
+        } else if let Some(goto) = statement.any().downcast_ref::<Goto>() {
 
             result_statements.push(gen_goto(goto, context)?);
-        } else if let Some(pfor) = statement.dynamic().downcast_ref::<ParallelFor>() {
+        } else if let Some(pfor) = statement.any().downcast_ref::<ParallelFor>() {
 
             let pfor_data = context.get_pfor_data(pfor);
 

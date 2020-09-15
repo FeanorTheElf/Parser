@@ -334,7 +334,6 @@ impl
 
 impl Build<LocalVariableDeclaration> for dyn Statement {
     fn build(_pos: TextPosition, _types: &mut TypeVec, param: LocalVariableDeclaration) -> Self::ParseOutputType {
-
         Box::new(param)
     }
 }
@@ -888,7 +887,7 @@ fn test_parser() {
     }), *ast.types.get_lifetime().cast(ast.items[0].function_type).borrow());
 
     let pfor = ast.items[0].body.as_ref().unwrap().statements[0]
-        .dynamic()
+        .any()
         .downcast_ref::<ParallelFor>()
         .unwrap();
 
@@ -901,7 +900,7 @@ fn test_parser() {
     }), *ast.types.get_lifetime().cast(index_var.variable_type).borrow());
 
     let assignment = pfor.body.statements[0]
-        .dynamic()
+        .any()
         .downcast_ref::<Assignment>()
         .unwrap();
 

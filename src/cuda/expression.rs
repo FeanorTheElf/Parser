@@ -1008,7 +1008,7 @@ fn test_gen_assignment_var_to_var() {
 
     let assignment = Statement::parse(&mut fragment_lex("a = b;"), environment.types())
         .unwrap()
-        .dynamic_box()
+        .any_box()
         .downcast::<Assignment>()
         .unwrap();
 
@@ -1033,7 +1033,7 @@ fn test_gen_assignment_array_view_to_array() {
 
     let assignment = Statement::parse(&mut fragment_lex("a = b;"), environment.types())
         .unwrap()
-        .dynamic_box()
+        .any_box()
         .downcast::<Assignment>()
         .unwrap();
 
@@ -1061,7 +1061,7 @@ fn test_gen_assignment_call_result_to_array_view() {
 
     let assignment = Statement::parse(&mut fragment_lex("b = foo(a, c,);"), environment.types())
         .unwrap()
-        .dynamic_box()
+        .any_box()
         .downcast::<Assignment>()
         .unwrap();
 
