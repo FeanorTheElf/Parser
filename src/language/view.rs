@@ -32,7 +32,15 @@ impl ConcreteView for ZeroView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Template {
+    id: usize
+}
 
+impl Template {
+    pub fn new(id: usize) -> Template {
+        Template {
+            id: id
+        }
+    }
 }
 
 impl ConcreteView for Template {
@@ -41,6 +49,6 @@ impl ConcreteView for Template {
     }
 
     fn identifier(&self) -> String {
-        format!("t")
+        format!("t{}", self.id)
     }
 }

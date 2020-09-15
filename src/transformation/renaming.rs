@@ -73,9 +73,7 @@ fn rename_in_block(block: &mut Block, parent_scopes: &NameScopeStack, parent_nam
 /// 
 pub fn fix_name_collisions(block: &mut Block, parent_scopes: &NameScopeStack, new_defs: &mut HashSet<Name>, rename_mapping: HashMap<Name, Name>) {
     debug_assert!(rename_mapping.values().all(|k| new_defs.contains(k)));
-    println!("{:?}", parent_scopes);
     for d in new_defs.iter() {
-        println!("{:?}", d);
         assert!(parent_scopes.get(d).is_some());
     }
     let name_mappings = NameMappingStack {

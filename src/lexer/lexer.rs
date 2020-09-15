@@ -188,16 +188,10 @@ pub fn lex_str(string: &str) -> Stream {
     lex(string.chars())
 }
 
-#[cfg(test)]
-
 pub fn fragment_lex(input: &str) -> Stream {
-
     let mut result = lex_str(input);
-
     result.data.remove(0);
-
     result.data.pop();
-
     return result;
 }
 
