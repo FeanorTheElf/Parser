@@ -27,8 +27,7 @@ impl<T: std::any::Any> Dynamic for T {
 
 macro_rules! dynamic_trait_cloneable {
     ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
-        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait {
-        }
+        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait { }
 
         impl dyn $name {
             pub fn downcast_box<T: $name>(self: Box<Self>) -> Result<Box<T>, Box<dyn $name>> {
@@ -72,8 +71,7 @@ macro_rules! dynamic_trait_cloneable {
 
 macro_rules! dynamic_subtrait_cloneable {
     ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
-        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait {
-        }
+        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait { }
 
         impl dyn $name {
             pub fn downcast_box<T: $name>(self: Box<Self>) -> Result<Box<T>, Box<dyn $name>> {
@@ -111,8 +109,7 @@ macro_rules! dynamic_subtrait_cloneable {
 
 macro_rules! dynamic_trait {
     ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
-        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait {
-        }
+        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait { }
 
         impl dyn $name {
             pub fn downcast_box<T: $name>(self: Box<Self>) -> Result<Box<T>, Box<dyn $name>> {

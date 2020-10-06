@@ -64,9 +64,9 @@ pub fn gen_localvardef<'a, 'stack, 'ast: 'stack + 'a>(
 ) -> Box<dyn 'a + Iterator<Item = Result<Box<dyn CudaStatement>, OutputError>>> {
 
     let ast_lifetime = context.ast_lifetime();
-    if is_mul_var_type(&*ast_lifetime.cast(statement.declaration.variable_type).borrow()) {
+    if is_mul_var_type(ast_lifetime.cast(statement.declaration.variable_type)) {
 
-        let variable_type = ast_lifetime.cast(statement.declaration.variable_type).borrow();
+        let variable_type = ast_lifetime.cast(statement.declaration.variable_type);
         let declarations = gen_variables(
             statement.pos(),
             &statement.declaration.variable,
@@ -112,7 +112,7 @@ pub fn gen_localvardef<'a, 'stack, 'ast: 'stack + 'a>(
                 let (ty, var) = one_variable(gen_variables(
                     statement.pos(),
                     &statement.declaration.variable,
-                    &*context.ast_lifetime().cast(statement.declaration.variable_type).borrow(),
+                    &*context.ast_lifetime().cast(statement.declaration.variable_type),
                 ));
 
                 Box::new(CudaVarDeclaration {

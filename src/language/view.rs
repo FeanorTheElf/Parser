@@ -68,6 +68,24 @@ impl ConcreteViewFuncs for IndexView {
 impl ConcreteView for IndexView {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompleteIndexView {
+}
+
+impl CompleteIndexView {
+    pub fn new() -> Self {
+        CompleteIndexView { }
+    }
+}
+
+impl ConcreteViewFuncs for CompleteIndexView {
+    fn identifier(&self) -> String {
+        format!("i")
+    }
+}
+
+impl ConcreteView for CompleteIndexView {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposedView {
     chain: Vec<Box<dyn ConcreteView>>
 }
@@ -82,10 +100,10 @@ impl ConcreteViewFuncs for ComposedView {
 impl ConcreteView for ComposedView {}
 
 impl ComposedView {
-    pub fn compose<F, S>(first: F, second: S) -> ComposedView
+    pub fn compose<F: ?Sized, S: ?Sized>(first: Box<F>, second: Box<S>) -> ComposedView
         where F: ConcreteView, S: ConcreteView
     {
-        match (Box::new(first).dynamic_box().downcast_box::<ComposedView>(), Box::new(second).dynamic_box().downcast_box::<ComposedView>()) {
+        match (first.dynamic_box().downcast_box::<ComposedView>(), second.dynamic_box().downcast_box::<ComposedView>()) {
             (Ok(mut first), Ok(mut second)) => {
                 first.chain.extend(second.chain.drain(..));
                 return *first;

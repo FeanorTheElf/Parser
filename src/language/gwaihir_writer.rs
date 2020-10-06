@@ -206,7 +206,7 @@ impl AstWriter for Block {
 
 impl AstWriter for LocalVariableDeclaration {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "let {}: {}", self.declaration.variable, prog_lifetime.cast(self.declaration.variable_type).borrow())?;
+        write!(out, "let {}: {}", self.declaration.variable, prog_lifetime.cast(self.declaration.variable_type))?;
         if let Some(val) = &self.value {
             write!(out, " = ")?;
             write_expression(val, i32::MIN, out)?;
@@ -243,7 +243,7 @@ impl AstWriter for Function {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "fn {}(", self.identifier)?;
         for param in &self.params {
-            write!(out, "{}: {}, ", param.variable, prog_lifetime.cast(param.variable_type).borrow())?;
+            write!(out, "{}: {}, ", param.variable, prog_lifetime.cast(param.variable_type))?;
         }
         write!(out, ")")?;
         if let Some(return_type) = &self.get_type(prog_lifetime).return_type(prog_lifetime) {

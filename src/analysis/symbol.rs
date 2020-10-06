@@ -52,7 +52,7 @@ impl SymbolDefinition for Name {
 }
 
 #[cfg(test)]
-impl SymbolDefinition for (Name, DynRef<std::cell::RefCell<Type>>) {
+impl SymbolDefinition for (Name, TypePtr) {
     fn get_name(&self) -> &Name {
         &self.0
     }

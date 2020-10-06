@@ -51,8 +51,8 @@ impl<'data, 'ast: 'data> dyn CudaContext<'data, 'ast> + '_ {
             .exit()
     }
 
-    pub fn calculate_var_type<'a>(&'a self, variable: &'a Name, pos: &'a TextPosition) -> Ref<'a, Type> {
-        self.ast_lifetime().cast(self.get_scopes().get_defined(variable, pos).unwrap().get_type()).borrow()
+    pub fn calculate_var_type<'a>(&'a self, variable: &'a Name, pos: &'a TextPosition) -> &'a Type {
+        self.ast_lifetime().cast(self.get_scopes().get_defined(variable, pos).unwrap().get_type())
     }
 }
 

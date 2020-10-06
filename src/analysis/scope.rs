@@ -143,7 +143,6 @@ impl<T> ScopeNode<T> {
         &'c S: EnumerateDefinitions<'a>,
         T: From<&'a dyn SymbolDefinition>,
     {
-
         let defs = scope
             .enumerate()
             .map(|def| (def.get_name().clone(), T::from(def)))
@@ -181,7 +180,6 @@ impl<'a, T> ScopeStack<'a, T> {
     where
         T: From<&'b dyn SymbolDefinition>,
     {
-
         ScopeStack {
             parent: None,
             scopes: vec![ScopeNode::create(global)],
@@ -314,5 +312,23 @@ impl<'a, T> ScopeStack<'a, T> {
                 ErrorType::UndefinedSymbol,
             )
         })
+    }
+}
+
+impl<'a, 'b> ScopeStack<'a, &'b Function> {
+    
+    pub fn global_scope(global: &'b [Box<Function>]) -> ScopeStack<'a, &'b Function> {
+        
+        let defs = global
+            .iter()
+            .map(|def| (def.get_name().clone(), &**def))
+            .collect();
+
+        ScopeStack {
+            parent: None,
+            scopes: vec![ScopeNode {
+                definitions: defs
+            }],
+        }
     }
 }

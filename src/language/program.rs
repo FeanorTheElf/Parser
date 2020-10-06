@@ -7,7 +7,7 @@ use super::{AstNode, AstNodeFuncs};
 use super::super::util::cmp::Comparing;
 use super::super::util::dyn_lifetime::*;
 
-use std::cell::Ref;
+use std::cell::Cell;
 
 #[derive(Debug)]
 pub struct Program {
@@ -42,11 +42,15 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn get_type<'a, 'b: 'a>(&'a self, prog_lifetime: Lifetime<'b>) -> Ref<'a, FunctionType> {
-        Ref::map(prog_lifetime.cast(self.function_type).borrow(), |f| match f {
+    pub fn get_type<'a, 'b: 'a>(&'a self, prog_lifetime: Lifetime<'b>) -> &'a FunctionType {
+        match prog_lifetime.cast(self.function_type) {
             Type::Function(func) => func,
             ty => panic!("Function definition has type {}", ty)
-        })
+        }
+    }
+
+    pub fn statements<'a>(&'a self) -> impl Iterator<Item = &'a dyn Statement> {
+        (&self.body).into_iter().flat_map(|body| body.statements.iter()).map(|s| &**s)
     }
 }
 
@@ -194,6 +198,7 @@ pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
     pub parameters: Vec<Expression>,
+    pub result_type: Cell<Option<TypePtr>>
 }
 
 #[derive(Debug, Eq, Clone)]

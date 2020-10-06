@@ -23,6 +23,7 @@ pub enum ErrorType {
     ViewReturnType,
     ArrayParameterByValue,
     RValueAssignment,
+    Recursion
 }
 
 #[derive(Debug, Clone)]

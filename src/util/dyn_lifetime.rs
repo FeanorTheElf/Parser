@@ -6,6 +6,8 @@ use std::iter::FromIterator;
 ///
 /// Object representing the dynamic lifetime of a concrete container with static lifetime at least 'a.
 /// 
+/// # Details
+/// 
 /// In other words, containers that allow dynamic lifetime references have a dynamic lifetime, represented by an
 /// object of this type, where the lifetime parameter is at least the lifetime of the container. Therefore, each
 /// reference with this dynamic lifetime is valid for at least lifetime 'a.
@@ -19,16 +21,62 @@ pub struct Lifetime<'a> {
     phantom: PhantomData<&'a ()>
 }
 
+///
+/// Object representing the dynamic lifetime of a concrete container with static lifetime at least 'a.
+/// 
+/// # Details
+/// 
+/// See Lifetime<'a>
+/// 
+/// An instance of this object can also be thought of a proof that references with a certain lifetime id are
+/// valid for 'a and that during that time, no other references on the target container exist.
+/// 
+// LifetimeMut must not be cloneable, as it would allow generating multiple mutable references
+// to the same target. It must therefore be ensured by each container, that it cannot generate
+// more than one LifetimeMut.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LifetimeMut<'a> {
+    lifetime: Lifetime<'a>
+}
+
 impl<'a> Lifetime<'a> {
     pub fn lifetime_cast<T: ?Sized>(self, r: DynRef<T>) -> Option<&'a T> {
-        if r.id != self.lifetime_id && r.id != STATIC_LIFETIME.lifetime_id {
+        if !self.is_valid(r) {
             return None;
         }
         return Some(unsafe { r.target.as_ref() }.unwrap());
     }
 
+    pub fn is_valid<T: ?Sized>(self, r: DynRef<T>) -> bool {
+        r.id == self.lifetime_id || r.id == STATIC_LIFETIME.lifetime_id
+    }
+
     pub fn cast<T: ?Sized>(self, r: DynRef<T>) -> &'a T {
         self.lifetime_cast(r).unwrap()
+    }
+}
+
+impl<'a> LifetimeMut<'a> {
+    pub fn lifetime_cast<'b, T: ?Sized>(&'b mut self, r: DynRef<T>) -> Option<&'b mut T> {
+        if !self.lifetime.is_valid(r) {
+            return None;
+        }
+        return Some(unsafe { r.target.as_mut() }.unwrap());
+    }
+
+    pub fn cast<'b, T: ?Sized>(&'b mut self, r: DynRef<T>) -> &'b mut T {
+        self.lifetime_cast(r).unwrap()
+    }
+    
+    pub fn lifetime_cast_consume<T: ?Sized>(mut self, r: DynRef<T>) -> Option<&'a mut T> {
+        if !self.lifetime.is_valid(r) {
+            return None;
+        }
+        return Some(unsafe { r.target.as_mut() }.unwrap());
+    }
+
+    pub fn cast_consume<T: ?Sized>(mut self, r: DynRef<T>) -> &'a mut T {
+        self.lifetime_cast_consume(r).unwrap()
     }
 }
 
@@ -40,7 +88,7 @@ impl<'a> Lifetime<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct DynRef<T: ?Sized> {
     id: u32,
-    target: *const T
+    target: *mut T
 }
 
 impl<T: ?Sized> Clone for DynRef<T> {
@@ -54,7 +102,9 @@ impl<T: ?Sized> DynRef<T> {
     ///
     /// Returns the target of this reference, as raw pointer.
     /// 
-    /// Safety: The only assumption that may be made on the result ptr is
+    /// # Safety
+    /// 
+    /// The only assumption that may be made on the result ptr is
     /// that it is not null. Apart from this, when dereferencing, the caller must
     /// ensure that the object pointed to has not been dropped and that there
     /// is no mutable reference on the target object at the same time.
@@ -70,7 +120,10 @@ impl<T: ?Sized> DynRef<T> {
     pub fn from_static(data: &'static T) -> DynRef<T> {
         DynRef {
             id: STATIC_LIFETIME.lifetime_id,
-            target: data
+            // There will never be a LifetimeMut<'static> object, so the fact that
+            // still immutable references on *data can exist is no problem, as through
+            // DynRef, no mutable reference can be got
+            target: data as *const T as *mut T
         }
     }
 }
@@ -98,7 +151,11 @@ impl DynRefTargetData {
 
     ///
     /// Creates a new DynRefTargetData object with a new, program-wide unique
-    /// lifetime id. If more than u32::MAX lifetime ids are queried while the program
+    /// lifetime id.
+    /// 
+    /// # Panics
+    /// 
+    /// If more than u32::MAX lifetime ids are queried while the program
     /// is running, the lifetime identifier length is not sufficient anymore to 
     /// uniquely describe each lifetime, and in this case, this function will terminate
     /// the program.
@@ -117,7 +174,9 @@ impl DynRefTargetData {
     /// Returns the lifetime object describing the lifetime of the entries in this container
     /// and can be used to access dynamic references with this lifetime.
     /// 
-    /// Safety: This function must not be called anymore after the target object of any reference passed 
+    /// # Safety
+    /// 
+    /// This function must not be called anymore after the target object of any reference passed 
     /// to get_ref() is invalidated. In particular, it is safe if self is dropped before any of these
     /// targets become invalid.
     /// 
@@ -126,14 +185,32 @@ impl DynRefTargetData {
     }
 
     ///
+    /// Returns the lifetime object describing the lifetime of the entries in this container
+    /// and can be used to access dynamic references with this lifetime.
+    /// 
+    /// # Safety
+    /// 
+    /// This function must not be called anymore after the target object of any reference passed 
+    /// to get_ref() is invalidated. In particular, it is safe if self is dropped before any of these
+    /// targets become invalid.
+    /// 
+    pub unsafe fn get_lifetime_mut<'a>(&'a mut self) -> LifetimeMut<'a> {
+        LifetimeMut { lifetime: self.get_lifetime() }
+    }
+
+    ///
     /// Returns a dynamic reference for a given reference to an object in the container.
     /// 
-    /// Safety: The target of the given reference must be valid until the last call of get_lifetime()
+    /// # Safety
+    /// 
+    /// The target of the given reference must be valid until the last call of get_lifetime()
     /// on self. In particular, it is safe if self is dropped (potentially replaced) before the target 
-    /// is invalidated.
+    /// is invalidated. Note that if your container provides access to matching LifetimeMut objects,
+    /// this can be used to change the target of data, even though this function accepts an immutable 
+    /// reference.
     /// 
     pub unsafe fn get_ref<T: ?Sized>(&self, data: &T) -> DynRef<T> {
-        DynRef { id: self.lifetime_id, target: data as *const T }
+        DynRef { id: self.lifetime_id, target: data as *const T as *mut T }
     }
 }
 
@@ -165,8 +242,6 @@ impl<T: ?Sized> DynRefVec<T> {
     /// This function clears the old lifetime of this container and assigns a new one. Call this whenever
     /// a dynamic reference to this container might be invalidated by an operation (i.e. whenever an entry
     /// is removed).
-    /// 
-    /// Details on how this works: To access a dynamic lifetime
     /// 
     fn new_lifetime(&mut self) {
         self.ref_target = DynRefTargetData::new();
@@ -202,6 +277,10 @@ impl<T: ?Sized> DynRefVec<T> {
 
     pub fn get_lifetime<'a>(&'a self) -> Lifetime<'a> {
         unsafe { self.ref_target.get_lifetime() }
+    }
+
+    pub fn get_lifetime_mut<'a>(&'a mut self) -> LifetimeMut<'a> {
+        unsafe { self.ref_target.get_lifetime_mut() }
     }
 
     pub fn drain<'b, R: std::ops::RangeBounds<usize>>(&'b mut self, r: R) -> std::vec::Drain<'b, Box<T>> {

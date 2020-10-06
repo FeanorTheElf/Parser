@@ -9,28 +9,22 @@ fn parent_type(a: PrimitiveType, b: PrimitiveType) -> PrimitiveType
     }
 }
 
-fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_types: I, prog_lifetime: Lifetime) -> Type 
-    where I: Iterator<Item = (Type, &'a TextPosition)>
+fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, types: &mut TypeVec, mut param_types: I) -> TypePtr
+    where I: Iterator, I::Item: FnOnce(&mut TypeVec) -> (TypePtr, &'a TextPosition)
 {
-    let primitive = |p: PrimitiveType| Type::Array(ArrayType {
-        base: p,
-        dimension: 0,
-        mutable: false
-    });
     match op {
         BuiltInIdentifier::ViewZeros => {
             let dimension_count = param_types.count();
-            Type::View(ViewType {
-                base: ArrayType {
-                    base: PrimitiveType::Int,
-                    dimension: dimension_count,
-                    mutable: false
-                },
-                concrete: Some(Box::new(ZeroView::new()))
-            })
+            types.get_view_type(PrimitiveType::Int, dimension_count, false, Box::new(ZeroView::new()))
         },
-        BuiltInIdentifier::FunctionAdd => {
-            primitive(param_types.map(|(t, pos)| t.expect_array(pos).internal_error().base).fold(PrimitiveType::Int, &parent_type))
+        BuiltInIdentifier::FunctionAdd |
+            BuiltInIdentifier::FunctionMul => 
+        {
+            let base_type = param_types.map(|param| {
+                let (ty, pos) = param(types);
+                types.get_lifetime().cast(ty).expect_array(pos).internal_error().base
+            }).fold(PrimitiveType::Int, &parent_type);
+            types.get_array_type(base_type, 0, false)
         },
         BuiltInIdentifier::FunctionAnd |
             BuiltInIdentifier::FunctionOr |
@@ -39,47 +33,57 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             BuiltInIdentifier::FunctionLeq |
             BuiltInIdentifier::FunctionNeq |
             BuiltInIdentifier::FunctionLs |
-            BuiltInIdentifier::FunctionGt => primitive(PrimitiveType::Int),
+            BuiltInIdentifier::FunctionGt => types.get_array_type(PrimitiveType::Int, 0, false),
         BuiltInIdentifier::FunctionIndex => {
-            let (array_type, pos) = param_types.next().unwrap();
-            match array_type {
+            let (array_type, _pos) = param_types.next().unwrap()(types);
+            match types.get_lifetime().cast(array_type).clone() {
+                Type::View(view) => types.get_view_type(
+                    view.base.base, 
+                    0, 
+                    view.base.mutable, 
+                    Box::new(ComposedView::compose(Box::new(CompleteIndexView::new()), view.concrete.unwrap()))
+                ),
+                Type::Array(arr) => types.get_view_type(
+                    arr.base, 
+                    0, 
+                    arr.mutable, 
+                    Box::new(CompleteIndexView::new())
+                ),
                 _ => unimplemented!()
-            };
-            unimplemented!()
+            }
         },
-        _ => unimplemented!()
+        BuiltInIdentifier::FunctionUnaryDiv |
+            BuiltInIdentifier::FunctionUnaryNeg => param_types.next().unwrap()(types).0
     }
 }
 
-fn calculate_type(expr: &Expression, scopes: &DefinitionScopeStack, prog_lifetime: Lifetime) -> Type {
+fn calculate_type(expr: &Expression, scopes: &DefinitionScopeStack, types: &mut TypeVec) -> TypePtr {
     match expr {
-        Expression::Call(call) => match &call.function {
-            Expression::Variable(var) if var.identifier.is_builtin() => calculate_builtin_call_result_type(
-                *var.identifier.unwrap_builtin(), 
-                call.parameters.iter().map(|p| (calculate_type(p, scopes, prog_lifetime), p.pos())), 
-                prog_lifetime
-            ),
-            func => calculate_type(func, scopes, prog_lifetime).expect_callable(func.pos()).internal_error().return_type(prog_lifetime).unwrap().clone()
+        Expression::Call(call) => {
+            if let Some(ty) = call.result_type.get() {
+                return ty;
+            } else if let Expression::Variable(var) = &call.function {
+                if let Identifier::BuiltIn(op) = &var.identifier {
+                    let parameter_types = call.parameters.iter().map(|p| move |types: &mut TypeVec| (calculate_type(p, scopes, types), p.pos()));
+                    let ty = calculate_builtin_call_result_type(*op, types, parameter_types);
+                    call.result_type.set(Some(ty));
+                    return ty;
+                }
+            }
+            let function_type_ptr = calculate_type(&call.function, scopes, types);
+            let function_type = types.get_lifetime().cast(function_type_ptr).expect_callable(call.pos()).internal_error();
+            let result_type = *function_type.return_type.as_ref().unwrap();
+            debug_assert!(!types.get_lifetime().cast(result_type).is_view());
+            return result_type;
         },
         Expression::Variable(var) => match &var.identifier {
-            Identifier::Name(name) => prog_lifetime.cast(scopes.get_defined(name, var.pos()).internal_error().get_type()).borrow().clone(),
+            Identifier::Name(name) => scopes.get_defined(name, var.pos()).internal_error().get_type(),
             Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {}, but builtin identifiers can have different types depending on context", op)
         },
-        Expression::Literal(_) => Type::Array(ArrayType {
-            base: PrimitiveType::Int,
-            dimension: 0,
-            mutable: false
-        })
+        Expression::Literal(_) => types.get_array_type(PrimitiveType::Int, 0, false)
     }
 }
 
-fn fill_concrete_view_declaration(decl: &LocalVariableDeclaration, scopes: &DefinitionScopeStack, prog_lifetime: Lifetime) {
-    let mut type_ptr = prog_lifetime.cast(decl.declaration.variable_type).borrow_mut();
-    if let Type::View(view) = &mut *type_ptr {
-
-    }
-}
-
-pub fn fill_concrete_views(func: &Function) {
+pub fn fill_concrete_views(func: &Function, types: &mut TypeVec) {
     
 }

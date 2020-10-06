@@ -29,7 +29,7 @@ impl EnvironmentBuilder {
     }
 
     pub fn add_view_def(mut self, name: &str, base: PrimitiveType, dimension_count: usize) -> Self {
-        let ty = self.types.get_view_type(base, dimension_count, true);
+        let ty = self.types.get_generic_view_type(base, dimension_count, true);
         self.defs.defs.push(Box::new((Name::l(name), ty)));
         return self;
     }
@@ -85,7 +85,7 @@ impl Definitions {
 
 pub struct FunctionDefBuilder {
     function_name: Name,
-    params: Vec<DynRef<RefCell<Type>>>,
+    params: Vec<TypePtr>,
     parent_defs: EnvironmentBuilder
 }
 
@@ -96,7 +96,7 @@ impl FunctionDefBuilder {
     }
 
     pub fn add_view_param(mut self, base: PrimitiveType, dimension_count: usize) -> Self {
-        self.params.push(self.parent_defs.types.get_view_type(base, dimension_count, true));
+        self.params.push(self.parent_defs.types.get_generic_view_type(base, dimension_count, true));
         return self;
     }
 

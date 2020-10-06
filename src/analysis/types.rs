@@ -16,7 +16,7 @@ impl Typed for Variable {
         Ok(prog_lifetime.cast(context
             .get(&self.identifier.unwrap_name())
             .ok_or_else(|| error_undefined_symbol(&self))?
-            .get_type()).borrow().clone())
+            .get_type()).clone())
     }
 }
 
@@ -31,8 +31,8 @@ impl Typed for Expression {
                             error_undefined_symbol(&call.function.expect_identifier().unwrap())
                         })?;
 
-                        let return_type = prog_lifetime.cast(function.get_type()).borrow().expect_callable(call.function.pos())?
-                            .return_type.map(|t| prog_lifetime.cast(t).borrow().clone());
+                        let return_type = prog_lifetime.cast(function.get_type()).expect_callable(call.function.pos())?
+                            .return_type.map(|t| prog_lifetime.cast(t).clone());
 
                         return Ok(return_type.clone().unwrap());
                     },

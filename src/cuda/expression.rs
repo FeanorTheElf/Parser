@@ -495,7 +495,7 @@ where
 
                 let function = context.get_scopes().get_defined(name, call.pos()).unwrap();
 
-                gen_defined_function_call(call, name, &context.ast_lifetime().cast(function.get_type()).borrow().expect_callable(call.pos()).internal_error(), output_params, context)
+                gen_defined_function_call(call, name, &context.ast_lifetime().cast(function.get_type()).expect_callable(call.pos()).internal_error(), output_params, context)
             }
         },
     }

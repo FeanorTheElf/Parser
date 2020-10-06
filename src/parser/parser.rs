@@ -26,7 +26,7 @@ impl TopLevelParser for Program {
 }
 
 impl Parseable for Type {
-    type ParseOutputType = DynRef<RefCell<Type>>;
+    type ParseOutputType = TypePtr;
 }
 
 impl Build<TypeNodeNoView> for Type {
@@ -49,7 +49,7 @@ impl Build<TypeNodeView> for Type {
             ReadWrite::TypeWrite(_) => true
         }).unwrap_or(false);
         let dimension_count = (type_node.1).2.map(|x| (x.1).0 as usize).unwrap_or(0);
-        types.get_view_type(PrimitiveType::Int, dimension_count, mutable)
+        types.get_generic_view_type(PrimitiveType::Int, dimension_count, mutable)
     }
 }
 
@@ -456,6 +456,7 @@ fn build_function_call(
             identifier: Identifier::BuiltIn(function),
         }),
         parameters: params,
+        result_type: std::cell::Cell::from(None)
     }))
 }
 
@@ -653,6 +654,7 @@ impl Build<ExprNodeLevelCall> for Expression {
                             pos: function_call.0,
                             function: current,
                             parameters: (function_call.1).0,
+                            result_type: std::cell::Cell::from(None)
                         }))
                     }
                 },
@@ -879,12 +881,12 @@ fn test_parser() {
         base: PrimitiveType::Int,
         dimension: 1,
         mutable: false
-    }), *ast.types.get_lifetime().cast(param0.variable_type).borrow());
+    }), *ast.types.get_lifetime().cast(param0.variable_type));
 
     assert_eq!(Type::Function(FunctionType {
         param_types: ast.items[0].params.iter().map(|d| d.variable_type).collect(),
         return_type: None
-    }), *ast.types.get_lifetime().cast(ast.items[0].function_type).borrow());
+    }), *ast.types.get_lifetime().cast(ast.items[0].function_type));
 
     let pfor = ast.items[0].body.as_ref().unwrap().statements[0]
         .any()
@@ -897,7 +899,7 @@ fn test_parser() {
         base: PrimitiveType::Int,
         dimension: 0,
         mutable: false
-    }), *ast.types.get_lifetime().cast(index_var.variable_type).borrow());
+    }), *ast.types.get_lifetime().cast(index_var.variable_type));
 
     let assignment = pfor.body.statements[0]
         .any()
@@ -938,6 +940,7 @@ fn test_parse_index_expressions() {
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],
+            result_type: std::cell::Cell::from(None)
         })),
         expr
     );

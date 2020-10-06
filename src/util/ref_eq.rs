@@ -5,13 +5,11 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 #[derive(Debug)]
-
 pub struct Ptr<'a, T: ?Sized> {
     data: RefEq<'a, T>,
 }
 
 #[derive(Debug)]
-
 pub struct RefEq<'a, T>
 where
     T: ?Sized,
@@ -19,9 +17,14 @@ where
     data: &'a T,
 }
 
+impl<'a, T: ?Sized> Ptr<'a, T> {
+    pub fn get(self) -> &'a T {
+        self.data.data
+    }
+}
+
 impl<'a, T: ?Sized> Clone for Ptr<'a, T> {
     fn clone(&self) -> Self {
-
         *self
     }
 }

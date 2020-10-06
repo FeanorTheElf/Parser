@@ -43,7 +43,7 @@ pub fn gen_kernel<'c, 'stack, 'ast: 'stack>(
 
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        let var_type = Type::View(ast_lifetime.cast(var.get_type()).borrow().clone().reference_view(pfor.pos()).map_err(|e|
+        let var_type = Type::View(ast_lifetime.cast(var.get_type()).clone().reference_view(pfor.pos()).map_err(|e|
             CompileError::wrap(e, "Body of parallel for references outer variable of type for which no views exist")).internal_error());
 
         let parameter_variables = gen_variables(pfor.pos(), var.get_name(), &var_type);
@@ -367,7 +367,7 @@ fn gen_kernel_call<'stack, 'ast: 'stack>(
     // Fourth: collect the parameters
     let standard_parameters = kernel.used_variables.iter().flat_map(|var| {
 
-        gen_variables_for_view(pfor.pos(), var.get_name(), &*context.ast_lifetime().cast(var.get_type()).borrow())
+        gen_variables_for_view(pfor.pos(), var.get_name(), context.ast_lifetime().cast(var.get_type()))
             .map(|(_, expr)| expr)
             .collect::<Vec<_>>()
             .into_iter()
@@ -507,7 +507,7 @@ fn gen_implemented_function<'data, 'ast: 'data>(
     let standard_params = function
         .params
         .iter()
-        .flat_map(|p| gen_variables(p.pos(), &p.variable, &*ast_lifetime.cast(p.variable_type).borrow()).collect::<Vec<_>>().into_iter());
+        .flat_map(|p| gen_variables(p.pos(), &p.variable, ast_lifetime.cast(p.variable_type)).collect::<Vec<_>>().into_iter());
 
     let result = if is_generated_with_output_parameter(function.get_type(ast_lifetime).return_type(ast_lifetime)) {
 
