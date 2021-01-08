@@ -185,7 +185,7 @@ where
         );
     }
 
-    let scopes: ScopeStack<&'ast dyn SymbolDefinition> = ScopeStack::new(&program.items);
+    let scopes: ScopeStack<&'ast dyn SymbolDefinition> = ScopeStack::new(&program.items[..]);
 
     for item in &program.items {
 
@@ -233,8 +233,7 @@ where
                 kernel_name: unique_generator(),
             };
 
-            pfor.body.scan_top_level_expressions(&mut |e| {
-
+            pfor.body.scan_top_level_expressions(|e| {
                 add_variable_uses(e, &mut kernel, &this_scopes)
             });
 

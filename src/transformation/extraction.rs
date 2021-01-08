@@ -74,7 +74,7 @@ where
 
         let pos = function_call.pos().clone();
 
-        if let Some(return_type) = &function_definition.get_type(prog_lifetime).return_type {
+        if let VoidableTypePtr::Some(return_type) = &function_definition.get_type(prog_lifetime).return_type {
 
             let variable_name = (*rename_disjunct)(Name::new(
                 format!("result_{}", function_definition.identifier.name),
@@ -305,9 +305,7 @@ where
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::lex_str;
-#[cfg(test)]
-use super::super::parser::TopLevelParser;
+use super::super::language::ast_test::*;
 
 #[test]
 fn test_extract_calls_in_program() {

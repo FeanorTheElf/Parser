@@ -1,7 +1,7 @@
 use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::{TextPosition, BEGIN};
-use super::types::{Type, FunctionType, TypePtr, TypeVec};
+use super::types::{Type, FunctionType, TypePtr, TypeVec, VoidableTypePtr};
 use super::{AstNode, AstNodeFuncs};
 
 use super::super::util::cmp::Comparing;
@@ -22,6 +22,11 @@ impl Program {
 
     pub fn work<'a>(&'a mut self) -> (&'a mut Vec<Box<Function>>, Lifetime<'a>) {
         (&mut self.items, self.types.get_lifetime())
+    }
+
+    #[cfg(test)]
+    pub fn get_function<'a>(&'a self, name: &str) -> &'a Function {
+        self.items.iter().find(|f| f.identifier.name == name).unwrap()
     }
 }
 
@@ -85,7 +90,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     /// # Details
     /// This will not yield nested expressions. If this statement is only one expression, only the statement itself will be returned.
-    /// The expressions will be returned in the order of execution.
+    /// The expressions will be returned in the order of execution. If this statement contains other statements that in turn contain
+    /// expressions, these expressions will also not be returned.
     /// 
     /// # Example
     /// ```
@@ -198,7 +204,7 @@ pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
     pub parameters: Vec<Expression>,
-    pub result_type: Cell<Option<TypePtr>>
+    pub result_type_cache: Cell<Option<VoidableTypePtr>>
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -213,21 +219,28 @@ pub struct Variable {
 pub struct Literal {
     pub pos: TextPosition,
     pub value: i32,
+    pub literal_type: TypePtr
 }
 
 impl Block {
-    pub fn scan_top_level_expressions<'a, F>(&'a self, f: &mut F)
-    where
-        F: FnMut(&'a Expression),
+    pub fn scan_top_level_expressions<'a, F>(&'a self, mut f: F)
+    where F: FnMut(&'a Expression)
+    {
+        self.try_scan_top_level_expressions::<_, !>(&mut move |x| { f(x); return Ok(()); }).unwrap_or_else(|x| x)
+    }
+
+    pub fn try_scan_top_level_expressions<'a, F, E>(&'a self, f: &mut F) -> Result<(), E>
+    where F: FnMut(&'a Expression) -> Result<(), E>,
     {
         for statement in &self.statements {
             for expr in statement.expressions() {
-                f(expr);
+                f(expr)?;
             }
             for subblock in statement.subblocks() {
-                subblock.scan_top_level_expressions(f);
+                subblock.try_scan_top_level_expressions(f)?;
             }
         }
+        return Ok(());
     }
 }
 
@@ -333,6 +346,28 @@ impl Expression {
             Identifier::Name(name) => Some(name),
             Identifier::BuiltIn(_) => None
         })
+    }
+
+    pub fn call_tree_preorder_depth_first_search<F>(&self, mut f: F)
+    where F: for<'a> FnMut(&'a FunctionCall)
+    {
+        self.try_call_tree_preorder_depth_first_search::<_, !>(&mut move |call| { f(call); return Ok(()); }).unwrap_or_else(|x| x);
+    }
+
+    pub fn try_call_tree_preorder_depth_first_search<F, E>(&self, f: &mut F) -> Result<(), E> 
+    where F: for<'a> FnMut(&'a FunctionCall) -> Result<(), E> 
+    {
+        match self {
+            Expression::Call(call) => {
+                f(call)?;
+                call.function.try_call_tree_preorder_depth_first_search(f)?;
+                for param in &call.parameters {
+                    param.try_call_tree_preorder_depth_first_search(f)?;
+                }
+            },
+            _ => {}
+        };
+        return Ok(());
     }
 }
 

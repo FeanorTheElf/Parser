@@ -100,16 +100,23 @@ impl BuiltInIdentifier {
 
 impl std::fmt::Display for BuiltInIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-
         write!(f, "{}", self.get_symbol())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-
 pub enum Identifier {
     BuiltIn(BuiltInIdentifier),
     Name(Name),
+}
+
+impl std::fmt::Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Identifier::BuiltIn(op) => write!(f, "operator {}", op),
+            Identifier::Name(name) => write!(f, "{}", name)
+        }
+    }
 }
 
 impl Identifier {

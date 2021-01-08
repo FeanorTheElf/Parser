@@ -1,6 +1,7 @@
 use super::super::language::compiler::*;
 use super::super::language::prelude::*;
 use super::super::transformation::extraction;
+use super::super::analysis::export::*;
 use super::super::util::ref_eq::*;
 use super::ast::*;
 use super::context::{CudaContext, CudaContextImpl};
@@ -107,26 +108,19 @@ impl Compiler for CudaBackend {
     ) -> Result<(), OutputError> {
 
         let mut counter: u32 = 0;
-
         let mut kernel_id_generator = || {
-
             counter += 1;
-
             return counter;
         };
-
         let (mut functions, kernels) = collect_functions(program, &mut kernel_id_generator)?;
 
-        let exported_function = *functions
-            .iter()
-            .find(|(func, _)| func.identifier.name.as_str() == "main")
-            .unwrap()
-            .0;
+        for exported_function in get_functions_to_export(&program.items) {
+            functions
+                .get_mut(&Ptr::from(exported_function))
+                .unwrap()
+                .called_from_host = true;
+        }
 
-        functions
-            .get_mut(&exported_function)
-            .unwrap()
-            .called_from_host = true;
 
         // TODO: implement less cheap topological sort
         let mut function_kernels_order: Vec<TargetLanguageFunction<'ast>> = Vec::new();

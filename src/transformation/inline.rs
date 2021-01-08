@@ -37,7 +37,6 @@ where
     /// `defined_functions` must include any function definition that might be called from within this block
     /// (excluding builtin functions), and is used to retrieve the body to inline.
     ///
-
     fn inline_calls_in_block<'a, 'b>(
         &mut self,
         block: &'a mut Block,
@@ -73,7 +72,6 @@ where
     ///
     /// Traverses the program ast and inlines all calls that match the predicate.
     ///
-
     pub fn inline_calls_in_program(&mut self, program: &mut Program) {
         let (items, prog_lifetime) = program.work();
         assert_ne!(items.len(), 0);
@@ -94,7 +92,6 @@ where
 /// and inlines the call to `func`. The return value is a block containing the inlined function
 /// including the assignment to `var` instead of a return statement.
 ///
-
 fn inline_single_function_call(
     declaration: &mut LocalVariableDeclaration,
     defined_functions: &DefinedFunctions,
@@ -199,6 +196,16 @@ where
         })
 }
 
+fn replace_if_type<T, F>(statement: &mut Box<dyn Statement>, f: F)
+    where T: Statement, F: FnOnce(T) -> Box<dyn Statement>
+{
+    if statement.any().is::<T>() {
+        take_mut::take(statement, |statement| {
+            f(*statement.downcast_box::<T>().unwrap())
+        });
+    }
+}
+
 fn replace_return_in_inlined_function_body(
     block: &mut Block,
     result_variable_name: &Name,
@@ -212,21 +219,15 @@ fn replace_return_in_inlined_function_body(
                 return_label
             );
         }
-        if statement.any().is::<Return>() {
-            take_mut::take(statement, |statement| {
-                transform_inlined_return_statement(statement, result_variable_name, return_label)
-            });
-        }
+        replace_if_type::<Return, _>(statement, |ret| replace_return_with_assignment_and_goto(ret, result_variable_name, return_label));
     }
 }
 
-fn transform_inlined_return_statement(
-    statement: Box<dyn Statement>,
+fn replace_return_with_assignment_and_goto(
+    return_statement: Return,
     result_var: &Name,
     return_label: &Name,
 ) -> Box<dyn Statement> {
-
-    let return_statement = statement.any_box().downcast::<Return>().unwrap();
 
     let pos = return_statement.pos().clone();
 
@@ -260,9 +261,7 @@ fn transform_inlined_return_statement(
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::{fragment_lex, lex_str};
-#[cfg(test)]
-use super::super::parser::{Parser, TopLevelParser};
+use super::super::language::ast_test::*;
 #[cfg(test)]
 use super::super::analysis::defs_test::*;
 
@@ -270,7 +269,7 @@ use super::super::analysis::defs_test::*;
 
 fn test_inline() {
 
-    let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[]);
+    let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[][..]);
 
     let predefined_variables = EnvironmentBuilder::new().add_test_def("b").add_test_def("c").add_test_def("other_func").add_test_def("some_func");
 

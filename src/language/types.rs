@@ -6,6 +6,44 @@ use std::cell::{RefCell, Ref};
 
 pub type TypePtr = DynRef<Type>;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum VoidableTypePtr {
+    Some(TypePtr),
+    Void
+}
+
+impl VoidableTypePtr {
+    pub fn is_void(&self) -> bool {
+        match self {
+            VoidableTypePtr::Some(_) => false,
+            VoidableTypePtr::Void => true
+        }
+    }
+
+    pub fn unwrap(&self) -> TypePtr {
+        match self {
+            VoidableTypePtr::Some(val) => *val,
+            VoidableTypePtr::Void => panic!("Called unwrap() on a type with value void")
+        }
+    }
+
+    pub fn map<T, F>(&self, f: F) -> Option<T> 
+        where F: FnOnce(TypePtr) -> T
+    {
+        match self {
+            VoidableTypePtr::Some(val) => Some(f(*val)),
+            VoidableTypePtr::Void => None
+        }
+    } 
+
+    pub fn expect_nonvoid(&self, pos: &TextPosition) -> Result<TypePtr, CompileError> {
+        match self {
+            VoidableTypePtr::Some(val) => Ok(*val),
+            VoidableTypePtr::Void => Err(CompileError::new(pos, format!("Expected type, got void"), ErrorType::TypeError))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TypeVec {
     types: DynRefVec<Type>,
@@ -40,29 +78,22 @@ impl TypeVec {
         return self.array_types[dimension_count];
     }
 
-    pub fn get_view_type(&mut self, base: PrimitiveType, dimension_count: usize, mutable: bool, concrete_view: Box<dyn ConcreteView>) -> TypePtr {
+    pub fn get_view_type(&mut self, base: PrimitiveType, dimension_count: usize, mutable: bool, concrete_view: Option<Box<dyn ConcreteView>>) -> TypePtr {
         self.types.push(Type::View(ViewType {
             base : ArrayType {
                 base: base,
                 dimension: dimension_count,
                 mutable: mutable
             },
-            concrete: Some(concrete_view)
+            concrete: concrete_view
         }))
     }
 
     pub fn get_generic_view_type(&mut self, base: PrimitiveType, dimension_count: usize, mutable: bool) -> TypePtr {
-        self.types.push(Type::View(ViewType {
-            base : ArrayType {
-                base: base,
-                dimension: dimension_count,
-                mutable: mutable
-            },
-            concrete: None
-        }))
+        self.get_view_type(base, dimension_count, mutable, None)
     }
 
-    pub fn get_function_type(&mut self, params: Vec<TypePtr>, return_type: Option<TypePtr>) -> TypePtr {
+    pub fn get_function_type(&mut self, params: Vec<TypePtr>, return_type: VoidableTypePtr) -> TypePtr {
         self.types.push(Type::Function(FunctionType {
             param_types: params,
             return_type: return_type
@@ -104,7 +135,65 @@ pub trait ConcreteViewFuncs : std::fmt::Debug + std::any::Any + DynEq {
     /// function with different concrete views as parameter)
     /// 
     fn identifier(&self) -> String;
+    fn hash(&self) -> u32;
+    fn replace_templated(self: Box<Self>, value: Template, target: &dyn ConcreteView) -> Box<dyn ConcreteView>;
+    fn contains_templated(&self) -> bool;
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Template {
+    id: usize
+}
+
+impl Template {
+    pub fn new(id: usize) -> Template {
+        Template {
+            id: id
+        }
+    }
+}
+
+impl ConcreteViewFuncs for Template {
+    fn identifier(&self) -> String {
+        format!("t{}", self.id)
+    }
+
+    fn hash(&self) -> u32 {
+        unimplemented!()
+    }
+
+    fn replace_templated(self: Box<Self>, value: Template, target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
+        if *self == value {
+            target.dyn_clone()
+        } else {
+            self
+        }
+    }
+
+    fn contains_templated(&self) -> bool {
+        true
+    }
+}
+
+impl std::hash::Hash for Template {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        <dyn ConcreteView as std::hash::Hash>::hash::<H>(self, hasher)
+    }
+}
+
+impl std::cmp::PartialOrd for Template {
+    fn partial_cmp(&self, rhs: &Template) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(rhs))
+    }
+}
+
+impl std::cmp::Ord for Template {
+    fn cmp(&self, rhs: &Template) -> std::cmp::Ordering {
+        self.id.cmp(&rhs.id)
+    }
+}
+
+impl ConcreteView for Template {}
 
 impl Clone for Box<dyn ConcreteView> {
     fn clone(&self) -> Box<dyn ConcreteView> {
@@ -120,13 +209,19 @@ impl PartialEq for dyn ConcreteView {
 
 impl Eq for dyn ConcreteView {}
 
+impl std::hash::Hash for dyn ConcreteView {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        hasher.write_u32(self.hash())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     TestType,
     JumpLabel,
     Array(ArrayType),
     Function(FunctionType),
-    View(ViewType),
+    View(ViewType)
 }
 
 impl Type {
@@ -153,7 +248,7 @@ impl std::fmt::Display for Type {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionType {
     pub param_types: Vec<TypePtr>,
-    pub return_type: Option<TypePtr>
+    pub return_type: VoidableTypePtr
 }
 
 impl std::fmt::Display for FunctionType {
@@ -163,7 +258,7 @@ impl std::fmt::Display for FunctionType {
             write!(out, "{:?}, ", param)?;
         }
         write!(out, ")")?;
-        if let Some(ret) = &self.return_type {
+        if let VoidableTypePtr::Some(ret) = &self.return_type {
             write!(out, ": {:?}", ret)?;
         }
         return Ok(());
@@ -174,11 +269,13 @@ impl FunctionType {
     pub fn write(&self, prog_lifetime: Lifetime, out: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(out, "fn(")?;
         for param in &self.param_types {
-            write!(out, "{}, ", prog_lifetime.cast(*param))?;
+            prog_lifetime.cast(*param).write(prog_lifetime, out)?;
+            write!(out, ", ")?;
         }
         write!(out, ")")?;
-        if let Some(ret) = &self.return_type {
-            write!(out, ": {}", prog_lifetime.cast(*ret))?;
+        if let VoidableTypePtr::Some(ret) = &self.return_type {
+            write!(out, ": ")?;
+            prog_lifetime.cast(*ret).write(prog_lifetime, out)?;
         }
         return Ok(());
     }
@@ -205,10 +302,19 @@ impl std::fmt::Display for ArrayType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoConcreteViewDataPresent;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ViewType {
     pub base: ArrayType,
     pub concrete: Option<Box<dyn ConcreteView>>
+}
+
+impl ViewType {
+    pub fn get_concrete(&self) -> Result<&dyn ConcreteView, NoConcreteViewDataPresent> {
+        self.concrete.as_ref().map(|c| &**c).ok_or(NoConcreteViewDataPresent)
+    }
 }
 
 impl std::fmt::Display for ViewType {
@@ -275,6 +381,20 @@ impl Type {
             )),
         }
     }
+
+    pub fn expect_view(
+        &self,
+        pos: &TextPosition
+    ) -> Result<&ViewType, CompileError> {
+        match self {
+            Type::View(view_type) => Ok(&view_type),
+            ty => Err(CompileError::new(
+                pos,
+                format!("Expression of type {} is not a view", ty),
+                ErrorType::TypeError,
+            )),
+        }
+    }
     
     pub fn reference_view(self, pos: &TextPosition) -> Result<ViewType, CompileError> {
         match self {
@@ -327,6 +447,28 @@ impl Type {
             Type::Function(_) => unimplemented!(),
             Type::TestType => *self == Type::TestType,
             Type::JumpLabel => *self == Type::JumpLabel
+        }
+    }
+}
+
+pub struct LifetimedType<'a> {
+    lifetime: Lifetime<'a>,
+    type_ptr: TypePtr
+}
+
+impl<'a> LifetimedType<'a> {
+    pub fn bind(type_ptr: TypePtr, lifetime: Lifetime<'a>) -> LifetimedType<'a> {
+        LifetimedType {
+            type_ptr, lifetime
+        }
+    }
+}
+
+impl<'a> std::fmt::Display for LifetimedType<'a> {
+    fn fmt(&self, out: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.type_ptr.deref(self.lifetime) {
+            Type::Function(function_type) => function_type.write(self.lifetime, out),
+            ty => write!(out, "{}", ty)
         }
     }
 }

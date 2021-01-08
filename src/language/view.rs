@@ -1,13 +1,37 @@
 use super::types::*;
 
+const HASH_ReferenceView: u32 = 0;
+const HASH_ZeroView: u32 = 1;
+const HASH_IndexView: u32 = 2;
+const HASH_ComposedView: u32 = 3;
+const HASH_CompleteIndexView: u32 = 4;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceView {
 
 }
 
+impl ReferenceView {
+    pub fn new() -> Self {
+        ReferenceView {}
+    }
+}
+
 impl ConcreteViewFuncs for ReferenceView {
     fn identifier(&self) -> String {
         format!("r")
+    }
+
+    fn hash(&self) -> u32 {
+        HASH_ReferenceView << 24
+    }
+
+    fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
+        self
+    }
+
+    fn contains_templated(&self) -> bool {
+        false
     }
 }
 
@@ -29,61 +53,55 @@ impl ConcreteViewFuncs for ZeroView {
     fn identifier(&self) -> String {
         format!("0")
     }
+
+    fn hash(&self) -> u32 {
+        HASH_ZeroView << 24
+    }
+
+    fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
+        self
+    }
+    
+    fn contains_templated(&self) -> bool {
+        false
+    }
 }
 
 impl ConcreteView for ZeroView {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Template {
-    id: usize
-}
-
-impl Template {
-    pub fn new(id: usize) -> Template {
-        Template {
-            id: id
-        }
-    }
-}
-
-impl ConcreteViewFuncs for Template {
-    fn identifier(&self) -> String {
-        format!("t{}", self.id)
-    }
-}
-
-impl ConcreteView for Template {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexView {
     original_array_dims: usize
 }
 
+impl IndexView {
+    pub fn new(original_array_dims: usize) -> IndexView {
+        IndexView {
+            original_array_dims: original_array_dims
+        }
+    }
+}
+
 impl ConcreteViewFuncs for IndexView {
+
     fn identifier(&self) -> String {
         format!("i{}", self.original_array_dims)
+    }
+
+    fn hash(&self) -> u32 {
+        (HASH_IndexView << 24) | (self.original_array_dims as u32 & 0xFFFFFF)
+    }
+
+    fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
+        self
+    }
+
+    fn contains_templated(&self) -> bool {
+        false
     }
 }
 
 impl ConcreteView for IndexView {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompleteIndexView {
-}
-
-impl CompleteIndexView {
-    pub fn new() -> Self {
-        CompleteIndexView { }
-    }
-}
-
-impl ConcreteViewFuncs for CompleteIndexView {
-    fn identifier(&self) -> String {
-        format!("i")
-    }
-}
-
-impl ConcreteView for CompleteIndexView {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposedView {
@@ -94,6 +112,25 @@ impl ConcreteViewFuncs for ComposedView {
 
     fn identifier(&self) -> String {
         format!("c{}", self.chain.iter().fold(String::new(), |s, n| s + n.identifier().as_str()))
+    }
+
+    fn hash(&self) -> u32 {
+        (HASH_ComposedView << 24) | (self.chain.iter().map(|view| view.hash()).fold(0, |x, y| (x << 13) ^ y) & 0xFFFFFF)
+    }
+    
+    fn replace_templated(mut self: Box<Self>, value: Template, target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
+        // only the last view can be a template
+        assert!(self.chain.iter().rev().skip(1).all(|view| &**view == &value as &dyn ConcreteView));
+        if &**self.chain.last().unwrap() == &value as &dyn ConcreteView {
+            self.chain.pop();
+            return Box::new(ComposedView::compose(self, target.dyn_clone()));
+        } else {
+            return self;
+        }
+    }
+
+    fn contains_templated(&self) -> bool {
+        self.chain.last().unwrap().contains_templated()
     }
 }
 

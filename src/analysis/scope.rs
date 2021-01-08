@@ -176,14 +176,48 @@ pub struct ScopeStack<'a, T> {
 }
 
 impl<'a, T> ScopeStack<'a, T> {
-    pub fn new<'b>(global: &'b [Box<Function>]) -> ScopeStack<'a, T>
+    pub fn new<'b, S: ?Sized>(global: &'b S) -> ScopeStack<'a, T>
     where
+        &'b S: EnumerateDefinitions<'b>,
         T: From<&'b dyn SymbolDefinition>,
     {
         ScopeStack {
             parent: None,
             scopes: vec![ScopeNode::create(global)],
         }
+    }
+
+    ///
+    /// Calls the given closure for each node in the block nesting tree with root
+    /// subblock, always with a scope stack object representing the scope stack to 
+    /// (inclusive) the given subblock. Expects this scope stack to contain all scopes
+    /// down to the parameter `block`, excluding the block itself.
+    /// 
+    pub fn try_scoped_preorder_depth_first_search<'b, F, E>(&self, block: &'b Block, for_each: &mut F) -> Result<(), E> 
+        where 
+            T: From<&'b dyn SymbolDefinition>,
+            F: for<'c> FnMut(&'b Block, &ScopeStack<'c, T>) -> Result<(), E>
+    {
+        let child = self.child_scope(block);
+        for_each(block, &child)?;
+        for subblock in block.subblocks() {
+            child.try_scoped_preorder_depth_first_search(subblock, for_each)?;
+        }
+        return Ok(());
+    }
+
+    ///
+    /// Calls the given closure for each node in the block nesting tree with root
+    /// subblock, always with a scope stack object representing the scope stack to 
+    /// (inclusive) the given subblock. Expects this scope stack to contain all scopes
+    /// down to the parameter `block`, excluding the block itself.
+    /// 
+    pub fn scoped_preorder_depth_first_search<'b, F>(&self, block: &'b Block, mut for_each: F)
+        where 
+            T: From<&'b dyn SymbolDefinition>,
+            F: for<'c> FnMut(&'b Block, &ScopeStack<'c, T>)
+    {
+        self.try_scoped_preorder_depth_first_search::<_, !>(block, &mut move |x, y| { for_each(x, y); return Ok(()); }).unwrap_or_else(|x| x);
     }
 
     pub fn child_stack<'b>(&'b self) -> ScopeStack<'b, T> {

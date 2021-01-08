@@ -5,6 +5,7 @@
 #![feature(iter_map_while)]
 #![feature(min_const_generics)]
 #![feature(concat_idents)]
+#![feature(never_type)]
 
 extern crate take_mut;
 

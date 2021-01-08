@@ -117,7 +117,7 @@ fn test_fix_name_collisions() {
     ), &mut actual_types)
     .unwrap();
 
-    let parent_scopes = NameScopeStack::new(&[]);
+    let parent_scopes = NameScopeStack::new(&[][..]);
     let scopes = parent_scopes.child_scope(&EnvironmentBuilder::new()
         .add_test_def("result")
         .add_func_def("foo").add_array_param(PrimitiveType::Int, 0).return_type(PrimitiveType::Int, 0)

@@ -1,5 +1,5 @@
 use super::super::analysis::scope::*;
-use super::super::analysis::types::Typed;
+use super::super::analysis::types::get_expression_type;
 use super::super::language::prelude::*;
 use super::super::util::ref_eq::*;
 use super::kernel_data::*;
@@ -29,9 +29,8 @@ pub trait CudaContext<'data, 'ast: 'data> {
         &mut self,
     ) -> &mut DefinitionScopeStack<'data, 'ast>;
 
-    fn calculate_type(&self, expr: &Expression) -> Type {
-
-        expr.calculate_type(self.get_scopes(), self.ast_lifetime()).internal_error()
+    fn calculate_type(&self, expr: &Expression) -> &'ast Type {
+        get_expression_type(expr, self.get_scopes()).unwrap().deref(self.ast_lifetime())
     }
 }
 
@@ -87,7 +86,7 @@ impl<'data, 'ast: 'data, T: CudaContext<'data, 'ast>> CudaContext<'data, 'ast> f
         (**self).get_scopes()
     }
 
-    fn calculate_type(&self, expr: &Expression) -> Type {
+    fn calculate_type(&self, expr: &Expression) -> &'ast Type {
 
         (**self).calculate_type(expr)
     }

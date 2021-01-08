@@ -105,11 +105,12 @@ impl Parser for Literal {
         stream.is_next_literal()
     }
 
-    fn parse(stream: &mut Stream, _types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError> {
 
         Ok(Literal {
             pos: stream.pos().clone(),
             value: stream.next_literal()?,
+            literal_type: types.get_array_type(PrimitiveType::Int, 0, false)
         })
     }
 }
@@ -145,7 +146,11 @@ impl Build<(Name, Vec<DeclarationListNode>, Option<<Type as Parseable>::ParseOut
             None
         };
         let params: Vec<Declaration> = param.1.into_iter().map(|p| Declaration::build(p.0, types, p.1)).collect();
-        let function_type = types.get_function_type(params.iter().map(|p| p.variable_type).collect(), param.2);
+        let return_type = match param.2 {
+            Some(return_type) => VoidableTypePtr::Some(return_type),
+            None => VoidableTypePtr::Void
+        };
+        let function_type = types.get_function_type(params.iter().map(|p| p.variable_type).collect(), return_type);
 
         Function {
             pos: pos,
@@ -456,7 +461,7 @@ fn build_function_call(
             identifier: Identifier::BuiltIn(function),
         }),
         parameters: params,
-        result_type: std::cell::Cell::from(None)
+        result_type_cache: std::cell::Cell::from(None)
     }))
 }
 
@@ -654,7 +659,7 @@ impl Build<ExprNodeLevelCall> for Expression {
                             pos: function_call.0,
                             function: current,
                             parameters: (function_call.1).0,
-                            result_type: std::cell::Cell::from(None)
+                            result_type_cache: std::cell::Cell::from(None)
                         }))
                     }
                 },
@@ -885,7 +890,7 @@ fn test_parser() {
 
     assert_eq!(Type::Function(FunctionType {
         param_types: ast.items[0].params.iter().map(|d| d.variable_type).collect(),
-        return_type: None
+        return_type: VoidableTypePtr::Void
     }), *ast.types.get_lifetime().cast(ast.items[0].function_type));
 
     let pfor = ast.items[0].body.as_ref().unwrap().statements[0]
@@ -940,7 +945,7 @@ fn test_parse_index_expressions() {
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],
-            result_type: std::cell::Cell::from(None)
+            result_type_cache: std::cell::Cell::from(None)
         })),
         expr
     );

@@ -916,9 +916,7 @@ pub fn gen_assignment<'stack, 'ast: 'stack>(
 }
 
 #[cfg(test)]
-use super::super::lexer::lexer::fragment_lex;
-#[cfg(test)]
-use super::super::parser::Parser;
+use super::super::language::ast_test::*;
 #[cfg(test)]
 use super::kernel_data::collect_functions_global;
 #[cfg(test)]

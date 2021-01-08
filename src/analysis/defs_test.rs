@@ -101,14 +101,14 @@ impl FunctionDefBuilder {
     }
 
     pub fn return_type(mut self, base: PrimitiveType, dimension_count: usize) -> EnvironmentBuilder {
-        let return_type = Some(self.parent_defs.types.get_array_type(base, dimension_count, true));
+        let return_type = VoidableTypePtr::Some(self.parent_defs.types.get_array_type(base, dimension_count, true));
         let ty = self.parent_defs.types.get_function_type(self.params, return_type);
         self.parent_defs.defs.defs.push(Box::new((self.function_name, ty)));
         return self.parent_defs;
     }
 
     pub fn return_void(mut self) -> EnvironmentBuilder {
-        let ty = self.parent_defs.types.get_function_type(self.params, None);
+        let ty = self.parent_defs.types.get_function_type(self.params, VoidableTypePtr::Void);
         self.parent_defs.defs.defs.push(Box::new((self.function_name, ty)));
         return self.parent_defs;
     }

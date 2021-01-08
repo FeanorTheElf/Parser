@@ -78,6 +78,10 @@ impl<'a> LifetimeMut<'a> {
     pub fn cast_consume<T: ?Sized>(mut self, r: DynRef<T>) -> &'a mut T {
         self.lifetime_cast_consume(r).unwrap()
     }
+
+    pub fn as_const<'b>(&'b self) -> Lifetime<'b> {
+        self.lifetime
+    }
 }
 
 ///
@@ -96,9 +100,19 @@ impl<T: ?Sized> Clone for DynRef<T> {
         *self
     }
 }
+
 impl<T: ?Sized> Copy for DynRef<T> {}
 
 impl<T: ?Sized> DynRef<T> {
+
+    pub fn deref<'a>(self, lifetime: Lifetime<'a>) -> &'a T {
+        lifetime.cast(self)
+    }
+
+    pub fn deref_mut<'a, 'b>(self, lifetime: &'b mut LifetimeMut<'a>) -> &'b mut T {
+        lifetime.cast(self)
+    }
+
     ///
     /// Returns the target of this reference, as raw pointer.
     /// 

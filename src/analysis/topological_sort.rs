@@ -50,38 +50,18 @@ struct CallData<'a> {
     called: HashSet<Ptr<'a, Function>>
 }
 
-fn collect_global_use_data_expression<'a>(expression: &'a Expression, parent_function: Ptr<'a, Function>, global_scope: &ScopeStack<&'a Function>, result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>) {
-    match expression {
-        Expression::Call(call) => {
-            collect_global_use_data_expression(&call.function, parent_function, global_scope, result);
-            for parameter in &call.parameters {
-                collect_global_use_data_expression(parameter, parent_function, global_scope, result);
+fn collect_global_use_data_variable<'a>(var: &'a Variable, parent_function: Ptr<'a, Function>, global_scope: &ScopeStack<&'a Function>, result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>) {
+    if var.identifier.is_name() {
+        if let Some(function) = global_scope.get(var.identifier.unwrap_name()) {
+            if let Some(use_data) = result.get_mut(&parent_function) {
+                use_data.called.insert(Ptr::from(*function));
+            } else {
+                let mut use_data = CallData {
+                    called: HashSet::new()
+                };
+                use_data.called.insert(Ptr::from(*function));
+                result.insert(parent_function, use_data);
             }
-        },
-        Expression::Variable(var) if var.identifier.is_name() => {
-            if let Some(function) = global_scope.get(var.identifier.unwrap_name()) {
-                if let Some(use_data) = result.get_mut(&parent_function) {
-                    use_data.called.insert(Ptr::from(*function));
-                } else {
-                    let mut use_data = CallData {
-                        called: HashSet::new()
-                    };
-                    use_data.called.insert(Ptr::from(*function));
-                    result.insert(parent_function, use_data);
-                }
-            }
-        },
-        _ => {}
-    }
-}
-
-fn collect_global_use_data_statement<'a>(statement: &'a dyn Statement, parent_function: Ptr<'a, Function>, global_scope: &ScopeStack<&'a Function>, result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>) {
-    for expr in statement.expressions() {
-        collect_global_use_data_expression(expr, parent_function, global_scope, result);
-    }
-    for subblock in statement.subblocks() {
-        for substatement in &subblock.statements {
-            collect_global_use_data_statement(&**substatement, parent_function, global_scope, result);
         }
     }
 }
@@ -90,8 +70,12 @@ pub fn call_graph_topological_sort<'a>(program: &'a [Box<Function>]) -> Result<i
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
     let global_scope = ScopeStack::global_scope(program);
     for function in program {
-        for statement in function.statements() {
-            collect_global_use_data_statement(statement, Ptr::from(&**function), &global_scope, &mut use_data);
+        if let Some(body) = &function.body {
+            body.scan_top_level_expressions(|expr| {
+                for var in expr.variables() {
+                    collect_global_use_data_variable(var, Ptr::from(&**function), &global_scope, &mut use_data);
+                }
+            })
         }
     }
     return topological_sort(

@@ -607,15 +607,19 @@ use super::super::parser::Parser;
 #[cfg(test)]
 use super::super::util::ref_eq::*;
 #[cfg(test)]
+use super::super::analysis::defs_test::*;
+#[cfg(test)]
+use super::context_test::*;
+#[cfg(test)]
+use super::super::analysis::types::*;
+#[cfg(test)]
+use super::super::analysis::scope::DefinitionScopeStack;
+#[cfg(test)]
 use super::context::CudaContextImpl;
 #[cfg(test)]
 use std::collections::BTreeSet;
 #[cfg(test)]
 use std::iter::FromIterator;
-#[cfg(test)]
-use super::super::analysis::defs_test::*;
-#[cfg(test)]
-use super::context_test::*;
 
 #[test]
 fn test_gen_kernel() {
@@ -628,10 +632,11 @@ fn test_gen_kernel() {
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    "), environment.types())
-    .unwrap();
+    "), environment.types()).unwrap();
 
-    let (program, defs) = mock_program(environment);
+    let (mut program, defs) = mock_program(environment);
+    determine_types_in_statement(&pfor, &DefinitionScopeStack::new(&defs), &mut program.types).unwrap();
+
     let (functions, kernels) = collect_functions_global(&program).unwrap();
     let mut context: Box<dyn CudaContext> = Box::new(CudaContextImpl::new(&program, &functions, &kernels));
     context.enter_scope(&defs);
@@ -666,8 +671,7 @@ fn test_gen_kernel_call() {
         pfor i: int, with this[i,], in a {
             a[i,] = a[i,] * b;
         }
-    "), environment.types())
-    .unwrap();
+    "), environment.types()).unwrap();
 
     let (program, defs) = mock_program(environment);
     let (functions, kernels) = collect_functions_global(&program).unwrap();

@@ -23,7 +23,6 @@ pub trait TopLevelParser: Parseable {
 }
 
 #[macro_use]
-
 pub mod parser_gen;
 
 pub mod parser;
