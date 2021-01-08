@@ -1,10 +1,25 @@
 use super::error::*;
-use super::position::TextPosition;
+use super::position::{TextPosition, NONEXISTING};
 use super::super::util::dynamic::DynEq;
 use super::super::util::dyn_lifetime::*;
 use std::cell::{RefCell, Ref};
 
+///
+/// On the semantic of pointer equality of types:
+///  - There are completely code determined types (i.e. types whose string in the source code determines them completely). For these types
+///    (mostly arrays), there is just one instance and all pointers point to this instance
+///  - For types where this is not the case (mostly views), use the same pointer in two locations, if all parts of the type are necessarily
+///    equal for both locations (e.g. because it is the type of the same variable); If this is not the case (e.g. a variable containing a copy
+///    of another variable), copy the type and use a pointers to each copy 
+/// 
 pub type TypePtr = DynRef<Type>;
+
+pub const HASH_ReferenceView: u32 = 0;
+pub const HASH_ZeroView: u32 = 1;
+pub const HASH_IndexView: u32 = 2;
+pub const HASH_ComposedView: u32 = 3;
+pub const HASH_CompleteIndexView: u32 = 4;
+pub const HASH_TEMPLATE: u32 = 5;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum VoidableTypePtr {
@@ -123,7 +138,7 @@ impl TypeVec {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveType {
-    Int, Float
+    Int, Float, Bool
 }
 
 dynamic_trait_cloneable!{ ConcreteView: ConcreteViewFuncs; ConcreteViewDynCastable }
@@ -159,7 +174,7 @@ impl ConcreteViewFuncs for Template {
     }
 
     fn hash(&self) -> u32 {
-        unimplemented!()
+        (HASH_TEMPLATE << 24) | (self.id as u32 & 0xFFFFFF)
     }
 
     fn replace_templated(self: Box<Self>, value: Template, target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
@@ -215,7 +230,7 @@ impl std::hash::Hash for dyn ConcreteView {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     TestType,
     JumpLabel,
@@ -245,7 +260,7 @@ impl std::fmt::Display for Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FunctionType {
     pub param_types: Vec<TypePtr>,
     pub return_type: VoidableTypePtr
@@ -287,6 +302,28 @@ impl FunctionType {
     pub fn param_types<'a, 'b: 'a>(&'a self, prog_lifetime: Lifetime<'b>) -> impl 'a + Iterator<Item = &'a Type> {
         self.param_types.iter().map(move |p| prog_lifetime.cast(*p))
     }
+
+    pub fn clone(self_ptr: TypePtr, types: &mut TypeVec) -> TypePtr {
+        let mut param_types = Vec::new();
+        let param_ptrs = self_ptr.deref(types.get_lifetime()).expect_callable(&NONEXISTING).internal_error().param_types.clone();
+        for param in param_ptrs {
+            param_types.push(Type::clone(param, types));
+        }
+        let return_ptr = self_ptr.deref(types.get_lifetime()).expect_callable(&NONEXISTING).internal_error().return_type;
+        let return_type = Type::clone_voidable(return_ptr, types);
+        return types.get_function_type(param_types, return_type);
+    }
+
+    pub fn replace_templated_view_parts(self_ptr: TypePtr, template: Template, target: &dyn ConcreteView, type_lifetime: &mut LifetimeMut) {
+        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types.len();
+        for i in 0..n {
+            let ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types[i];
+            Type::replace_templated_view_parts(ptr, template, target, type_lifetime);
+        }
+        if let VoidableTypePtr::Some(ptr) = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().return_type {
+            Type::replace_templated_view_parts(ptr, template, target, type_lifetime);
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -314,6 +351,16 @@ pub struct ViewType {
 impl ViewType {
     pub fn get_concrete(&self) -> Result<&dyn ConcreteView, NoConcreteViewDataPresent> {
         self.concrete.as_ref().map(|c| &**c).ok_or(NoConcreteViewDataPresent)
+    }
+
+    pub fn replace_templated_view_parts(self_ptr: TypePtr, template: Template, target: &dyn ConcreteView, type_lifetime: &mut LifetimeMut) {
+        match self_ptr.deref_mut(type_lifetime) {
+            Type::View(view) =>
+                take_mut::take(view.concrete.as_mut().unwrap(), |concrete| {
+                    concrete.replace_templated(template, target)
+                }),
+            _ => panic!("ViewType::replace_templated_view_parts() called for non-view type")
+        }
     }
 }
 
@@ -395,7 +442,35 @@ impl Type {
             )),
         }
     }
+
+    pub fn expect_arithmetic(&self, pos: &TextPosition) -> Result<PrimitiveType, CompileError> {
+        if let Type::Array(arr) = self {
+            if arr.dimension == 0 {
+                if arr.base == PrimitiveType::Int || arr.base == PrimitiveType::Float {
+                    return Ok(arr.base)
+                }
+            }
+        }
+        return Err(CompileError::new(
+            pos, 
+            format!("Cannot perform arithmetic operations on type {}", self), 
+            ErrorType::TypeError
+        ));
+    }
     
+    pub fn expect_scalar(&self, pos: &TextPosition) -> Result<PrimitiveType, CompileError> {
+        if let Type::Array(arr) = self {
+            if arr.dimension == 0 {
+                return Ok(arr.base)
+            }
+        }
+        return Err(CompileError::new(
+            pos, 
+            format!("Expected a scalar type, got {}", self), 
+            ErrorType::TypeError
+        ));
+    }
+
     pub fn reference_view(self, pos: &TextPosition) -> Result<ViewType, CompileError> {
         match self {
             Type::Array(array_type) => Ok(ViewType {
@@ -408,6 +483,58 @@ impl Type {
                 format!("Views on type {} do not exist", ty),
                 ErrorType::TypeError,
             ))
+        }
+    }
+
+    ///
+    /// Returns a pointer to a type that is equivalent to the given one. This pointer may
+    /// or may not be the same as the given one, depending on the semantics for the given type.
+    ///  
+    /// In particular, arrays will always have the same pointer, but view types will use different
+    /// pointers. Therefore, the given and the returned type will behave in the same way as two types
+    /// that are obtained by parsing two times the same expression and calculating its type.
+    /// 
+    pub fn clone(self_ptr: TypePtr, types: &mut TypeVec) -> TypePtr {
+        let result = match self_ptr.deref(types.get_lifetime()) {
+            Type::Function(_) => FunctionType::clone(self_ptr, types),
+            Type::Array(arr) => types.get_array_type(arr.base, arr.dimension, arr.mutable),
+            Type::View(view) => types.get_view_type(view.base.base, view.base.dimension, view.base.mutable, view.concrete.clone()),
+            Type::JumpLabel => types.get_jump_label_type(),
+            Type::TestType => types.get_test_type_type()
+        };
+        assert!((result == self_ptr) == self_ptr.deref(types.get_lifetime()).is_code_determined());
+        return result;
+    }
+
+    ///
+    /// Returns whether this type is already completely determined by their string representation in code
+    /// (i.e. arrays), as opposed to e.g. views, for which there is some type information that is not represented
+    /// in code, but infered by type analysis during compile time.
+    /// 
+    /// These also have different pointer equality semantics, see `TypePtr`
+    /// 
+    pub fn is_code_determined(&self) -> bool {
+        match self {
+            Type::Function(_) => false,
+            Type::Array(_) => true,
+            Type::View(_) => false,
+            Type::JumpLabel => true,
+            Type::TestType => true
+        }
+    }
+
+    pub fn clone_voidable(self_ptr: VoidableTypePtr, types: &mut TypeVec) -> VoidableTypePtr {
+        match self_ptr {
+            VoidableTypePtr::Void => VoidableTypePtr::Void,
+            VoidableTypePtr::Some(ptr) => VoidableTypePtr::Some(Type::clone(ptr, types))
+        }
+    }
+
+    pub fn replace_templated_view_parts(self_ptr: TypePtr, template: Template, target: &dyn ConcreteView, type_lifetime: &mut LifetimeMut) {
+        match self_ptr.deref(type_lifetime.as_const()) {
+            Type::View(_) => ViewType::replace_templated_view_parts(self_ptr, template, target, type_lifetime),
+            Type::Function(_) => FunctionType::replace_templated_view_parts(self_ptr, template, target, type_lifetime),
+            ty => assert!(ty.is_code_determined()) 
         }
     }
 
@@ -430,7 +557,7 @@ impl Type {
         }
     }
 
-    /// Whether the content of an object of this type can be copied into an object of the target type. Use this
+    /// Whether the content of an object of this type can be copied into a variable of the target type. Use this
     /// to check if assignments are valid
     pub fn is_copyable_to(&self, target: &Type, _prog_lifetime: Lifetime) -> bool {
         match target {

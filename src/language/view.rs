@@ -1,11 +1,5 @@
 use super::types::*;
 
-const HASH_ReferenceView: u32 = 0;
-const HASH_ZeroView: u32 = 1;
-const HASH_IndexView: u32 = 2;
-const HASH_ComposedView: u32 = 3;
-const HASH_CompleteIndexView: u32 = 4;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceView {
 

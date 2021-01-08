@@ -223,12 +223,45 @@ pub struct Literal {
 }
 
 impl Block {
+
+    ///
+    /// Calls the provided closure for each top level expression, i.e. expression that is not part of a bigger
+    /// expression.
+    /// 
+    /// # Example
+    /// 
+    /// In
+    /// `
+    /// let a: int[,] = zero_vec(5 + x,);
+    /// print_vec(a,);
+    /// `
+    /// the following are top level expressions:
+    /// - `zero_vec(5 + x,)`
+    /// - `a`
+    /// but `5` and `x` and `5 + x` are not top level expressions
+    /// 
     pub fn scan_top_level_expressions<'a, F>(&'a self, mut f: F)
     where F: FnMut(&'a Expression)
     {
         self.try_scan_top_level_expressions::<_, !>(&mut move |x| { f(x); return Ok(()); }).unwrap_or_else(|x| x)
     }
 
+    ///
+    /// Calls the provided closure for each top level expression, i.e. expression that is not part of a bigger
+    /// expression. If the closure returns an error, the iteration is stopped and the error is returned.
+    /// 
+    /// # Example
+    /// 
+    /// In
+    /// `
+    /// let a: int[,] = zero_vec(5 + x,);
+    /// print_vec(a,);
+    /// `
+    /// the following are top level expressions:
+    /// - `zero_vec(5 + x,)`
+    /// - `a`
+    /// but `5` and `x` and `5 + x` are not top level expressions
+    /// 
     pub fn try_scan_top_level_expressions<'a, F, E>(&'a self, f: &mut F) -> Result<(), E>
     where F: FnMut(&'a Expression) -> Result<(), E>,
     {
@@ -822,6 +855,18 @@ impl PartialEq<BuiltInIdentifier> for Expression {
     fn eq(&self, rhs: &BuiltInIdentifier) -> bool {
         match self {
             Expression::Variable(var) => var.identifier == Identifier::BuiltIn(*rhs),
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<Name> for Expression {
+    fn eq(&self, rhs: &Name) -> bool {
+        match self {
+            Expression::Variable(var) => match &var.identifier {
+                Identifier::BuiltIn(_) => false,
+                Identifier::Name(lhs) => lhs == rhs
+            },
             _ => false,
         }
     }

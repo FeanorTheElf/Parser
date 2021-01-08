@@ -66,7 +66,7 @@ fn rename_in_block(block: &mut Block, parent_scopes: &NameScopeStack, parent_nam
 }
 
 ///
-/// Renames all occurences of names in `new_defs` in the given block with new, disjunct names and
+/// Renames all occurences of names in `new_defs` that are not in `rename_mapping` in the given block with new, disjunct names and
 /// replaces all occurences of names in `rename_mapping` with the respective values. If 
 /// the renaming would cause a new name collision further down the scope stack, the new variable is 
 /// renamed, too.

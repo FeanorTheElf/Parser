@@ -40,10 +40,9 @@ pub fn gen_array_size<'a>(
     ty: &Type,
 ) -> impl 'a + Iterator<Item = (CudaType, CudaIdentifier)> {
 
-    let without_view = ty.clone().without_view();
-    let arr = without_view.expect_array(pos).internal_error();
+    let without_view = ty.expect_indexable(pos).internal_error();
 
-    (0..arr.dimension).map(move |d| {
+    (0..without_view.dimension).map(move |d| {
 
         (
             CudaType {
@@ -653,11 +652,7 @@ fn gen_array_move_assignment_from_call<'stack, 'ast: 'stack>(
 
     let ty = context.calculate_var_type(assignee, pos).clone();
 
-    Ok(Box::new(gen_function_call(
-        value,
-        gen_variables_for_output_params(pos, assignee, &ty).map(|(_, v)| v),
-        context,
-    )?))
+    unimplemented!()
 }
 
 fn gen_array_move_assignment_from_var<'stack, 'ast: 'stack>(

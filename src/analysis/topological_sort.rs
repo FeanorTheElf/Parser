@@ -68,6 +68,7 @@ fn collect_global_use_data_variable<'a>(var: &'a Variable, parent_function: Ptr<
 
 pub fn call_graph_topological_sort<'a>(program: &'a [Box<Function>]) -> Result<impl Iterator<Item = &'a Function>, CompileError> {
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
+    let empty_call_data: CallData<'a> = CallData { called: HashSet::new() };
     let global_scope = ScopeStack::global_scope(program);
     for function in program {
         if let Some(body) = &function.body {
@@ -80,7 +81,7 @@ pub fn call_graph_topological_sort<'a>(program: &'a [Box<Function>]) -> Result<i
     }
     return topological_sort(
         program.iter().map(|fun| Ptr::from(&**fun)), 
-        |fun| use_data.get(&fun).unwrap().called.iter().map(|target| *target)
+        |fun| use_data.get(&fun).unwrap_or(&empty_call_data).called.iter().map(|target| *target)
     ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {} can recurse", fun.identifier), ErrorType::Recursion))
     .map(|result| result.map(Ptr::get).collect::<Vec<_>>().into_iter());
 }

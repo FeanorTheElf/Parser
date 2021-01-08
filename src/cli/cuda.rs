@@ -78,7 +78,8 @@ impl ExternalCompiler for NVCC {
 }
 
 fn create_cuda_file_backend() -> FileBackend<'static> {
-    FileBackend::new(os_string!("cuh"), Box::new(CudaBackend::new()))
+    unimplemented!()
+    //FileBackend::new(os_string!("cuh"), Box::new(CudaBackend::new()))
 }
 
 pub fn create_cuda_source_backend() -> MultiStageBackend<'static> {
