@@ -42,11 +42,11 @@ where
         block: &'a mut Block,
         parent_scopes: &'b NameScopeStack<'b>,
         defined_functions: &'b DefinedFunctions,
-        prog_lifetime: Lifetime
+        types: &mut TypeVec
     ) {
         let statement_indices_to_inline =
             self.extractor
-                .extract_calls_in_block_flat(block, parent_scopes, defined_functions, prog_lifetime);
+                .extract_calls_in_block_flat(block, parent_scopes, defined_functions, types.get_lifetime());
 
         let scopes = parent_scopes.child_scope(block);
 
@@ -55,7 +55,7 @@ where
                 let init_block = inline_single_function_call(block.statements[extraction.extracted_var_declaration_index]
                     .any_mut()
                     .downcast_mut::<LocalVariableDeclaration>()
-                    .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes);
+                    .expect("Expected extract_calls_in_expr to generate only LocalVariableDeclaration statements"), defined_functions, &scopes, types);
 
                 block.statements[extraction.extracted_var_value_assignment_index] =
                     Box::new(init_block);
@@ -64,7 +64,7 @@ where
 
         for statement in &mut block.statements {
             for subblock in statement.subblocks_mut() {
-                self.inline_calls_in_block(subblock, &scopes, defined_functions, prog_lifetime);
+                self.inline_calls_in_block(subblock, &scopes, defined_functions, types);
             }
         }
     }
@@ -73,7 +73,7 @@ where
     /// Traverses the program ast and inlines all calls that match the predicate.
     ///
     pub fn inline_calls_in_program(&mut self, program: &mut Program) {
-        let (items, prog_lifetime) = program.work();
+        let (items, types) = (&mut program.items, &mut program.types);
         assert_ne!(items.len(), 0);
         let scopes = NameScopeStack::new(&items[..]);
         for i in 0..items.len() {
@@ -81,7 +81,7 @@ where
             let (current, other) = items[..].split_at_mut(1);
             let child_scopes = scopes.child_scope(&*current[0]);
             if let Some(body) = &mut current[0].body {
-                self.inline_calls_in_block(body, &child_scopes, other, prog_lifetime);
+                self.inline_calls_in_block(body, &child_scopes, other, types);
             }
         }
     }
@@ -96,6 +96,7 @@ fn inline_single_function_call(
     declaration: &mut LocalVariableDeclaration,
     defined_functions: &DefinedFunctions,
     scopes: &NameScopeStack,
+    types: &mut TypeVec
 ) -> Block {
 
     let call = match std::mem::replace(&mut declaration.value, None) {
@@ -136,11 +137,12 @@ fn inline_single_function_call(
     };
     result_block.statements.push(Box::new(return_label));
 
-    let mut body = definition
+    let mut body = *definition
         .body
         .as_ref()
         .expect("Cannot inline native function")
-        .clone();
+        .clone(types)
+        .downcast_box::<Block>().unwrap();
 
     let in_function_body_scopes = scopes.child_scope(&result_block);
 
@@ -318,7 +320,7 @@ fn test_inline() {
         &mut block,
         &scope_stack,
         &[Box::new(some_func), Box::new(other_func)],
-        types.get_lifetime()
+        &mut types
     );
 
     let mut expected_types = TypeVec::new();

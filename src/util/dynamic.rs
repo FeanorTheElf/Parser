@@ -148,3 +148,39 @@ macro_rules! dynamic_trait {
         }
     };
 }
+
+macro_rules! dynamic_subtrait {
+    ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
+        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait { }
+
+        impl dyn $name {
+            pub fn downcast_box<T: $name>(self: Box<Self>) -> Result<Box<T>, Box<dyn $name>> {
+                if self.any().is::<T>() {
+                    Ok(Box::<dyn 'static + std::any::Any>::downcast::<T>(self.any_box()).unwrap())
+                } else {
+                    Err(self)
+                }
+            }
+
+            pub fn downcast<T: $name>(&self) -> Option<&T> {
+                self.any().downcast_ref::<T>()
+            }
+
+            pub fn downcast_mut<T: $name>(&mut self) -> Option<&mut T> {
+                self.any_mut().downcast_mut::<T>()
+            }
+        }
+
+        pub trait $dyn_castable_name {
+            fn dynamic_box(self: Box<Self>) -> Box<dyn $name>;
+            fn dynamic(&self) -> &dyn $name;
+            fn dynamic_mut(&mut self) -> &mut dyn $name;
+        }
+
+        impl<T: $name + Sized> $dyn_castable_name for T {
+            fn dynamic_box(self: Box<Self>) -> Box<dyn $name> { self }
+            fn dynamic(&self) -> &dyn $name { self }
+            fn dynamic_mut(&mut self) -> &mut dyn $name { self }
+        }
+    };
+}

@@ -83,7 +83,8 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
                     return Err(error_type_not_convertable(pos, param_type, types.get_primitive_type(PrimitiveType::Int, false), types.get_lifetime()));
                 }
             }
-            return match types.get_lifetime().cast(array_type?).clone() {
+            let indexed_type = types.get_lifetime().cast(array_type?).clone();
+            return match indexed_type {
                 Type::View(view) => Ok(types.get_generic_view_type(
                     view.base.base, 
                     0, 

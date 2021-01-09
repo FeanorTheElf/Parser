@@ -30,14 +30,24 @@ impl Program {
     }
 }
 
-#[derive(Debug, Eq, Clone)]
+#[derive(Debug, Eq)]
 pub struct Declaration {
     pub pos: TextPosition,
     pub variable: Name,
     pub variable_type: TypePtr,
 }
 
-#[derive(Debug, Eq, Clone)]
+impl Declaration {
+    pub fn clone(&self, types: &mut TypeVec) -> Declaration {
+        Declaration {
+            pos: self.pos().clone(),
+            variable: self.variable.clone(),
+            variable_type: Type::clone(self.variable_type, types)
+        }
+    }
+}
+
+#[derive(Debug, Eq)]
 pub struct Function {
     pub pos: TextPosition,
     pub identifier: Name,
@@ -59,7 +69,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, Eq, Clone)]
+#[derive(Debug, Eq)]
 pub struct Block {
     pub pos: TextPosition,
     pub statements: Vec<Box<dyn Statement>>,
@@ -128,78 +138,65 @@ pub trait StatementFuncs: AstNode {
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
         Box::new(self.expressions_mut().flat_map(|e| e.names_mut()))
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement>;
 }
 
-dynamic_subtrait_cloneable!{ Statement: StatementFuncs; StatementDynCastable }
+dynamic_subtrait!{ Statement: StatementFuncs; StatementDynCastable }
 
-impl Clone for Box<dyn Statement> {
-    fn clone(&self) -> Box<dyn Statement> {
-        self.dyn_clone()
-    }
-}
-
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct If {
     pub pos: TextPosition,
     pub condition: Expression,
     pub body: Block,
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct While {
     pub pos: TextPosition,
     pub condition: Expression,
     pub body: Block,
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct Assignment {
     pub pos: TextPosition,
     pub assignee: Expression,
     pub value: Expression,
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct LocalVariableDeclaration {
     pub declaration: Declaration,
     pub value: Option<Expression>,
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct Return {
     pub pos: TextPosition,
     pub value: Option<Expression>,
 }
 
 #[derive(Debug, Eq, Clone)]
-
 pub struct Label {
     pub pos: TextPosition,
     pub label: Name,
 }
 
 #[derive(Debug, Eq, Clone)]
-
 pub struct Goto {
     pub pos: TextPosition,
     pub target: Name,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
     Call(Box<FunctionCall>),
     Variable(Variable),
     Literal(Literal),
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
@@ -207,19 +204,40 @@ pub struct FunctionCall {
     pub result_type_cache: Cell<Option<VoidableTypePtr>>
 }
 
-#[derive(Debug, Eq, Clone)]
+impl FunctionCall {
+    
+    pub fn clone(&self, types: &mut TypeVec) -> FunctionCall {
+        FunctionCall {
+            pos: self.pos.clone(),
+            function: self.function.clone(types),
+            parameters: self.parameters.iter().map(|p| p.clone(types)).collect::<Vec<_>>(),
+            result_type_cache: Cell::from(self.result_type_cache.get().map(|ty| Type::clone_voidable(ty, types)))
+        }
+    }
+}
 
+#[derive(Debug, Eq, Clone)]
 pub struct Variable {
     pub pos: TextPosition,
     pub identifier: Identifier,
 }
 
-#[derive(Debug, Eq, Clone)]
-
+#[derive(Debug, Eq)]
 pub struct Literal {
     pub pos: TextPosition,
     pub value: i32,
     pub literal_type: TypePtr
+}
+
+impl Literal {
+    
+    pub fn clone(&self, types: &mut TypeVec) -> Literal {
+        Literal {
+            pos: self.pos.clone(),
+            value: self.value.clone(),
+            literal_type: self.literal_type.clone()
+        }
+    }
 }
 
 impl Block {
@@ -401,6 +419,14 @@ impl Expression {
             _ => {}
         };
         return Ok(());
+    }
+
+    pub fn clone(&self, types: &mut TypeVec) -> Expression {
+        match self {
+            Expression::Call(call) => Expression::Call(Box::new((**call).clone(types))),
+            Expression::Literal(literal) => Expression::Literal(literal.clone(types)),
+            Expression::Variable(var) => Expression::Variable(var.clone())
+        }
     }
 }
 
@@ -627,6 +653,10 @@ impl StatementFuncs for Expression {
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::empty())
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(self.clone(types))
+    }
 }
 
 impl Statement for Expression {}
@@ -648,6 +678,14 @@ impl StatementFuncs for If {
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::once(&mut self.body))
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(If {
+            body: *self.body.clone(types).downcast_box::<Block>().unwrap(),
+            condition: self.condition.clone(types),
+            pos: self.pos().clone()
+        })
+    }
 }
 
 impl Statement for If {}
@@ -668,6 +706,14 @@ impl StatementFuncs for While {
 
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::once(&mut self.body))
+    }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(While {
+            body: *self.body.clone(types).downcast_box::<Block>().unwrap(),
+            condition: self.condition.clone(types),
+            pos: self.pos().clone()
+        })
     }
 }
 
@@ -698,6 +744,13 @@ impl StatementFuncs for Return {
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::empty())
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(Return {
+            pos: self.pos().clone(),
+            value: self.value.as_ref().map(|v| v.clone(types))
+        })
+    }
 }
 
 impl Statement for Return {}
@@ -718,6 +771,13 @@ impl StatementFuncs for Block {
 
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::once(self))
+    }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(Block {
+            pos: self.pos().clone(),
+            statements: self.statements.iter().map(|s| (**s).clone(types)).collect()
+        })
     }
 }
 
@@ -756,6 +816,13 @@ impl StatementFuncs for LocalVariableDeclaration {
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
         Box::new(std::iter::once(&mut self.declaration.variable).chain((&mut self.value).into_iter().flat_map(|e| e.names_mut())))
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(LocalVariableDeclaration {
+            declaration: self.declaration.clone(types),
+            value: self.value.as_ref().map(|v| v.clone(types))
+        })
+    }
 }
 
 impl Statement for LocalVariableDeclaration {}
@@ -776,6 +843,14 @@ impl StatementFuncs for Assignment {
 
     fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
         Box::new(std::iter::empty())
+    }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(Assignment {
+            assignee: self.assignee.clone(types),
+            value: self.value.clone(types),
+            pos: self.pos().clone()
+        })
     }
 }
 
@@ -806,6 +881,10 @@ impl StatementFuncs for Label {
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
         Box::new(std::iter::once(&mut self.label))
     }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(<Self as Clone>::clone(self))
+    }
 }
 
 impl Statement for Label {}
@@ -834,6 +913,10 @@ impl StatementFuncs for Goto {
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
         Box::new(std::iter::once(&mut self.target))
+    }
+
+    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(<Self as Clone>::clone(self))
     }
 }
 

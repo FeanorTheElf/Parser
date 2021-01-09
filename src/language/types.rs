@@ -510,8 +510,19 @@ impl Type {
     pub fn clone(self_ptr: TypePtr, types: &mut TypeVec) -> TypePtr {
         let result = match self_ptr.deref(types.get_lifetime()) {
             Type::Function(_) => FunctionType::clone(self_ptr, types),
-            Type::Array(arr) => types.get_array_type(arr.base, arr.dimension, arr.mutable),
-            Type::View(view) => types.get_view_type(view.base.base, view.base.dimension, view.base.mutable, view.concrete.clone()),
+            Type::Array(arr) => {
+                let base = arr.base;
+                let dimension = arr.dimension;
+                let mutable = arr.mutable;
+                types.get_array_type(base, dimension, mutable)
+            },
+            Type::View(view) => {
+                let base = view.base.base;
+                let dimension = view.base.dimension;
+                let mutable = view.base.mutable;
+                let concrete = view.concrete.clone();
+                types.get_view_type(base, dimension, mutable, concrete)
+            },
             Type::JumpLabel => types.get_jump_label_type(),
             Type::TestType => types.get_test_type_type()
         };

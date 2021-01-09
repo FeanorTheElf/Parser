@@ -68,14 +68,14 @@ impl<'a> LifetimeMut<'a> {
         self.lifetime_cast(r).unwrap()
     }
     
-    pub fn lifetime_cast_consume<T: ?Sized>(mut self, r: DynRef<T>) -> Option<&'a mut T> {
+    pub fn lifetime_cast_consume<T: ?Sized>(self, r: DynRef<T>) -> Option<&'a mut T> {
         if !self.lifetime.is_valid(r) {
             return None;
         }
         return Some(unsafe { r.target.as_mut() }.unwrap());
     }
 
-    pub fn cast_consume<T: ?Sized>(mut self, r: DynRef<T>) -> &'a mut T {
+    pub fn cast_consume<T: ?Sized>(self, r: DynRef<T>) -> &'a mut T {
         self.lifetime_cast_consume(r).unwrap()
     }
 
