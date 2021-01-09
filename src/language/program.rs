@@ -381,14 +381,14 @@ impl Expression {
         })
     }
 
-    pub fn call_tree_preorder_depth_first_search<F>(&self, mut f: F)
-    where F: for<'a> FnMut(&'a FunctionCall)
+    pub fn call_tree_preorder_depth_first_search<'a, F>(&'a self, mut f: F)
+    where F: FnMut(&'a FunctionCall)
     {
         self.try_call_tree_preorder_depth_first_search::<_, !>(&mut move |call| { f(call); return Ok(()); }).unwrap_or_else(|x| x);
     }
 
-    pub fn try_call_tree_preorder_depth_first_search<F, E>(&self, f: &mut F) -> Result<(), E> 
-    where F: for<'a> FnMut(&'a FunctionCall) -> Result<(), E> 
+    pub fn try_call_tree_preorder_depth_first_search<'a, F, E>(&'a self, f: &mut F) -> Result<(), E> 
+    where F: FnMut(&'a FunctionCall) -> Result<(), E> 
     {
         match self {
             Expression::Call(call) => {

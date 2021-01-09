@@ -10,8 +10,8 @@ use super::topological_sort::call_graph_topological_sort;
 
 use std::collections::{HashSet, HashMap};
 
-fn for_each_named_function_call<F>(function: &Function, global_scope: &DefinitionScopeStack, mut f: F) -> Result<(), CompileError>
-    where F: FnMut(&FunctionCall, &DefinitionScopeStack) -> Result<(), CompileError>
+fn for_each_named_function_call<'a, 'b, F>(function: &'a Function, global_scope: &DefinitionScopeStack<'b, 'a>, mut f: F) -> Result<(), CompileError>
+    where F: for<'c> FnMut(&'a FunctionCall, &DefinitionScopeStack<'c, 'a>) -> Result<(), CompileError>
 {
     if let Some(body) = &function.body {
         global_scope.child_scope(function).try_scoped_preorder_depth_first_search(body, &mut |block, scope| {
@@ -87,7 +87,7 @@ fn calculated_function_call_concrete_view_arguments(call: &FunctionCall, called_
             let given_type_ptr = get_expression_type(given_param, scope).unwrap();
             let given_type = given_type_ptr.deref(types.get_lifetime());
             let expected_type = formal_param.variable_type.deref(types.get_lifetime());
-            assert!(given_type.is_implicitly_convertable(expected_type, types.get_lifetime()));
+            debug_assert!(given_type.is_implicitly_convertable(expected_type, types.get_lifetime()));
             call_types.push(given_type.expect_view(given_param.pos()).internal_error().get_concrete().unwrap().dyn_clone());
         }
     }
@@ -109,11 +109,18 @@ pub fn calculate_required_function_instantiations<'a>(functions: &'a [Box<Functi
 
         for_each_named_function_call(function, &global_scope, |call, scope| {
             if let Identifier::Name(called_function_name) = &call.function.expect_identifier()?.identifier {
+                
                 let called_function = scope.get_defined(called_function_name, call.pos())?.dynamic().downcast_ref::<Function>().unwrap();
                 let concrete_view_arguments = calculated_function_call_concrete_view_arguments(call, called_function, scope, types)?;
-                let mut new_instantiations = Vec::new();
+
+                let mut new_instantiations = HashSet::new();
                 for instantiation in instantiations.get(&Ptr::from(function)).unwrap() {
-                    new_instantiations.push(instantiation.with_call_views(&called_function.params, &concrete_view_arguments, types.get_lifetime()));
+                    new_instantiations.insert(instantiation.with_call_views(&called_function.params, &concrete_view_arguments, types.get_lifetime()));
+                }
+                if let Some(called_function_instantiations) = instantiations.get_mut(&Ptr::from(called_function)) {
+                    called_function_instantiations.extend(new_instantiations.into_iter());
+                } else {
+                    instantiations.insert(Ptr::from(called_function), new_instantiations);
                 }
             }
             return Ok(());
@@ -121,144 +128,6 @@ pub fn calculate_required_function_instantiations<'a>(functions: &'a [Box<Functi
     }
 
     return Ok(instantiations);
-}
-
-fn set_concrete_type_box(target: TypePtr, concrete: Box<dyn ConcreteView>, type_lifetime: &mut LifetimeMut) {
-    let target_mut = target.deref_mut(type_lifetime);
-    if let Type::View(view) = target_mut {
-        assert!(view.concrete.is_none());
-        view.concrete = Some(concrete);
-    } else {
-        panic!("Cannot set concrete type of non-view type");
-    }
-}
-
-fn set_concrete_type<T: ConcreteView>(target: TypePtr, concrete: T, type_lifetime: &mut LifetimeMut) {
-    set_concrete_type_box(target, Box::new(concrete), type_lifetime);
-}
-
-#[derive(Debug)]
-struct NotAllRequiredConcreteTypesKnown {
-    view_with_unknown_concrete_type: TypePtr
-}
-
-fn set_builtin_call_result_concrete_type(call: &FunctionCall, op: BuiltInIdentifier, scopes: &DefinitionScopeStack, type_lifetime: &mut LifetimeMut) -> Result<(), NotAllRequiredConcreteTypesKnown>
-{
-    assert!(call.function == op);
-    assert!(call.result_type_cache.get().is_some());
-
-    match op {
-        BuiltInIdentifier::ViewZeros => {
-            assert!(call.get_stored_type().deref(type_lifetime.as_const()).is_view());
-            set_concrete_type(call.get_stored_type(), ZeroView::new(), type_lifetime);
-        },
-        BuiltInIdentifier::FunctionAdd |
-            BuiltInIdentifier::FunctionMul |
-            BuiltInIdentifier::FunctionAnd |
-            BuiltInIdentifier::FunctionOr |
-            BuiltInIdentifier::FunctionEq |
-            BuiltInIdentifier::FunctionGeq |
-            BuiltInIdentifier::FunctionLeq |
-            BuiltInIdentifier::FunctionNeq |
-            BuiltInIdentifier::FunctionLs |
-            BuiltInIdentifier::FunctionGt |
-            BuiltInIdentifier::FunctionUnaryDiv | 
-            BuiltInIdentifier::FunctionUnaryNeg => {
-                assert!(!call.get_stored_type().deref(type_lifetime.as_const()).is_view());
-            },
-        BuiltInIdentifier::FunctionIndex => {
-            assert!(call.get_stored_type().deref(type_lifetime.as_const()).is_view());
-            let indexed_type = get_expression_type(&call.parameters[0], scopes).unwrap();
-            let concrete: Box<dyn ConcreteView> = match indexed_type.deref(type_lifetime.as_const()) {
-                Type::View(view) => {
-                    debug_assert!(view.base.dimension == call.parameters.len() - 1);
-                    if let Some(indexed_concrete_view) = &view.concrete {
-                        Box::new(ComposedView::compose(Box::new(IndexView::new(view.base.dimension)), indexed_concrete_view.dyn_clone()))
-                    } else {
-                        return Err(NotAllRequiredConcreteTypesKnown {
-                            view_with_unknown_concrete_type: indexed_type
-                        });
-                    }
-                },
-                Type::Array(arr) => {
-                    debug_assert!(arr.dimension == call.parameters.len() - 1);
-                    Box::new(IndexView::new(arr.dimension))
-                },
-                _ => unimplemented!()
-            };
-            set_concrete_type_box(call.get_stored_type(), concrete, type_lifetime);
-        }
-    };
-    return Ok(());
-}
-
-fn set_expression_concrete_type<'a>(expr: &'a Expression, scopes: &DefinitionScopeStack, type_lifetime: &mut LifetimeMut) -> Result<(), NotAllRequiredConcreteTypesKnown> {
-    let mut result = Ok(());
-    match expr {
-        Expression::Call(call) => {
-            result = result.and(set_expression_concrete_type(&call.function, scopes, type_lifetime));
-            for param in &call.parameters {
-                result = result.and(set_expression_concrete_type(param, scopes, type_lifetime));
-            }
-            if let Expression::Variable(var) = &call.function {
-                if let Identifier::BuiltIn(op) = &var.identifier {
-                    result = result.and(set_builtin_call_result_concrete_type(&**call, *op, scopes, type_lifetime));
-                }
-            }
-        },
-        Expression::Variable(_) => {},
-        Expression::Literal(_) => {}
-    };
-    return result;
-}
-
-fn determine_concrete_view_types_block(block: &Block, parent_scopes: &DefinitionScopeStack, type_lifetime: &mut LifetimeMut) -> Result<(), CompileError> {
-
-    let scopes = parent_scopes.child_scope(block);
-    for statement in &block.statements {
-        for expression in statement.expressions() {
-            // TODO: handle cyclic type dependencies correctly
-            set_expression_concrete_type(expression, &scopes, type_lifetime).unwrap();
-        }
-        if let Some(declaration) = statement.downcast::<LocalVariableDeclaration>() {
-            let is_var_type_view = declaration.declaration.variable_type.deref(type_lifetime.as_const()).is_view();
-            if let Some(value) = &declaration.value {
-                if is_var_type_view {
-                    let concrete = if let Type::View(value_view) = get_expression_type(value, &scopes).unwrap().deref(type_lifetime.as_const()) {
-                        value_view.concrete.as_ref().unwrap().dyn_clone()
-                    } else {
-                        return Err(error_type_not_convertable(declaration.pos(), get_expression_type(value, &scopes).unwrap(), declaration.declaration.variable_type, type_lifetime.as_const()))
-                    };
-                    set_concrete_type_box(declaration.declaration.variable_type, concrete, type_lifetime);
-                }
-            } else if is_var_type_view {
-                return Err(error_view_not_initialized(declaration, type_lifetime.as_const()));
-            }
-        }
-    }
-
-    return Ok(());
-}
-
-pub fn determine_concrete_view_types(functions: &[Box<Function>], type_lifetime: &mut LifetimeMut) -> Result<(), CompileError> {
-
-    let scopes = DefinitionScopeStack::new(functions);
-    for function in functions {
-        let mut template_id = 0;
-        for param in &function.params {
-            if let Type::View(view) = param.variable_type.deref_mut(type_lifetime) {
-                view.concrete = Some(Box::new(Template::new(template_id)));
-            }
-            template_id += 1;
-        }
-
-        let function_scope = scopes.child_scope(&**function);
-        if let Some(body) = &function.body {
-            determine_concrete_view_types_block(body, &function_scope, type_lifetime)?;
-        }
-    }
-
-    return Ok(());
 }
 
 #[cfg(test)]
@@ -279,7 +148,7 @@ fn test_calculate_required_function_instantiations() {
     
     ")).unwrap();
 
-    determine_concrete_view_types(&program.items, &mut program.types.get_lifetime_mut()).unwrap();
+    determine_types_in_program(&mut program).unwrap();
 
     let required_instantiations = calculate_required_function_instantiations(&program.items, &mut program.types).unwrap();
 

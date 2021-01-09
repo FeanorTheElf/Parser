@@ -90,7 +90,7 @@ impl Build<Name> for Variable {
 
         Variable {
             pos: pos,
-            identifier: Identifier::Name(param),
+            identifier: Identifier::create(param),
         }
     }
 }

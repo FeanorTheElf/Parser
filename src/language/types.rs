@@ -324,6 +324,19 @@ impl FunctionType {
             Type::replace_templated_view_parts(ptr, template, target, type_lifetime);
         }
     }
+
+    pub fn fill_concrete_views_with_template(self_ptr: TypePtr, type_lifetime: &mut LifetimeMut) {
+        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types.len();
+        let mut id = 0;
+        for i in 0..n {
+            let param_type_ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types[i];
+            if let Type::View(view) = param_type_ptr.deref_mut(type_lifetime) {
+                assert!(view.concrete.is_none());
+                view.concrete = Some(Box::new(Template::new(id)));
+                id += 1;
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

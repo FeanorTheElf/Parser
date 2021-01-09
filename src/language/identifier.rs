@@ -1,5 +1,6 @@
-#[derive(Clone, PartialEq, Eq, Hash)]
+use std::collections::HashMap;
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     pub name: String,
     pub id: u32,
@@ -143,5 +144,20 @@ impl Identifier {
 
     pub fn is_builtin(&self) -> bool {
         !self.is_name()
+    }
+
+    pub fn create(name: Name) -> Self {
+        let named_builtin_identifiers = singleton!{
+            {{
+                let mut result = HashMap::new();
+                result.insert(Name::new("zeros".to_owned(), 0), BuiltInIdentifier::ViewZeros);
+                result
+            }}: HashMap<Name, BuiltInIdentifier>
+        };
+        if let Some(builtin_identifier) = named_builtin_identifiers.get(&name) {
+            Identifier::BuiltIn(*builtin_identifier)
+        } else {
+            Identifier::Name(name)
+        }
     }
 }

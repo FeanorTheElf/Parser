@@ -193,15 +193,17 @@ impl<'a, T> ScopeStack<'a, T> {
     /// (inclusive) the given subblock. Expects this scope stack to contain all scopes
     /// down to the parameter `block`, excluding the block itself.
     /// 
-    pub fn try_scoped_preorder_depth_first_search<'b, F, E>(&self, block: &'b Block, for_each: &mut F) -> Result<(), E> 
+    pub fn try_scoped_preorder_depth_first_search<'b, F, E>(&self, block: &'b Block, f: &mut F) -> Result<(), E> 
         where 
             T: From<&'b dyn SymbolDefinition>,
             F: for<'c> FnMut(&'b Block, &ScopeStack<'c, T>) -> Result<(), E>
     {
         let child = self.child_scope(block);
-        for_each(block, &child)?;
-        for subblock in block.subblocks() {
-            child.try_scoped_preorder_depth_first_search(subblock, for_each)?;
+        f(block, &child)?;
+        for statement in &block.statements {
+            for subblock in statement.subblocks() {
+                child.try_scoped_preorder_depth_first_search(subblock, f)?;
+            }
         }
         return Ok(());
     }
