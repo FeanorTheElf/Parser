@@ -36,7 +36,7 @@ impl TemplateConcreteViewAssignment {
     /// Creates an assignment in which each template view is mapped to
     /// a reference view
     /// 
-    fn reference_views(parameters: &Vec<Declaration>, type_lifetime: Lifetime) -> TemplateConcreteViewAssignment {
+    pub fn reference_views(parameters: &Vec<Declaration>, type_lifetime: Lifetime) -> TemplateConcreteViewAssignment {
         let mapping = parameters.iter().map(|p| type_lifetime.cast(p.variable_type))
             .filter_map(|t| t.expect_view(&NONEXISTING).ok())
             .map(|t| t.get_concrete().unwrap())
@@ -129,9 +129,6 @@ pub fn calculate_required_function_instantiations<'a>(functions: &'a [Box<Functi
 
     return Ok(instantiations);
 }
-
-#[cfg(test)]
-use super::super::language::ast_test::*;
 
 #[test]
 fn test_calculate_required_function_instantiations() {

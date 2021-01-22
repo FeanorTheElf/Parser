@@ -562,8 +562,10 @@ impl Type {
         }
     }
 
+    ///
     /// Whether objects of this type are implicitly convertable into objects of the target type. Use this
     /// to check if given parameters are valid
+    /// 
     pub fn is_implicitly_convertable(&self, target: &Type, _prog_lifetime: Lifetime) -> bool {
         match self {
             Type::Array(self_type) => match target {
@@ -581,8 +583,10 @@ impl Type {
         }
     }
 
+    ///
     /// Whether the content of an object of this type can be copied into a variable of the target type. Use this
     /// to check if assignments are valid
+    /// 
     pub fn is_copyable_to(&self, target: &Type, _prog_lifetime: Lifetime) -> bool {
         match target {
             Type::Array(target_type) => (match self {

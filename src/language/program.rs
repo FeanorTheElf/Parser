@@ -67,6 +67,16 @@ impl Function {
     pub fn statements<'a>(&'a self) -> impl Iterator<Item = &'a dyn Statement> {
         (&self.body).into_iter().flat_map(|body| body.statements.iter()).map(|s| &**s)
     }
+
+    pub fn clone(&self, types: &mut TypeVec) -> Function {
+        Function {
+            pos: self.pos().clone(),
+            identifier: self.identifier.clone(),
+            params: self.params.iter().map(|p| p.clone(types)).collect(),
+            function_type: Type::clone(self.function_type, types),
+            body: self.body.as_ref().map(|b| *b.clone(types).downcast_box::<Block>().unwrap())
+        }
+    }
 }
 
 #[derive(Debug, Eq)]

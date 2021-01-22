@@ -280,8 +280,7 @@ fn test_inline() {
     let mut test = Inliner::new(|_, _| true);
 
     let mut types = TypeVec::new();
-    let mut block = Block::parse(&mut fragment_lex(
-        "
+    let mut block = Block::parse(&mut fragment_lex("
     {
         let a: int = some_func(other_func(b, ), c + b, );
         let x: int = a + 1;
