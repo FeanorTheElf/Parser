@@ -321,7 +321,7 @@ fn test_extract_calls_in_program() {
     }
     ")).unwrap();
 
-    Extractor::new(|_, _| true).extract_calls_in_program(program.work());
+    Extractor::new(|_, _| true).extract_calls_in_program((&mut program.items, program.types.get_lifetime()));
 
     let expected = Program::parse(&mut lex_str("
 
@@ -356,7 +356,7 @@ fn test_extract_calls_new_var_name_collision_subscope() {
     }
     ")).unwrap();
 
-    Extractor::new(|_, _| true).extract_calls_in_program(program.work());
+    Extractor::new(|_, _| true).extract_calls_in_program((&mut program.items, program.types.get_lifetime()));
 
     let expected = Program::parse(&mut lex_str("
 

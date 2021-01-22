@@ -20,10 +20,6 @@ impl Program {
         self.types.get_lifetime()
     }
 
-    pub fn work<'a>(&'a mut self) -> (&'a mut Vec<Box<Function>>, Lifetime<'a>) {
-        (&mut self.items, self.types.get_lifetime())
-    }
-
     #[cfg(test)]
     pub fn get_function<'a>(&'a self, name: &str) -> &'a Function {
         self.items.iter().find(|f| f.identifier.name == name).unwrap()
