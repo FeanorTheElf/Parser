@@ -14,11 +14,11 @@ use std::cell::{RefCell, Ref};
 /// 
 pub type TypePtr = DynRef<Type>;
 
-pub const HASH_ReferenceView: u32 = 0;
-pub const HASH_ZeroView: u32 = 1;
-pub const HASH_IndexView: u32 = 2;
-pub const HASH_ComposedView: u32 = 3;
-pub const HASH_CompleteIndexView: u32 = 4;
+pub const HASH_REFERENCEVIEW: u32 = 0;
+pub const HASH_ZEROVIEW: u32 = 1;
+pub const HASH_INDEXVIEW: u32 = 2;
+pub const HASH_COMPOSEDVIEW: u32 = 3;
+pub const HASH_COMPLETEINDEXVIEW: u32 = 4;
 pub const HASH_TEMPLATE: u32 = 5;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

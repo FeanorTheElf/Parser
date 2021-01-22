@@ -17,7 +17,7 @@ impl ConcreteViewFuncs for ReferenceView {
     }
 
     fn hash(&self) -> u32 {
-        HASH_ReferenceView << 24
+        HASH_REFERENCEVIEW << 24
     }
 
     fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
@@ -49,7 +49,7 @@ impl ConcreteViewFuncs for ZeroView {
     }
 
     fn hash(&self) -> u32 {
-        HASH_ZeroView << 24
+        HASH_ZEROVIEW << 24
     }
 
     fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
@@ -83,7 +83,7 @@ impl ConcreteViewFuncs for IndexView {
     }
 
     fn hash(&self) -> u32 {
-        (HASH_IndexView << 24) | (self.original_array_dims as u32 & 0xFFFFFF)
+        (HASH_INDEXVIEW << 24) | (self.original_array_dims as u32 & 0xFFFFFF)
     }
 
     fn replace_templated(self: Box<Self>, _value: Template, _target: &dyn ConcreteView) -> Box<dyn ConcreteView> {
@@ -109,7 +109,7 @@ impl ConcreteViewFuncs for ComposedView {
     }
 
     fn hash(&self) -> u32 {
-        (HASH_ComposedView << 24) | (self.chain.iter().map(|view| view.hash()).fold(0, |x, y| (x << 13) ^ y) & 0xFFFFFF)
+        (HASH_COMPOSEDVIEW << 24) | (self.chain.iter().map(|view| view.hash()).fold(0, |x, y| (x << 13) ^ y) & 0xFFFFFF)
     }
     
     fn replace_templated(mut self: Box<Self>, value: Template, target: &dyn ConcreteView) -> Box<dyn ConcreteView> {

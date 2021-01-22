@@ -1,6 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::position::NONEXISTING;
 use super::scope::*;
+use super::topological_sort::call_graph_topological_sort;
 use super::type_error::*;
 
 fn parent_type(a: PrimitiveType, b: PrimitiveType) -> PrimitiveType
@@ -336,8 +337,8 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
     for function in &program.items {
         FunctionType::fill_concrete_views_with_template(function.function_type, &mut program.types.get_lifetime_mut());
     }
-    for function in &program.items {
-        let function_scope = global_scope.child_scope(&**function);
+    for function in call_graph_topological_sort(&program.items)? {
+        let function_scope = global_scope.child_scope(&*function);
         if let Some(body) = &function.body {
             determine_types_in_block(body, &function_scope, &mut program.types)?;
         }
