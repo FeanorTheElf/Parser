@@ -89,7 +89,7 @@ use super::super::lexer::lexer::{fragment_lex, lex_str};
 #[cfg(test)]
 use super::super::parser::{Parser, TopLevelParser};
 #[cfg(test)]
-use super::super::analysis::defs_test::*;
+use super::super::analysis::mock_defs::*;
 
 #[test]
 fn test_fix_name_collisions() {

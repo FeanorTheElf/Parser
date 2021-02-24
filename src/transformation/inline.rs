@@ -265,7 +265,7 @@ fn replace_return_with_assignment_and_goto(
 #[cfg(test)]
 use super::super::language::ast_test::*;
 #[cfg(test)]
-use super::super::analysis::defs_test::*;
+use super::super::analysis::mock_defs::*;
 
 #[test]
 

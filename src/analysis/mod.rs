@@ -8,4 +8,4 @@ pub mod topological_sort;
 pub mod concrete_view;
 
 #[cfg(test)]
-pub mod defs_test;
+pub mod mock_defs;

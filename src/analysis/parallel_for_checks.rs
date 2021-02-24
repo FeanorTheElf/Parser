@@ -4,15 +4,11 @@ use feanor_la::prelude::*;
 #[allow(unused)]
 
 pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
-
     for item in &program.items {
-
         if let Some(body) = &item.body {
-
             call_for_pfor_in_block(body, &mut check_pfor_data_races)?;
         }
     }
-
     return Ok(());
 }
 
@@ -20,46 +16,31 @@ fn call_for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileErro
 where
     F: FnMut(&ParallelFor) -> Result<(), CompileError>,
 {
-
     for statement in &block.statements {
-
         if let Some(pfor) = statement.any().downcast_ref::<ParallelFor>() {
             f(pfor)?;
         }
-
         for block in statement.subblocks() {
             call_for_pfor_in_block(&block, f)?;
         }
     }
-
     return Ok(());
 }
 
 fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
-
     for access_pattern in &pfor.access_pattern {
-
         for i in 0..access_pattern.entry_accesses.len() {
-
             for j in i..access_pattern.entry_accesses.len() {
-
                 let entry1 = &access_pattern.entry_accesses[i];
-
                 let entry2 = &access_pattern.entry_accesses[j];
-
                 let one_write = entry1.write || entry2.write;
-
                 let transform1 = entry1.get_transformation_matrix(&pfor.index_variables)?;
-
                 let transform2 = entry2.get_transformation_matrix(&pfor.index_variables)?;
-
                 if one_write {
-
-                    let collision =
-                        get_collision(transform1.get((.., ..)), transform2.get((.., ..)), i != j);
-
+                    let collision = get_collision(
+                        transform1.get((.., ..)), transform2.get((.., ..)), i != j
+                    );
                     if let Some((x, y)) = collision {
-
                         return Err(CompileError::new(&entry1.pos,
                             format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {:?} and {:?}", &entry1.pos, &entry2.pos, x.get(..), y.get(..)),
                             ErrorType::PForAccessCollision));
@@ -74,7 +55,6 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
 
 // The first column is for the translation
 #[allow(non_snake_case)]
-
 fn get_collision(
     transform1: MatrixRef<i32>,
     transform2: MatrixRef<i32>,
@@ -82,35 +62,25 @@ fn get_collision(
 ) -> Option<(Vector<i32>, Vector<i32>)> {
 
     debug_assert_eq!(transform1.cols(), transform2.cols());
-
     debug_assert_eq!(transform1.rows(), transform2.rows());
 
     let variables_in = transform1.cols() - 1;
-
     let variables_out = transform1.rows();
-
     let mut joined_transform = Matrix::<i32>::zero(variables_out, 2 * variables_in);
 
     let mut left_half = joined_transform.get_mut((.., 0..variables_in));
-
     left_half.assign(Matrix::copy_of(transform1.get((.., 1..(variables_in + 1)))));
 
     let mut right_half = joined_transform.get_mut((.., variables_in..(2 * variables_in)));
-
     right_half.assign(Matrix::copy_of(transform2.get((.., 1..variables_in + 1))));
-
     right_half.scal(-1);
 
     let mut joined_translate = Matrix::<i32>::zero(variables_out, 1);
-
     let mut translate = joined_translate.get_mut((.., ..));
-
     translate -= transform1.get((.., 0..1));
-
     translate += transform2.get((.., 0..1));
 
     let mut iL = Matrix::<i32>::identity(variables_out);
-
     let mut iR = Matrix::<i32>::identity(2 * variables_in);
 
     feanor_la::diophantine::smith(
@@ -121,34 +91,25 @@ fn get_collision(
     );
 
     let x = (iL * joined_translate).into_column_vector();
-
     let mut y = Vector::<i32>::zero(2 * variables_in);
-
     let mut free_dimensions: Vec<usize> = Vec::new();
 
     for i in 0..variables_out.min(2 * variables_in) {
-
         if joined_transform[i][i] == 0 && x[i] != 0 {
-
             return None;
         } else if joined_transform[i][i] == 0 && x[i] == 0 {
-
             free_dimensions.push(i);
         // y[i] is already zero
         } else if x[i] % joined_transform[i][i] != 0 {
-
             return None;
         } else {
-
             y[i] = x[i] / joined_transform[i][i];
         }
     }
 
     // We are done, since we found a solution
     if same_index_collides {
-
         let result = (iR.as_ref() * y.as_ref()).into_column_vector();
-
         return Some((
             Vector::copy_of(result.get(0..variables_in)),
             Vector::copy_of(result.get(variables_in..(2 * variables_in))),
@@ -161,19 +122,14 @@ fn get_collision(
 
     // check all solution space basis vectors
     for free_dim in free_dimensions {
-
         y[free_dim] = 1;
-
         let basis_vector = (iR.as_ref() * y.as_ref()).into_column_vector();
-
         if basis_vector.get(0..variables_in) != basis_vector.get(variables_in..(2 * variables_in)) {
-
             return Some((
                 Vector::copy_of(basis_vector.get(0..variables_in)),
                 Vector::copy_of(basis_vector.get(variables_in..(2 * variables_in))),
             ));
         }
-
         y[free_dim] = 0;
     }
 
