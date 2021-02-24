@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-use super::super::language::position::NONEXISTING;
 use super::scope::DefinitionScopeStack;
 use super::export::*;
 use super::types::*;
@@ -46,7 +45,7 @@ impl TemplateConcreteViewAssignment {
     ) -> TemplateConcreteViewAssignment {
         let mapping = parameters.iter()
             .map(|p| type_lifetime.cast(p.variable_type))
-            .filter_map(|t| t.expect_view(&NONEXISTING).ok())
+            .filter_map(|t| t.expect_view(&TextPosition::NONEXISTING).ok())
             .map(|t| t.get_concrete().unwrap())
             .filter_map(|t| t.downcast::<Template>())
             .map(|t| (*t, Box::new(ReferenceView::new()) as Box<dyn ConcreteView>))
@@ -71,7 +70,7 @@ impl TemplateConcreteViewAssignment {
     ) -> TemplateConcreteViewAssignment {
         let mapping = parameters.iter()
             .map(|p| p.variable_type.deref(type_lifetime))
-            .filter_map(|t| t.expect_view(&NONEXISTING).ok())
+            .filter_map(|t| t.expect_view(&TextPosition::NONEXISTING).ok())
             .map(|t| t.get_concrete().unwrap())
             .filter_map(|t| t.downcast::<Template>())
             .zip(views)

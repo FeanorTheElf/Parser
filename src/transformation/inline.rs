@@ -141,7 +141,7 @@ fn inline_single_function_call(
         .body
         .as_ref()
         .expect("Cannot inline native function")
-        .clone(types)
+        .deep_copy_ast(types)
         .downcast_box::<Block>().unwrap();
 
     let in_function_body_scopes = scopes.child_scope(&result_block);
@@ -178,11 +178,9 @@ where
         .map(move |(given_param, formal_param)| {
 
             let param_name = rename_disjunct(formal_param.variable.clone());
-
             rename_mapping.insert(formal_param.variable.clone(), param_name.clone());
-
+            
             let param_type = formal_param.variable_type.clone();
-
             let param_value = given_param;
 
             let param_decl = LocalVariableDeclaration {
@@ -272,8 +270,11 @@ use super::super::analysis::mock_defs::*;
 fn test_inline() {
 
     let parent_scope_stack: NameScopeStack = NameScopeStack::new(&[][..]);
-
-    let predefined_variables = EnvironmentBuilder::new().add_test_def("b").add_test_def("c").add_test_def("other_func").add_test_def("some_func");
+    let predefined_variables = EnvironmentBuilder::new()
+        .add_test_def("b")
+        .add_test_def("c")
+        .add_test_def("other_func")
+        .add_test_def("some_func");
 
     let scope_stack = parent_scope_stack.child_scope(&predefined_variables.destruct().1);
 

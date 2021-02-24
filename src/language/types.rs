@@ -1,8 +1,7 @@
 use super::error::*;
-use super::position::{TextPosition, NONEXISTING};
+use super::position::TextPosition;
 use super::super::util::dynamic::DynEq;
 use super::super::util::dyn_lifetime::*;
-use std::cell::{RefCell, Ref};
 
 ///
 /// On the semantic of pointer equality of types:
@@ -93,7 +92,7 @@ impl TypeVec {
         return self.array_types[dimension_count];
     }
 
-    pub fn get_view_type(&mut self, base: PrimitiveType, dimension_count: usize, mutable: bool, concrete_view: Option<Box<dyn ConcreteView>>) -> TypePtr {
+    fn get_view_type(&mut self, base: PrimitiveType, dimension_count: usize, mutable: bool, concrete_view: Option<Box<dyn ConcreteView>>) -> TypePtr {
         self.types.push(Type::View(ViewType {
             base : ArrayType {
                 base: base,
@@ -305,31 +304,31 @@ impl FunctionType {
 
     pub fn clone(self_ptr: TypePtr, types: &mut TypeVec) -> TypePtr {
         let mut param_types = Vec::new();
-        let param_ptrs = self_ptr.deref(types.get_lifetime()).expect_callable(&NONEXISTING).internal_error().param_types.clone();
+        let param_ptrs = self_ptr.deref(types.get_lifetime()).expect_callable(&TextPosition::NONEXISTING).internal_error().param_types.clone();
         for param in param_ptrs {
             param_types.push(Type::clone(param, types));
         }
-        let return_ptr = self_ptr.deref(types.get_lifetime()).expect_callable(&NONEXISTING).internal_error().return_type;
+        let return_ptr = self_ptr.deref(types.get_lifetime()).expect_callable(&TextPosition::NONEXISTING).internal_error().return_type;
         let return_type = Type::clone_voidable(return_ptr, types);
         return types.get_function_type(param_types, return_type);
     }
 
     pub fn replace_templated_view_parts(self_ptr: TypePtr, template: Template, target: &dyn ConcreteView, type_lifetime: &mut LifetimeMut) {
-        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types.len();
+        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&TextPosition::NONEXISTING).internal_error().param_types.len();
         for i in 0..n {
-            let ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types[i];
+            let ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&TextPosition::NONEXISTING).internal_error().param_types[i];
             Type::replace_templated_view_parts(ptr, template, target, type_lifetime);
         }
-        if let VoidableTypePtr::Some(ptr) = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().return_type {
+        if let VoidableTypePtr::Some(ptr) = self_ptr.deref(type_lifetime.as_const()).expect_callable(&TextPosition::NONEXISTING).internal_error().return_type {
             Type::replace_templated_view_parts(ptr, template, target, type_lifetime);
         }
     }
 
     pub fn fill_concrete_views_with_template(self_ptr: TypePtr, type_lifetime: &mut LifetimeMut) {
-        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types.len();
+        let n = self_ptr.deref(type_lifetime.as_const()).expect_callable(&TextPosition::NONEXISTING).internal_error().param_types.len();
         let mut id = 0;
         for i in 0..n {
-            let param_type_ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&NONEXISTING).internal_error().param_types[i];
+            let param_type_ptr = self_ptr.deref(type_lifetime.as_const()).expect_callable(&TextPosition::NONEXISTING).internal_error().param_types[i];
             if let Type::View(view) = param_type_ptr.deref_mut(type_lifetime) {
                 assert!(view.concrete.is_none());
                 view.concrete = Some(Box::new(Template::new(id)));
@@ -442,18 +441,44 @@ impl Type {
         }
     }
 
+    fn error_not_a_view(&self, pos: &TextPosition) -> CompileError {
+        CompileError::new(
+            pos,
+            format!("Expression of type {} is not a view", self),
+            ErrorType::TypeError,
+        )
+    }
+
     pub fn expect_view(
         &self,
         pos: &TextPosition
     ) -> Result<&ViewType, CompileError> {
         match self {
-            Type::View(view_type) => Ok(&view_type),
-            ty => Err(CompileError::new(
-                pos,
-                format!("Expression of type {} is not a view", ty),
-                ErrorType::TypeError,
-            )),
+            Type::View(ref view_type) => Ok(view_type),
+            _ => Err(self.error_not_a_view(pos)),
         }
+    }
+
+    pub fn expect_view_mut(
+        &mut self,
+        pos: &TextPosition
+    ) -> Result<&mut ViewType, CompileError> {
+        match self {
+            Type::View(ref mut view_type) => Ok(view_type),
+            _ => Err(self.error_not_a_view(pos)),
+        }
+    }
+
+    pub fn unwrap_view(
+        &self
+    ) -> &ViewType {
+        self.expect_view(&TextPosition::NONEXISTING).unwrap()
+    }
+
+    pub fn unwrap_view_mut(
+        &mut self
+    ) -> &mut ViewType {
+        self.expect_view_mut(&TextPosition::NONEXISTING).unwrap()
     }
 
     pub fn expect_arithmetic(&self, pos: &TextPosition) -> Result<PrimitiveType, CompileError> {
@@ -507,6 +532,10 @@ impl Type {
     /// pointers. Therefore, the given and the returned type will behave in the same way as two types
     /// that are obtained by parsing two times the same expression and calculating its type.
     /// 
+    /// Information that is infered later will not be present in the cloned object (this
+    /// information highly depends on the context, so it may be different for the cloned
+    /// node's location)
+    /// 
     pub fn clone(self_ptr: TypePtr, types: &mut TypeVec) -> TypePtr {
         let result = match self_ptr.deref(types.get_lifetime()) {
             Type::Function(_) => FunctionType::clone(self_ptr, types),
@@ -520,8 +549,7 @@ impl Type {
                 let base = view.base.base;
                 let dimension = view.base.dimension;
                 let mutable = view.base.mutable;
-                let concrete = view.concrete.clone();
-                types.get_view_type(base, dimension, mutable, concrete)
+                types.get_generic_view_type(base, dimension, mutable)
             },
             Type::JumpLabel => types.get_jump_label_type(),
             Type::TestType => types.get_test_type_type()

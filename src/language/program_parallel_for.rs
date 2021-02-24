@@ -115,12 +115,12 @@ impl StatementFuncs for ParallelFor {
             .chain(self.access_pattern.iter_mut().map(|pattern| &mut pattern.array).flat_map(|e| e.names_mut())))
     }
     
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(ParallelFor {
             access_pattern: self.access_pattern.iter().map(|p| p.clone(types)).collect(),
-            body: *self.body.clone(types).downcast_box::<Block>().unwrap(),
+            body: *self.body.deep_copy_ast(types).downcast_box::<Block>().unwrap(),
             pos: self.pos().clone(),
-            index_variables: self.index_variables.iter().map(|v| v.clone(types)).collect()
+            index_variables: self.index_variables.iter().map(|v| v.deep_copy_ast(types)).collect()
         })
     }
 }
@@ -129,7 +129,7 @@ impl ArrayAccessPattern {
     
     fn clone(&self, types: &mut TypeVec) -> ArrayAccessPattern {
         ArrayAccessPattern {
-            array: self.array.clone(types),
+            array: self.array.deep_copy_ast(types),
             entry_accesses: self.entry_accesses.iter().map(|a| a.clone(types)).collect(),
             pos: self.pos().clone()
         }
@@ -435,7 +435,7 @@ impl ArrayEntryAccess {
     fn clone(&self, types: &mut TypeVec) -> ArrayEntryAccess {
         ArrayEntryAccess {
             alias: self.alias.clone(),
-            indices: self.indices.iter().map(|e| e.clone(types)).collect(),
+            indices: self.indices.iter().map(|e| e.deep_copy_ast(types)).collect(),
             pos: self.pos().clone(),
             write: self.write,
             matrix_cache: RefCell::from(None)
@@ -447,14 +447,12 @@ impl ArrayEntryAccess {
 use super::super::lexer::lexer::fragment_lex;
 #[cfg(test)]
 use super::super::parser::Parser;
-#[cfg(test)]
-use super::position::BEGIN;
 
 #[test]
 fn test_get_transformation_matrix() {
 
     let array_entry_access = ArrayEntryAccess::new(
-        BEGIN,
+        TextPosition::BEGIN,
         vec![
             Expression::parse(&mut fragment_lex("a + b * 2 - c - 2"), &mut TypeVec::new()).unwrap(),
             Expression::parse(&mut fragment_lex("a * (-1) - (-1) * b + 2 * 3"), &mut TypeVec::new()).unwrap(),
@@ -484,7 +482,7 @@ fn test_get_transformation_matrix() {
 fn test_get_transformation_matrix_non_affine_transform() {
 
     let array_entry_access = ArrayEntryAccess::new(
-        BEGIN,
+        TextPosition::BEGIN,
         vec![Expression::parse(&mut fragment_lex("-1 + a * (2 + x)"), &mut TypeVec::new()).unwrap()],
         None,
         true,
@@ -500,7 +498,7 @@ fn test_get_transformation_matrix_non_affine_transform() {
 fn test_get_transformation_matrix_non_index_variable() {
 
     let array_entry_access = ArrayEntryAccess::new(
-        BEGIN,
+        TextPosition::BEGIN,
         vec![Expression::parse(&mut fragment_lex("a"), &mut TypeVec::new()).unwrap()],
         None,
         true,

@@ -86,7 +86,7 @@ where
                 declaration: Declaration {
                     pos: pos.clone(),
                     variable: variable_name.clone(),
-                    variable_type: return_type.clone(),
+                    variable_type: *return_type,
                 },
                 value: Some(Expression::Call(Box::new(
                     self.extract_calls_in_parameters(
@@ -241,7 +241,7 @@ where
             // already allocate entries for the initialization of the extracted result variables
             for i in 0..(index_after - index_before) {
                 let init_block = Block {
-                    pos: position::NONEXISTING,
+                    pos: TextPosition::NONEXISTING,
                     statements: Vec::new(),
                 };
                 result_statements.push(Box::new(init_block));
@@ -277,7 +277,7 @@ where
         extractions.reverse();
         for extraction in extractions {
             debug_assert!(&*block.statements[extraction.extracted_var_value_assignment_index] == &Block {
-                pos: position::NONEXISTING,
+                pos: TextPosition::NONEXISTING,
                 statements: vec![]
             } as &dyn Statement);
             block.statements.remove(extraction.extracted_var_value_assignment_index);

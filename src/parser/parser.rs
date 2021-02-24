@@ -862,8 +862,6 @@ grammar_rule! { BracketExpr := Token#BracketOpen Expression Token#BracketClose }
 impl_parse_trait! { Variable := Name }
 
 #[cfg(test)]
-use super::super::language::position::NONEXISTING;
-#[cfg(test)]
 use super::super::lexer::lexer::{fragment_lex, lex_str};
 
 #[test]
@@ -913,7 +911,7 @@ fn test_parser() {
 
     assert_eq!(
         Expression::Variable(Variable {
-            pos: NONEXISTING,
+            pos: TextPosition::NONEXISTING,
             identifier: Identifier::Name(Name::l("d"))
         }),
         assignment.assignee
@@ -930,18 +928,18 @@ fn test_parse_index_expressions() {
 
     assert_eq!(
         Expression::Call(Box::new(FunctionCall {
-            pos: NONEXISTING,
+            pos: TextPosition::NONEXISTING,
             function: Expression::Variable(Variable {
-                pos: NONEXISTING,
+                pos: TextPosition::NONEXISTING,
                 identifier: Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex)
             }),
             parameters: vec![
                 Expression::Variable(Variable {
-                    pos: NONEXISTING,
+                    pos: TextPosition::NONEXISTING,
                     identifier: Identifier::Name(Name::l("a"))
                 }),
                 Expression::Variable(Variable {
-                    pos: NONEXISTING,
+                    pos: TextPosition::NONEXISTING,
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],

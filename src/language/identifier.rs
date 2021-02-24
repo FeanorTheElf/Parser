@@ -4,34 +4,43 @@ use std::collections::HashMap;
 pub struct Name {
     pub name: String,
     pub id: u32,
+    pub extra_data: Vec<String>
 }
 
 impl Name {
     pub fn new(name: String, id: u32) -> Name {
-
-        Name { name: name, id: id }
+        Name { 
+            name: name, 
+            id: id,
+            extra_data: Vec::new() 
+        }
     }
 
     #[cfg(test)]
-
     pub fn l(name: &str) -> Name {
-
         Name::new(name.to_owned(), 0)
+    }
+
+    pub fn components<'a>(&'a self) -> impl 'a + Iterator<Item = String> {
+        std::iter::once(&self.name).map(String::clone)
+            .chain(std::iter::once(self.id).map(|x| format!("{}", x)))
+            .chain(self.extra_data.iter().map(String::clone))
     }
 }
 
 impl PartialOrd for Name {
     fn partial_cmp(&self, rhs: &Name) -> Option<std::cmp::Ordering> {
-
         Some(self.cmp(rhs))
     }
 }
 
 impl Ord for Name {
     fn cmp(&self, rhs: &Name) -> std::cmp::Ordering {
-
         match self.name.cmp(&rhs.name) {
-            std::cmp::Ordering::Equal => self.id.cmp(&rhs.id),
+            std::cmp::Ordering::Equal => match self.id.cmp(&rhs.id) {
+                std::cmp::Ordering::Equal => self.extra_data.cmp(&rhs.extra_data),
+                x => x
+            },
             x => x,
         }
     }
@@ -39,7 +48,7 @@ impl Ord for Name {
 
 impl std::fmt::Debug for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}#{}", self.name, self.id)
+        write!(f, "{}#{}#{:?}", self.name, self.id, self.extra_data)
     }
 }
 
@@ -54,7 +63,6 @@ impl std::fmt::Display for Name {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-
 pub enum BuiltInIdentifier {
     FunctionIndex,
     FunctionAdd,

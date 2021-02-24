@@ -1,6 +1,6 @@
 use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
-use super::position::{TextPosition, BEGIN};
+use super::position::TextPosition;
 use super::types::{Type, FunctionType, TypePtr, TypeVec, VoidableTypePtr};
 use super::{AstNode, AstNodeFuncs};
 
@@ -34,7 +34,7 @@ pub struct Declaration {
 }
 
 impl Declaration {
-    pub fn clone(&self, types: &mut TypeVec) -> Declaration {
+    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> Declaration {
         Declaration {
             pos: self.pos().clone(),
             variable: self.variable.clone(),
@@ -64,13 +64,13 @@ impl Function {
         (&self.body).into_iter().flat_map(|body| body.statements.iter()).map(|s| &**s)
     }
 
-    pub fn clone(&self, types: &mut TypeVec) -> Function {
+    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> Function {
         Function {
             pos: self.pos().clone(),
             identifier: self.identifier.clone(),
-            params: self.params.iter().map(|p| p.clone(types)).collect(),
+            params: self.params.iter().map(|p| p.deep_copy_ast(types)).collect(),
             function_type: Type::clone(self.function_type, types),
-            body: self.body.as_ref().map(|b| *b.clone(types).downcast_box::<Block>().unwrap())
+            body: self.body.as_ref().map(|b| *b.deep_copy_ast(types).downcast_box::<Block>().unwrap())
         }
     }
 }
@@ -145,7 +145,14 @@ pub trait StatementFuncs: AstNode {
         Box::new(self.expressions_mut().flat_map(|e| e.names_mut()))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement>;
+    ///
+    /// Copies the ast node with its complete subtree. The result should be the same as
+    /// if the code string that yielded the subtree was parsed again, so in particular,
+    /// new view type object will be created for parameters, variable types, ... that have
+    /// the same value as the original ones (however, they will not contain concrete view
+    /// information, as this must be inferred and is not created by parsing the code). 
+    /// 
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement>;
 }
 
 dynamic_subtrait!{ Statement: StatementFuncs; StatementDynCastable }
@@ -212,12 +219,12 @@ pub struct FunctionCall {
 
 impl FunctionCall {
     
-    pub fn clone(&self, types: &mut TypeVec) -> FunctionCall {
+    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> FunctionCall {
         FunctionCall {
             pos: self.pos.clone(),
-            function: self.function.clone(types),
-            parameters: self.parameters.iter().map(|p| p.clone(types)).collect::<Vec<_>>(),
-            result_type_cache: Cell::from(self.result_type_cache.get().map(|ty| Type::clone_voidable(ty, types)))
+            function: self.function.deep_copy_ast(types),
+            parameters: self.parameters.iter().map(|p| p.deep_copy_ast(types)).collect::<Vec<_>>(),
+            result_type_cache: Cell::from(None)
         }
     }
 }
@@ -237,7 +244,7 @@ pub struct Literal {
 
 impl Literal {
     
-    pub fn clone(&self, types: &mut TypeVec) -> Literal {
+    pub fn deep_copy_ast(&self, _types: &mut TypeVec) -> Literal {
         Literal {
             pos: self.pos.clone(),
             value: self.value.clone(),
@@ -427,10 +434,10 @@ impl Expression {
         return Ok(());
     }
 
-    pub fn clone(&self, types: &mut TypeVec) -> Expression {
+    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> Expression {
         match self {
-            Expression::Call(call) => Expression::Call(Box::new((**call).clone(types))),
-            Expression::Literal(literal) => Expression::Literal(literal.clone(types)),
+            Expression::Call(call) => Expression::Call(Box::new((**call).deep_copy_ast(types))),
+            Expression::Literal(literal) => Expression::Literal(literal.deep_copy_ast(types)),
             Expression::Variable(var) => Expression::Variable(var.clone())
         }
     }
@@ -448,7 +455,7 @@ impl PartialEq<Identifier> for Expression {
 
 impl AstNodeFuncs for Program {
     fn pos(&self) -> &TextPosition {
-        &BEGIN
+        &TextPosition::BEGIN
     }
 }
 
@@ -660,8 +667,8 @@ impl StatementFuncs for Expression {
         Box::new(std::iter::empty())
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
-        Box::new(self.clone(types))
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+        Box::new(self.deep_copy_ast(types))
     }
 }
 
@@ -685,10 +692,10 @@ impl StatementFuncs for If {
         Box::new(std::iter::once(&mut self.body))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(If {
-            body: *self.body.clone(types).downcast_box::<Block>().unwrap(),
-            condition: self.condition.clone(types),
+            body: *self.body.deep_copy_ast(types).downcast_box::<Block>().unwrap(),
+            condition: self.condition.deep_copy_ast(types),
             pos: self.pos().clone()
         })
     }
@@ -714,10 +721,10 @@ impl StatementFuncs for While {
         Box::new(std::iter::once(&mut self.body))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(While {
-            body: *self.body.clone(types).downcast_box::<Block>().unwrap(),
-            condition: self.condition.clone(types),
+            body: *self.body.deep_copy_ast(types).downcast_box::<Block>().unwrap(),
+            condition: self.condition.deep_copy_ast(types),
             pos: self.pos().clone()
         })
     }
@@ -751,10 +758,10 @@ impl StatementFuncs for Return {
         Box::new(std::iter::empty())
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(Return {
             pos: self.pos().clone(),
-            value: self.value.as_ref().map(|v| v.clone(types))
+            value: self.value.as_ref().map(|v| v.deep_copy_ast(types))
         })
     }
 }
@@ -779,10 +786,10 @@ impl StatementFuncs for Block {
         Box::new(std::iter::once(self))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(Block {
             pos: self.pos().clone(),
-            statements: self.statements.iter().map(|s| (**s).clone(types)).collect()
+            statements: self.statements.iter().map(|s| (**s).deep_copy_ast(types)).collect()
         })
     }
 }
@@ -823,10 +830,10 @@ impl StatementFuncs for LocalVariableDeclaration {
         Box::new(std::iter::once(&mut self.declaration.variable).chain((&mut self.value).into_iter().flat_map(|e| e.names_mut())))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(LocalVariableDeclaration {
-            declaration: self.declaration.clone(types),
-            value: self.value.as_ref().map(|v| v.clone(types))
+            declaration: self.declaration.deep_copy_ast(types),
+            value: self.value.as_ref().map(|v| v.deep_copy_ast(types))
         })
     }
 }
@@ -851,10 +858,10 @@ impl StatementFuncs for Assignment {
         Box::new(std::iter::empty())
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(Assignment {
-            assignee: self.assignee.clone(types),
-            value: self.value.clone(types),
+            assignee: self.assignee.deep_copy_ast(types),
+            value: self.value.deep_copy_ast(types),
             pos: self.pos().clone()
         })
     }
@@ -888,7 +895,7 @@ impl StatementFuncs for Label {
         Box::new(std::iter::once(&mut self.label))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, _types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(<Self as Clone>::clone(self))
     }
 }
@@ -921,7 +928,7 @@ impl StatementFuncs for Goto {
         Box::new(std::iter::once(&mut self.target))
     }
 
-    fn clone(&self, types: &mut TypeVec) -> Box<dyn Statement> {
+    fn deep_copy_ast(&self, _types: &mut TypeVec) -> Box<dyn Statement> {
         Box::new(<Self as Clone>::clone(self))
     }
 }

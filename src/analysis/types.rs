@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-use super::super::language::position::NONEXISTING;
 use super::scope::*;
 use super::topological_sort::call_graph_topological_sort;
 use super::type_error::*;
@@ -85,19 +84,18 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
                 }
             }
             let indexed_type = types.get_lifetime().cast(array_type?).clone();
-            return match indexed_type {
-                Type::View(view) => Ok(types.get_generic_view_type(
+            let (base, mutable) = match indexed_type {
+                Type::View(view) => (
                     view.base.base, 
-                    0, 
                     view.base.mutable
-                )),
-                Type::Array(arr) => Ok(types.get_generic_view_type(
+                ),
+                Type::Array(arr) => (
                     arr.base, 
-                    0, 
                     arr.mutable, 
-                )),
+                ),
                 _ => unimplemented!()
             };
+            return Ok(types.get_generic_view_type(base, 0, mutable));
         },
         BuiltInIdentifier::FunctionUnaryDiv | BuiltInIdentifier::FunctionUnaryNeg => {
             let (result_try, pos) = param_types.next().ok_or_else(|| error_wrong_parameter_count(pos, Identifier::BuiltIn(op), 1))?(types);
@@ -254,7 +252,7 @@ fn set_defined_call_result_concrete_view(call: &FunctionCall, scopes: &Definitio
 
                 let given_param_type = get_expression_type(given_param, scopes).unwrap();
 
-                if let Ok(view) = given_param_type.deref(types.get_lifetime()).expect_view(&NONEXISTING) {
+                if let Ok(view) = given_param_type.deref(types.get_lifetime()).expect_view(&TextPosition::NONEXISTING) {
                     assert!(param_type.is_view());
                     if let Some(template) = view.concrete.as_ref().unwrap().downcast::<Template>() {
                         Some((*template, view.concrete.clone().unwrap()))
@@ -282,11 +280,11 @@ fn set_defined_call_result_concrete_view(call: &FunctionCall, scopes: &Definitio
 /// This will also use the generic view signature of called functions (e.g. &Template1, &Template2 -> &Template1), 
 /// so this must already be available (work in functions in topological order)
 /// 
-fn set_expression_concrete_view(expr: &Expression, scopes: &DefinitionScopeStack, types: &mut TypeVec) -> ConcreteViewComputationResult {
+fn fill_expression_concrete_view(expr: &Expression, scopes: &DefinitionScopeStack, types: &mut TypeVec) -> ConcreteViewComputationResult {
     match expr {
         Expression::Call(call) => {
             for param in &call.parameters {
-                set_expression_concrete_view(param, scopes, types)?;
+                fill_expression_concrete_view(param, scopes, types)?;
             }
             match &call.function {
                 Expression::Variable(var) => match &var.identifier {
@@ -298,7 +296,7 @@ fn set_expression_concrete_view(expr: &Expression, scopes: &DefinitionScopeStack
                     }
                 },
                 _ => {
-                    set_expression_concrete_view(&call.function, scopes, types)?;
+                    fill_expression_concrete_view(&call.function, scopes, types)?;
                      set_defined_call_result_concrete_view(call, scopes, types)?;
                 }
             }
@@ -308,11 +306,48 @@ fn set_expression_concrete_view(expr: &Expression, scopes: &DefinitionScopeStack
     return Ok(());
 }
 
-fn calculate_and_store_type_nonvoid<'a>(expr: &'a Expression, scopes: &DefinitionScopeStack, types: &mut TypeVec) -> Result<TypePtr, CompileError> {
+fn calculate_and_store_type_nonvoid(
+    expr: &Expression, 
+    scopes: &DefinitionScopeStack, 
+    types: &mut TypeVec
+) -> Result<TypePtr, CompileError> {
     calculate_and_store_type(expr, scopes, types).and_then(|t| t.expect_nonvoid(expr.pos()))
 }
 
-fn determine_types_in_block<'a>(block: &'a Block, parent_scopes: &DefinitionScopeStack, types: &mut TypeVec) -> Result<(), CompileError> {
+fn fill_statement_concrete_view(
+    statement: &dyn Statement, 
+    scopes: &DefinitionScopeStack, 
+    types: &mut TypeVec
+) -> Result<(), CompileError> {
+
+    for expr in statement.expressions() {
+        fill_expression_concrete_view(expr, &scopes, types).unwrap();
+    }
+
+    if let Some(local_var) = statement.downcast::<LocalVariableDeclaration>() {
+        if let Some(val) = &local_var.value {
+            let assigned_type = get_expression_type(val, scopes).unwrap()
+                .deref(types.get_lifetime());
+            if let Type::View(view) = assigned_type {
+                let concrete_view = view.get_concrete().unwrap().dyn_clone();
+                let mut lifetime_mut = types.get_lifetime_mut();
+                let var_type = local_var.declaration.variable_type.deref_mut(&mut lifetime_mut);
+                var_type.unwrap_view_mut().concrete = Some(concrete_view);
+            }
+        } else if local_var.declaration.variable_type.deref(types.get_lifetime()).is_view() {
+            return Err(
+                error_view_not_initialized(&local_var, types.get_lifetime())
+            );
+        }
+    }
+    return Ok(());
+}
+
+fn determine_types_in_block(
+    block: &Block, 
+    parent_scopes: &DefinitionScopeStack, 
+    types: &mut TypeVec
+) -> Result<(), CompileError> {
     let scopes = parent_scopes.child_scope(block);
     for statement in &block.statements {
         for expr in statement.expressions() {
@@ -320,14 +355,24 @@ fn determine_types_in_block<'a>(block: &'a Block, parent_scopes: &DefinitionScop
         }
     }
     for statement in &block.statements {
-        for expr in statement.expressions() {
-            set_expression_concrete_view(expr, &scopes, types).unwrap();
-        }
+        fill_statement_concrete_view(&**statement, &scopes, types)?;
     }
     for statement in &block.statements {
         for subblock in statement.subblocks() {
             determine_types_in_block(subblock, &scopes, types)?;
         }
+    }
+    return Ok(());
+}
+
+pub fn determine_types_in_function(
+    function: &Function,
+    global_scope: &DefinitionScopeStack,
+    types: &mut TypeVec
+) -> Result<(), CompileError> {
+    let function_scope = global_scope.child_scope(&*function);
+    if let Some(body) = &function.body {
+        determine_types_in_block(body, &function_scope, types)?;
     }
     return Ok(());
 }
@@ -338,10 +383,7 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
         FunctionType::fill_concrete_views_with_template(function.function_type, &mut program.types.get_lifetime_mut());
     }
     for function in call_graph_topological_sort(&program.items)? {
-        let function_scope = global_scope.child_scope(&*function);
-        if let Some(body) = &function.body {
-            determine_types_in_block(body, &function_scope, &mut program.types)?;
-        }
+        determine_types_in_function(function, &global_scope, &mut program.types)?;
     }
     return Ok(());
 }
@@ -377,4 +419,34 @@ pub fn get_expression_type(expr: &Expression, scopes: &DefinitionScopeStack) -> 
         },
         Expression::Literal(lit) => lit.get_stored_voidable_type()
     }
+}
+
+#[test]
+fn test_determine_types_in_program() {
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn foo(x: &int[,],) {
+        let a: &int[,] = x;
+        let b: &int[,] = zeros(5, 8,);
+    }
+    
+    ")).unwrap();
+
+    determine_types_in_program(&mut program).internal_error();
+
+    assert_eq!(
+        &Template::new(0) as &dyn ConcreteView,
+        program.items[0].body.as_ref().unwrap().statements[0]
+            .downcast::<LocalVariableDeclaration>().unwrap()
+            .declaration.variable_type.deref(program.lifetime())
+            .unwrap_view().get_concrete().unwrap()
+    );
+
+    assert_eq!(
+        &ZeroView::new() as &dyn ConcreteView,
+        program.items[0].body.as_ref().unwrap().statements[1]
+            .downcast::<LocalVariableDeclaration>().unwrap()
+            .declaration.variable_type.deref(program.lifetime())
+            .unwrap_view().get_concrete().unwrap()
+    );
 }
