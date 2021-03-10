@@ -137,7 +137,7 @@ fn calculate_and_store_type<'a>(expr: &'a Expression, scopes: &DefinitionScopeSt
         },
         Expression::Variable(var) => match &var.identifier {
             Identifier::Name(name) => Ok(VoidableTypePtr::Some(scopes.get_defined(name, var.pos())?.get_type())),
-            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {}, but builtin identifiers can have different types depending on context", op)
+            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
         },
         Expression::Literal(lit) => Ok(VoidableTypePtr::Some(lit.literal_type))
     };
@@ -415,7 +415,7 @@ pub fn get_expression_type(expr: &Expression, scopes: &DefinitionScopeStack) -> 
         },
         Expression::Variable(var) => match &var.identifier {
             Identifier::Name(name) => VoidableTypePtr::Some(scopes.get_defined(name, var.pos()).internal_error().get_type()),
-            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {}, but builtin identifiers can have different types depending on context", op)
+            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
         },
         Expression::Literal(lit) => lit.get_stored_voidable_type()
     }

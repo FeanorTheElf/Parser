@@ -344,7 +344,7 @@ impl<'a, T> ScopeStack<'a, T> {
 
             CompileError::new(
                 pos,
-                format!("Undefined symbol {}", name),
+                format!("Undefined symbol {:?}", name),
                 ErrorType::UndefinedSymbol,
             )
         })

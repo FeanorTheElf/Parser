@@ -323,7 +323,7 @@ impl ArrayEntryAccess {
                     } else {
 
                         return Err(CompileError::new(var.pos(),
-                            format!("Currently only index variables are allowed in pfor index expressions, found {}", name),
+                            format!("Currently only index variables are allowed in pfor index expressions, found {:?}", name),
                             ErrorType::IllegalPForIndexExpression));
                     }
                 } else {

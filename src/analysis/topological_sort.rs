@@ -82,7 +82,7 @@ pub fn call_graph_topological_sort<'a>(program: &'a [Box<Function>]) -> Result<i
     return topological_sort(
         program.iter().map(|fun| Ptr::from(&**fun)), 
         |fun| use_data.get(&fun).unwrap_or(&empty_call_data).called.iter().map(|target| *target)
-    ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {} can recurse", fun.identifier), ErrorType::Recursion))
+    ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {:?} can recurse", fun.identifier), ErrorType::Recursion))
     .map(|result| result.map(Ptr::get).collect::<Vec<_>>().into_iter());
 }
 

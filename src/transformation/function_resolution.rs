@@ -23,7 +23,7 @@ pub fn find_function_definition<'b>(
                         .find(|f| f.identifier == *name)
                         .ok_or(CompileError::new(
                             expr.pos(),
-                            format!("Could not find definition of function {}", name),
+                            format!("Could not find definition of function {:?}", name),
                             ErrorType::UndefinedSymbol,
                         ));
 

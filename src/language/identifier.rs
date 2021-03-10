@@ -52,16 +52,6 @@ impl std::fmt::Debug for Name {
     }
 }
 
-impl std::fmt::Display for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.id == 0 {
-            write!(f, "{}", self.name)
-        } else {
-            write!(f, "{}#{}", self.name, self.id)
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltInIdentifier {
     FunctionIndex,
@@ -107,31 +97,16 @@ impl BuiltInIdentifier {
     }
 }
 
-impl std::fmt::Display for BuiltInIdentifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.get_symbol())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Identifier {
     BuiltIn(BuiltInIdentifier),
     Name(Name),
 }
 
-impl std::fmt::Display for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Identifier::BuiltIn(op) => write!(f, "operator {}", op),
-            Identifier::Name(name) => write!(f, "{}", name)
-        }
-    }
-}
-
 impl Identifier {
     pub fn unwrap_name(&self) -> &Name {
         match self {
-            Identifier::BuiltIn(op) => panic!("Called unwrap_name() on builtin identifier {}", op),
+            Identifier::BuiltIn(op) => panic!("Called unwrap_name() on builtin identifier {}", op.get_symbol()),
             Identifier::Name(name) => name,
         }
     }
@@ -139,7 +114,7 @@ impl Identifier {
     pub fn unwrap_builtin(&self) -> &BuiltInIdentifier {
         match self {
             Identifier::BuiltIn(op) => op,
-            Identifier::Name(name) => panic!("Called unwrap_builtin() on name {}", name),
+            Identifier::Name(name) => panic!("Called unwrap_builtin() on name {:?}", name),
         }
     }
 

@@ -36,7 +36,7 @@ pub fn error_not_indexable_buildin_identifier(
 ) -> CompileError {
     CompileError::new(
         pos,
-        format!("Operator {} cannot be indexed", builtin_identifier),
+        format!("Operator {:?} cannot be indexed", builtin_identifier),
         ErrorType::TypeError,
     )
 }
@@ -50,7 +50,7 @@ pub fn error_rvalue_not_assignable(pos: &TextPosition) -> CompileError {
 }
 
 pub fn error_wrong_parameter_count(pos: &TextPosition, function: Identifier, expected_count: usize) -> CompileError {
-    CompileError::new(pos, format!("Function {} expects {} parameters", function, expected_count), ErrorType::TypeError)
+    CompileError::new(pos, format!("Function {:?} expects {} parameters", function, expected_count), ErrorType::TypeError)
 }
 
 pub fn error_return_view(pos: &TextPosition) -> CompileError {
@@ -58,7 +58,7 @@ pub fn error_return_view(pos: &TextPosition) -> CompileError {
 }
 
 pub fn error_view_not_initialized(declaration: &LocalVariableDeclaration, type_lifetime: Lifetime) -> CompileError {
-    CompileError::new(declaration.pos(), format!("Local variable {} of view type {} must be initialized where declared", declaration.declaration.variable, LifetimedType::bind(declaration.declaration.variable_type, type_lifetime)), ErrorType::TypeError)
+    CompileError::new(declaration.pos(), format!("Local variable {:?} of view type {} must be initialized where declared", declaration.declaration.variable, LifetimedType::bind(declaration.declaration.variable_type, type_lifetime)), ErrorType::TypeError)
 }
 
 pub fn error_type_not_convertable(pos: &TextPosition, src: TypePtr, dst: TypePtr, type_lifetime: Lifetime) -> CompileError {
@@ -68,7 +68,7 @@ pub fn error_type_not_convertable(pos: &TextPosition, src: TypePtr, dst: TypePtr
 pub fn error_undefined_symbol(var: &Variable) -> CompileError {
     CompileError::new(
         var.pos(),
-        format!("Undefined symbol: {}", var.identifier.unwrap_name()),
+        format!("Undefined symbol: {:?}", var.identifier.unwrap_name()),
         ErrorType::UndefinedSymbol,
     )
 }

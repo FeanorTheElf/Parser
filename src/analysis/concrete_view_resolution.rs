@@ -75,18 +75,33 @@ impl TemplateConcreteViewAssignment {
             .filter_map(|t| t.downcast::<Template>())
             .zip(views)
             .map(|(template, concrete)| {
-                let target = self.apply(concrete.clone());
-                assert!(!target.contains_templated());
-                return (*template, target);
+                return (*template, self.apply_complete(concrete.clone()));
             }).collect();
         return TemplateConcreteViewAssignment { mapping };
     }
 
+    ///
+    /// Replaces all template occurences in `view` that are keys in this mapping
+    /// by the corresponding mapped concrete view
+    /// 
     pub fn apply(&self, view: Box<dyn ConcreteView>) -> Box<dyn ConcreteView> {
         self.mapping.iter()
             .fold(view, |current, (template, target)| 
                 current.replace_templated(*template, &**target)
             )
+    }
+    
+    ///
+    /// Replaces all template occurences in `view` that are keys in this mapping
+    /// by the corresponding mapped concrete view (same as `apply`)
+    /// 
+    /// This function panics if not all template occurences in view are successfully
+    /// replaced by template-free concrete views
+    /// 
+    pub fn apply_complete(&self, view: Box<dyn ConcreteView>) -> Box<dyn ConcreteView> {
+        let result = self.apply(view);
+        assert!(!result.contains_templated());
+        return result;
     }
 }
 
@@ -128,23 +143,26 @@ pub fn calculate_required_function_instantiations<'a>(
     types: &mut TypeVec
 ) -> Result<RequiredInstantiationsMap<'a>, CompileError> {
 
-    let mut instantiations: RequiredInstantiationsMap = functions.iter().map(|function| (Ptr::from(&**function), HashSet::new())).collect();
+    let mut instantiations: RequiredInstantiationsMap = functions.iter()
+        .map(|function| (Ptr::from(&**function), HashSet::new()))
+        .collect();
     
     for exported_function in get_functions_to_export(functions) {
-        let function_data = instantiations.get_mut(&Ptr::from(exported_function)).unwrap();
-        function_data.insert(TemplateConcreteViewAssignment::reference_views(&exported_function.params, types.get_lifetime()));
+        let function_instantiations = instantiations.get_mut(&Ptr::from(exported_function)).unwrap();
+        function_instantiations.insert(TemplateConcreteViewAssignment::reference_views(
+            &exported_function.params, types.get_lifetime()
+        ));
     }
     
     let global_scope = DefinitionScopeStack::new(functions);
     for function in call_graph_topological_sort(functions)? {
         for_each_function_call(function, &global_scope, |call, scope| {
-            let called_function_ident = &call.function.expect_identifier()?.identifier;
-            if let Identifier::Name(called_function_name) = called_function_ident {
+            let called_function_identifier = &call.function.expect_identifier()?.identifier;
+            if let Identifier::Name(called_function_name) = called_function_identifier {
                 
                 let called_function = scope
                     .get_defined(called_function_name, call.pos())?
-                    .dynamic()
-                    .downcast_ref::<Function>().unwrap();
+                    .dynamic().downcast_ref::<Function>().unwrap();
                 let concrete_view_arguments = calculated_function_call_concrete_view_arguments(
                     call, called_function, scope, types
                 )?;

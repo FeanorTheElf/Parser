@@ -2,6 +2,10 @@ use super::prelude::*;
 use super::compiler::*;
 use super::super::util::cmp::Comparing;
 
+trait SimpleWriter {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError>;
+}
+
 pub trait AstWriter {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError>;
 }
@@ -91,15 +95,39 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
             _func => write_non_builtin_call(&**call, out)?
         },
         Expression::Literal(lit) => write!(out, "{}", lit.value)?,
-        Expression::Variable(var) => match &var.identifier {
-            Identifier::Name(name) => write!(out, "{}", name)?,
-            Identifier::BuiltIn(op) => write!(out, "{}", op.get_symbol())?
-        }
+        Expression::Variable(var) => var.identifier.write(out)?
     };
     if get_priority(expr) <= parent_priority {
         write!(out, ")")?;
     }
     return Ok(());
+}
+
+impl SimpleWriter for Name {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        if self.extra_data.len() == 0 {
+            write!(out, "{}", self.name)?;
+        } else {
+            write!(out, "{}__{}", self.name, self.extra_data[0])?;
+            for d in self.extra_data.iter().skip(1) {
+                write!(out, "_{}", d)?;
+            }
+        }
+        if self.id != 0 {
+            write!(out, "#{}", self.id)?;
+        }
+        return Ok(());
+    }
+}
+
+impl SimpleWriter for Identifier {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        match self {
+            Identifier::Name(name) => name.write(out)?,
+            Identifier::BuiltIn(builtin_op) => write!(out, "{}", builtin_op.get_symbol())?
+        };
+        return Ok(());
+    }
 }
 
 impl AstWriter for Expression {
@@ -144,7 +172,8 @@ impl AstWriter for ParallelFor {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "pfor ")?;
         for index_var in &self.index_variables {
-            write!(out, "{}: int, ", index_var.variable)?;
+            index_var.variable.write(out)?;
+            write!(out, ": int, ")?;
         }
         for access_pattern in &self.access_pattern {
             write!(out, "with ")?;
@@ -156,7 +185,8 @@ impl AstWriter for ParallelFor {
                 }
                 write!(out, "]")?;
                 if let Some(alias) = &entry_access.alias {
-                    write!(out, " as {}", alias)?;
+                    write!(out, " as ")?;
+                    alias.write(out)?;
                 }
                 write!(out, ", ")?;
             }
@@ -206,7 +236,9 @@ impl AstWriter for Block {
 
 impl AstWriter for LocalVariableDeclaration {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "let {}: {}", self.declaration.variable, prog_lifetime.cast(self.declaration.variable_type))?;
+        write!(out, "let ")?;
+        self.declaration.variable.write(out)?;
+        write!(out, ": {}", prog_lifetime.cast(self.declaration.variable_type))?;
         if let Some(val) = &self.value {
             write!(out, " = ")?;
             write_expression(val, i32::MIN, out)?;
@@ -227,23 +259,30 @@ impl AstWriter for Assignment {
 
 impl AstWriter for Label {
     fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "@{}:", self.label)?;
+        write!(out, "@")?;
+        self.label.write(out)?;
+        write!(out, ":")?;
         return Ok(());
     }
 }
 
 impl AstWriter for Goto {
     fn write(&self, _prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "goto {};", self.target)?;
+        write!(out, "goto ")?;
+        self.target.write(out)?;
+        write!(out, ";")?;
         return Ok(());
     }
 }
 
 impl AstWriter for Function {
     fn write(&self, prog_lifetime: Lifetime, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "fn {}(", self.identifier)?;
+        write!(out, "fn ", )?;
+        self.identifier.write(out)?;
+        write!(out, "(")?;
         for param in &self.params {
-            write!(out, "{}: {}, ", param.variable, prog_lifetime.cast(param.variable_type))?;
+            param.variable.write(out)?;
+            write!(out, ": {}, ", prog_lifetime.cast(param.variable_type))?;
         }
         write!(out, ")")?;
         if let Some(return_type) = &self.get_type(prog_lifetime).return_type(prog_lifetime) {

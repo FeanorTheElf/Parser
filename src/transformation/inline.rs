@@ -108,7 +108,7 @@ fn inline_single_function_call(
         match find_function_definition(&call.function, defined_functions).internal_error() {
             FunctionDefinition::UserDefined(def) => def,
             FunctionDefinition::Builtin(builtin) => {
-                panic!("Cannot inline builtin function {}", builtin)
+                panic!("Cannot inline builtin function {:?}", builtin)
             }
         };
 
