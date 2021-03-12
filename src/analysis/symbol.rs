@@ -1,11 +1,4 @@
-use super::super::language::prelude::*;
-use super::super::util::dynamic::Dynamic;
 
-pub trait SymbolDefinition: Any + Dynamic + std::fmt::Debug {
-    fn get_name(&self) -> &Name;
-
-    fn get_type(&self) -> TypePtr;
-}
 
 impl SymbolDefinition for Declaration {
     fn get_name(&self) -> &Name {

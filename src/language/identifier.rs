@@ -20,21 +20,17 @@ impl Name {
     pub fn l(name: &str) -> Name {
         Name::new(name.to_owned(), 0)
     }
-
-    pub fn components<'a>(&'a self) -> impl 'a + Iterator<Item = String> {
-        std::iter::once(&self.name).map(String::clone)
-            .chain(std::iter::once(self.id).map(|x| format!("{}", x)))
-            .chain(self.extra_data.iter().map(String::clone))
-    }
 }
 
 impl PartialOrd for Name {
+
     fn partial_cmp(&self, rhs: &Name) -> Option<std::cmp::Ordering> {
         Some(self.cmp(rhs))
     }
 }
 
 impl Ord for Name {
+
     fn cmp(&self, rhs: &Name) -> std::cmp::Ordering {
         match self.name.cmp(&rhs.name) {
             std::cmp::Ordering::Equal => match self.id.cmp(&rhs.id) {
@@ -47,6 +43,7 @@ impl Ord for Name {
 }
 
 impl std::fmt::Debug for Name {
+    
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}#{}#{:?}", self.name, self.id, self.extra_data)
     }
@@ -141,6 +138,15 @@ impl Identifier {
             Identifier::BuiltIn(*builtin_identifier)
         } else {
             Identifier::Name(name)
+        }
+    }
+}
+
+impl PartialEq<Name> for Identifier {
+    fn eq(&self, rhs: &Name) -> bool {
+        match self {
+            Identifier::Name(name) => name == rhs,
+            _ => false
         }
     }
 }

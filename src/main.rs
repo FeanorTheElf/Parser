@@ -22,25 +22,15 @@ mod util;
 #[macro_use]
 mod language;
 
-mod analysis;
-mod lexer;
-mod parser;
-mod transformation;
+// mod analysis;
+// mod lexer;
+// mod parser;
+// mod transformation;
 
-#[macro_use]
-mod cuda;
+// #[macro_use]
+// mod cuda;
 
-mod cli;
-
-use cli::cli_backend::*;
-use cli::cuda::*;
-
-use language::prelude::*;
-use parser::Parser;
-use lexer::lexer::fragment_lex;
+// mod cli;
 
 fn main() {
-    let a = Statement::parse(&mut fragment_lex("let a: int = b(c, 0,);"), &mut TypeVec::new()).unwrap();
-    assert_eq!(a.names().map(|n| n.name.as_str()).collect::<Vec<_>>(), vec!["a", "c", "b"]);
-    create_cuda_exe_backend().run(MultiStageBackendOptions::from("E:\\Users\\Simon\\Documents\\Projekte\\Parser\\example")).unwrap();
 }

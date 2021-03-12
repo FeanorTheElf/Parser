@@ -1,4 +1,5 @@
 use super::position::TextPosition;
+use super::identifier::Name;
 use std::fmt::{Display, Error, Formatter};
 
 const INTERNAL_ERROR: &'static str =
@@ -53,19 +54,24 @@ impl CompileError {
     }
 
     pub fn get_position(&self) -> &TextPosition {
-
         &self.pos
     }
 
     pub fn throw(self) -> ! {
+        panic!("{}", self)
+    }
 
-        panic!(format!("Error at {}: {}", self.pos, self.msg))
+    pub fn undefined_symbol(symbol: &Name, pos: &TextPosition) -> CompileError {
+        CompileError::new(
+            pos,
+            format!("Undefined symbol {:?}", symbol),
+            ErrorType::UndefinedSymbol,
+        )
     }
 }
 
 impl Display for CompileError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-
         write!(f, "Error at {}: {}", self.pos, self.msg)
     }
 }
@@ -76,7 +82,6 @@ pub trait InternalErrorConvertable<T> {
 
 impl<T> InternalErrorConvertable<T> for Result<T, CompileError> {
     fn internal_error(self) -> T {
-
         self.expect(INTERNAL_ERROR)
     }
 }

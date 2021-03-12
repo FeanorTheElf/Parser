@@ -2,7 +2,7 @@ use super::error::{CompileError, ErrorType};
 use super::identifier::{BuiltInIdentifier, Identifier, Name};
 use super::position::TextPosition;
 use super::types::{Type, FunctionType, TypePtr, TypeVec, VoidableTypePtr};
-use super::{AstNode, AstNodeFuncs};
+use super::ast::*;
 
 use super::super::util::cmp::Comparing;
 use super::super::util::dyn_lifetime::*;
@@ -11,7 +11,7 @@ use std::cell::Cell;
 
 #[derive(Debug)]
 pub struct Program {
-    pub items: Vec<Box<Function>>,
+    pub global_space: GlobalSpace,
     pub types: TypeVec
 }
 
@@ -23,6 +23,18 @@ impl Program {
     #[cfg(test)]
     pub fn get_function<'a>(&'a self, name: &str) -> &'a Function {
         self.items.iter().find(|f| f.identifier.name == name).unwrap()
+    }
+}
+
+#[derive(Debug)]
+pub struct GlobalSpace {
+    pub items: Vec<Box<Function>>,
+}
+
+impl GlobalSpace {
+
+    pub fn traverse_functions(&self) {
+
     }
 }
 
@@ -202,57 +214,6 @@ pub struct Goto {
     pub target: Name,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Expression {
-    Call(Box<FunctionCall>),
-    Variable(Variable),
-    Literal(Literal),
-}
-
-#[derive(Debug, Eq)]
-pub struct FunctionCall {
-    pub pos: TextPosition,
-    pub function: Expression,
-    pub parameters: Vec<Expression>,
-    pub result_type_cache: Cell<Option<VoidableTypePtr>>
-}
-
-impl FunctionCall {
-    
-    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> FunctionCall {
-        FunctionCall {
-            pos: self.pos.clone(),
-            function: self.function.deep_copy_ast(types),
-            parameters: self.parameters.iter().map(|p| p.deep_copy_ast(types)).collect::<Vec<_>>(),
-            result_type_cache: Cell::from(None)
-        }
-    }
-}
-
-#[derive(Debug, Eq, Clone)]
-pub struct Variable {
-    pub pos: TextPosition,
-    pub identifier: Identifier,
-}
-
-#[derive(Debug, Eq)]
-pub struct Literal {
-    pub pos: TextPosition,
-    pub value: i32,
-    pub literal_type: TypePtr
-}
-
-impl Literal {
-    
-    pub fn deep_copy_ast(&self, _types: &mut TypeVec) -> Literal {
-        Literal {
-            pos: self.pos.clone(),
-            value: self.value.clone(),
-            literal_type: self.literal_type.clone()
-        }
-    }
-}
-
 impl Block {
 
     ///
@@ -350,121 +311,6 @@ impl<'a> Iterator for ExpressionVarIterMut<'a> {
                 },
                 Some(Expression::Literal(_)) => {}
             }
-        }
-    }
-}
-
-impl Expression {
-    pub fn expect_identifier(&self) -> Result<&Variable, CompileError> {
-        match self {
-            Expression::Call(_) => Err(CompileError::new(
-                self.pos(),
-                format!("Only a variable is allowed here."),
-                ErrorType::VariableRequired,
-            )),
-            Expression::Variable(var) => Ok(&var),
-            Expression::Literal(_) => Err(CompileError::new(
-                self.pos(),
-                format!("Only a variable is allowed here."),
-                ErrorType::VariableRequired,
-            )),
-        }
-    }
-
-    pub fn is_lvalue(&self) -> bool {
-        match self {
-            Expression::Call(call) => match &call.function {
-                Expression::Call(_) => false,
-                Expression::Literal(_) => unimplemented!(),
-                Expression::Variable(var) => {
-                    var.identifier == Identifier::BuiltIn(BuiltInIdentifier::FunctionIndex)
-                        && call.parameters[0].is_lvalue()
-                }
-            },
-            Expression::Variable(_) => true,
-            Expression::Literal(_) => false,
-        }
-    }
-
-    pub fn variables<'a>(&'a self) -> ExpressionVarIter<'a> {
-        ExpressionVarIter {
-            subtrees: vec![self]
-        }
-    }
-
-    pub fn variables_mut<'a>(&'a mut self) -> ExpressionVarIterMut<'a> {
-        ExpressionVarIterMut {
-            subtrees: vec![self]
-        }
-    }
-
-    pub fn names<'a>(&'a self) -> impl Iterator<Item = &'a Name> {
-        self.variables().filter_map(|v| match &v.identifier {
-            Identifier::Name(name) => Some(name),
-            Identifier::BuiltIn(_) => None
-        })
-    }
-
-    pub fn names_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Name> {
-        self.variables_mut().filter_map(|v| match &mut v.identifier {
-            Identifier::Name(name) => Some(name),
-            Identifier::BuiltIn(_) => None
-        })
-    }
-
-    pub fn call_tree_preorder_depth_first_search<'a, F>(&'a self, mut f: F)
-    where F: FnMut(&'a FunctionCall)
-    {
-        self.try_call_tree_preorder_depth_first_search::<_, !>(&mut move |call| { f(call); return Ok(()); }).unwrap_or_else(|x| x);
-    }
-
-    pub fn try_call_tree_preorder_depth_first_search<'a, F, E>(&'a self, f: &mut F) -> Result<(), E> 
-    where F: FnMut(&'a FunctionCall) -> Result<(), E> 
-    {
-        match self {
-            Expression::Call(call) => {
-                f(call)?;
-                call.function.try_call_tree_preorder_depth_first_search(f)?;
-                for param in &call.parameters {
-                    param.try_call_tree_preorder_depth_first_search(f)?;
-                }
-            },
-            _ => {}
-        };
-        return Ok(());
-    }
-
-    pub fn try_call_tree_preorder_depth_first_search_mut<F, E>(&mut self, f: &mut F) -> Result<(), E> 
-    where F: FnMut(&mut FunctionCall) -> Result<(), E> 
-    {
-        match self {
-            Expression::Call(call) => {
-                f(call)?;
-                call.function.try_call_tree_preorder_depth_first_search_mut(f)?;
-                for param in &mut call.parameters {
-                    param.try_call_tree_preorder_depth_first_search_mut(f)?;
-                }
-            },
-            _ => {}
-        };
-        return Ok(());
-    }
-
-    pub fn deep_copy_ast(&self, types: &mut TypeVec) -> Expression {
-        match self {
-            Expression::Call(call) => Expression::Call(Box::new((**call).deep_copy_ast(types))),
-            Expression::Literal(literal) => Expression::Literal(literal.deep_copy_ast(types)),
-            Expression::Variable(var) => Expression::Variable(var.clone())
-        }
-    }
-}
-
-impl PartialEq<Identifier> for Expression {
-    fn eq(&self, rhs: &Identifier) -> bool {
-
-        match self {
-            Expression::Variable(var) => var.identifier == *rhs,
-            _ => false,
         }
     }
 }
@@ -984,44 +830,3 @@ impl PartialEq<Name> for Expression {
     }
 }
 
-impl AstNode for FunctionCall {} 
-
-impl AstNodeFuncs for FunctionCall {
-    fn pos(&self) -> &TextPosition {
-        &self.pos
-    }
-}
-
-impl PartialEq for FunctionCall {
-    fn eq(&self, rhs: &FunctionCall) -> bool {
-        self.function == rhs.function && self.parameters == rhs.parameters
-    }
-}
-
-impl PartialEq for Variable {
-    fn eq(&self, rhs: &Variable) -> bool {
-        self.identifier == rhs.identifier
-    }
-}
-
-impl AstNode for Variable {} 
-
-impl AstNodeFuncs for Variable {
-    fn pos(&self) -> &TextPosition {
-        &self.pos
-    }
-}
-
-impl PartialEq for Literal {
-    fn eq(&self, rhs: &Literal) -> bool {
-        self.value == rhs.value
-    }
-}
-
-impl AstNode for Literal {} 
-
-impl AstNodeFuncs for Literal {
-    fn pos(&self) -> &TextPosition {
-        &self.pos
-    }
-}
