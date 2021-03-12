@@ -3,6 +3,27 @@ use super::super::analysis::scope::*;
 use super::super::analysis::types::*;
 use super::super::analysis::concrete_view_resolution::*;
 
+fn for_each_function_call_mut<F>(
+    function: &mut Function, 
+    global_scope: &NameScopeStack, 
+    mut f: F
+) -> Result<(), CompileError>
+    where F: FnMut(&mut FunctionCall, &NameScopeStack) -> Result<(), CompileError>
+{
+    let child_scope = global_scope.child_scope(function);
+    if let Some(body) = &mut function.body {
+        child_scope.try_scoped_preorder_depth_first_search_mut(body, &mut |block, scope| {
+            for statement in &mut block.statements {
+                for expression in statement.expressions_mut() {
+                    expression.try_call_tree_preorder_depth_first_search_mut(&mut |call| f(call, scope))?;
+                }
+            }
+            return Ok(());
+        })?;
+    }
+    return Ok(());
+}
+
 fn get_concrete_view_mangling_parts<'a>(
     function: &'a Function, 
     instantiation: &'a TemplateConcreteViewAssignment, 
@@ -43,6 +64,25 @@ fn create_monomorphized_instance(
     }
     determine_types_in_function(&instance, global_scope, types).internal_error();
     return Box::new(instance);
+}
+
+fn mangle_called_function_names(
+    program: &mut Program
+) -> Result<(), CompileError> {
+    let global_scope = NameScopeStack::new(program);
+    
+    for function in &mut program.items {
+        for_each_function_call_mut(function, &global_scope, |call, _scopes| {
+            if let Expression::Variable(var) = &mut call.function {
+                if let Identifier::Name(name) = &mut var.identifier {
+                    
+                }
+            }
+            Ok(())
+        })?;
+    }
+
+    return Ok(());
 }
 
 fn monomorphize(

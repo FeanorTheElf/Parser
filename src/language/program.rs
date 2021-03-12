@@ -434,6 +434,22 @@ impl Expression {
         return Ok(());
     }
 
+    pub fn try_call_tree_preorder_depth_first_search_mut<F, E>(&mut self, f: &mut F) -> Result<(), E> 
+    where F: FnMut(&mut FunctionCall) -> Result<(), E> 
+    {
+        match self {
+            Expression::Call(call) => {
+                f(call)?;
+                call.function.try_call_tree_preorder_depth_first_search_mut(f)?;
+                for param in &mut call.parameters {
+                    param.try_call_tree_preorder_depth_first_search_mut(f)?;
+                }
+            },
+            _ => {}
+        };
+        return Ok(());
+    }
+
     pub fn deep_copy_ast(&self, types: &mut TypeVec) -> Expression {
         match self {
             Expression::Call(call) => Expression::Call(Box::new((**call).deep_copy_ast(types))),

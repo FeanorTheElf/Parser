@@ -214,6 +214,28 @@ impl<'a, T> ScopeStack<'a, T> {
     /// (inclusive) the given subblock. Expects this scope stack to contain all scopes
     /// down to the parameter `block`, excluding the block itself.
     /// 
+    pub fn try_scoped_preorder_depth_first_search_mut<F, E>(&self, block: &mut Block, f: &mut F) -> Result<(), E> 
+        where 
+            T: for<'c> From<&'c dyn SymbolDefinition>,
+            F: for<'c> FnMut(&'c mut Block, &ScopeStack<'c, T>) -> Result<(), E>
+    {
+        let child = self.child_scope(block);
+        f(block, &child)?;
+        let child = self.child_scope(block);
+        for statement in &mut block.statements {
+            for subblock in statement.subblocks_mut() {
+                child.try_scoped_preorder_depth_first_search_mut(subblock, f)?;
+            }
+        }
+        return Ok(());
+    }
+
+    ///
+    /// Calls the given closure for each node in the block nesting tree with root
+    /// subblock, always with a scope stack object representing the scope stack to 
+    /// (inclusive) the given subblock. Expects this scope stack to contain all scopes
+    /// down to the parameter `block`, excluding the block itself.
+    /// 
     pub fn scoped_preorder_depth_first_search<'b, F>(&self, block: &'b Block, mut for_each: F)
         where 
             T: From<&'b dyn SymbolDefinition>,

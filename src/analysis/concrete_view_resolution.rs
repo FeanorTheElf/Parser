@@ -2,7 +2,6 @@ use super::super::language::prelude::*;
 use super::scope::DefinitionScopeStack;
 use super::export::*;
 use super::types::*;
-use super::type_error::*;
 
 use super::super::util::ref_eq::Ptr;
 use super::topological_sort::call_graph_topological_sort;
