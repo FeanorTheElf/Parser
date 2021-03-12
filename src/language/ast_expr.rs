@@ -132,6 +132,79 @@ impl Expression {
     }
 }
 
+pub struct ExpressionNamesIter<'a> {
+    iters: Vec<&'a Expression>
+}
+
+impl<'a> Iterator for ExpressionNamesIter<'a> {
+    type Item = &'a Name;
+
+    fn next(&mut self) -> Option<&'a Name> {
+        loop {
+            match self.iters.pop() {
+                None => {
+                    return None;
+                },
+                Some(Expression::Call(call)) => {
+                    self.iters.push(&call.function);
+                    self.iters.extend(call.parameters.iter());
+                },
+                Some(Expression::Variable(var)) => match &var.identifier {
+                    Identifier::Name(name) => {
+                        return Some(name);
+                    },
+                    _ => {}
+                },
+                Some(Expression::Literal(_)) => {}
+            }
+        }
+    }
+}
+
+pub struct ExpressionNamesIterMut<'a> {
+    iters: Vec<&'a mut Expression>
+}
+
+impl<'a> Iterator for ExpressionNamesIterMut<'a> {
+    type Item = &'a mut Name;
+
+    fn next(&mut self) -> Option<&'a mut Name> {
+        loop {
+            match self.iters.pop() {
+                None => {
+                    return None;
+                },
+                Some(Expression::Call(call)) => {
+                    self.iters.push(&mut call.function);
+                    self.iters.extend(call.parameters.iter_mut());
+                },
+                Some(Expression::Variable(var)) => match &mut var.identifier {
+                    Identifier::Name(name) => {
+                        return Some(name);
+                    },
+                    _ => {}
+                },
+                Some(Expression::Literal(_)) => {}
+            }
+        }
+    }
+}
+
+impl Expression {
+    
+    pub fn names<'a>(&'a self) -> ExpressionNamesIter<'a> {
+        ExpressionNamesIter {
+            iters: vec![self]
+        }
+    }
+
+    pub fn names_mut<'a>(&'a mut self) -> ExpressionNamesIterMut<'a> {
+        ExpressionNamesIterMut {
+            iters: vec![self]
+        }
+    }
+}
+
 impl From<FunctionCall> for Expression {
     fn from(call: FunctionCall) -> Expression {
         Expression::Call(Box::new(call))
