@@ -10,3 +10,7 @@ pub mod ast_statement;
 pub mod ast_ifwhile;
 pub mod ast_return;
 pub mod ast_assignment;
+pub mod ast_function;
+pub mod prelude;
+pub mod compiler;
+//pub mod gwaihir_writer;

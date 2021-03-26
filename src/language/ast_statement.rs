@@ -287,7 +287,6 @@ impl StatementFuncs for Block {
                         data.push(StatementMutOrPlaceholder::Statement(&mut **statement));
                     }
                 }
-                println!("{:?}", data);
                 for statement in data.into_iter() {
                     match statement {
                         StatementMutOrPlaceholder::Statement(statement) => {
@@ -343,6 +342,19 @@ impl AstNodeFuncs for Declaration {
 }
 
 impl AstNode for Declaration {}
+
+impl SymbolDefinitionFuncs for Declaration {
+
+    fn get_name(&self) -> &Name {
+        &self.name
+    }
+
+    fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
+        None
+    }
+}
+
+impl SymbolDefinition for Declaration {}
 
 impl AstNodeFuncs for LocalVariableDeclaration {
 
