@@ -4,7 +4,7 @@ use super::identifier::{Identifier, Name};
 use super::ast::*;
 use super::types::*;
 
-use std::cell::Cell;
+use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
@@ -18,7 +18,7 @@ pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
     pub parameters: Vec<Expression>,
-    pub result_type_cache: Cell<Option<Type>>
+    pub result_type_cache: RefCell<Option<Type>>
 }
 
 impl AstNode for FunctionCall {} 
@@ -287,7 +287,7 @@ impl Expression {
             pos: TextPosition::NONEXISTING,
             function: f,
             parameters: params,
-            result_type_cache: Cell::from(None)
+            result_type_cache: RefCell::from(None)
         })
     }
 
@@ -302,7 +302,7 @@ impl Expression {
         Self::from(Literal {
             pos: TextPosition::NONEXISTING,
             value: x,
-            literal_type: Type::Static(StaticType {})
+            literal_type: Type::scalar_type(PrimitiveType::Int)
         })
     }
 }

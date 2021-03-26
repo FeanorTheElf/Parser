@@ -483,7 +483,7 @@ fn test_block_preorder_traversal_mut() {
         Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
             pos: TextPosition::NONEXISTING,
             name: Name::l("a"),
-            var_type: Type::Static(StaticType {})
+            var_type: Type::scalar_type(PrimitiveType::Int)
         } }), 
         Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
             // empty block
@@ -491,7 +491,7 @@ fn test_block_preorder_traversal_mut() {
         Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
             pos: TextPosition::NONEXISTING,
             name: Name::l("b"),
-            var_type: Type::Static(StaticType {})
+            var_type: Type::scalar_type(PrimitiveType::Int)
         } }),
         Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
             // empty block
