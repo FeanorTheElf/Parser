@@ -7,3 +7,6 @@ pub mod ast;
 pub mod types;
 pub mod ast_expr;
 pub mod ast_statement;
+pub mod ast_ifwhile;
+pub mod ast_return;
+pub mod ast_assignment;

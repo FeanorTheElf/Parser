@@ -128,8 +128,8 @@ pub trait StatementFuncs: AstNode {
     ///
     /// See `traverse_preorder()`
     /// 
-    fn traverse_preorder_mut(
-        &mut self, 
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut, 
         f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
@@ -193,6 +193,7 @@ impl AstNodeFuncs for Block {
 
 impl AstNode for Block {}
 
+#[derive(Debug)]
 enum StatementMutOrPlaceholder<'a> {
     Statement(&'a mut dyn Statement),
     PlaceholderDefOfName(Name)
@@ -217,11 +218,11 @@ impl StatementFuncs for Block {
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        Box::new(std::iter::empty())
+        Box::new(self.statements.iter().flat_map(|s| s.names()))
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        Box::new(std::iter::empty())
+        Box::new(self.statements.iter_mut().flat_map(|s| s.names_mut()))
     }
 
     fn traverse_preorder<'a>(
@@ -276,16 +277,17 @@ impl StatementFuncs for Block {
                 let mut child_scope = parent_scopes.child_stack();
                 let mut data = Vec::new();
                 for statement in &mut self.statements {
-                    if statement.as_sibling_symbol_definition_mut().is_some() {
+                    if statement.as_sibling_symbol_definition_mut().is_some() &&
+                        statement.as_sibling_symbol_definition_mut().unwrap().is_backward_visible() 
+                    {
                         let def = statement.as_sibling_symbol_definition_mut().unwrap();
-                        if def.is_backward_visible() {
-                            data.push(StatementMutOrPlaceholder::PlaceholderDefOfName(def.get_name().clone()));
-                            child_scope.register(def.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(def));
-                        }
+                        data.push(StatementMutOrPlaceholder::PlaceholderDefOfName(def.get_name().clone()));
+                        child_scope.register(def.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(def));
                     } else {
                         data.push(StatementMutOrPlaceholder::Statement(&mut **statement));
                     }
                 }
+                println!("{:?}", data);
                 for statement in data.into_iter() {
                     match statement {
                         StatementMutOrPlaceholder::Statement(statement) => {
@@ -311,6 +313,8 @@ impl StatementFuncs for Block {
         return Ok(());
     }
 }
+
+impl Statement for Block {}
 
 #[derive(Debug)]
 pub struct Declaration {
@@ -429,3 +433,86 @@ impl SiblingSymbolDefinitionFuncs for LocalVariableDeclaration {
 }
 
 impl SiblingSymbolDefinition for LocalVariableDeclaration {}
+
+impl StatementFuncs for Expression {
+    
+    fn subblocks<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)> {
+        Box::new(std::iter::empty())
+    }
+
+    fn subblocks_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Block> + 'a)> {
+        Box::new(std::iter::empty())
+    }
+
+    fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
+        Box::new(std::iter::once(self))
+    }
+
+    fn expressions_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
+        Box::new(std::iter::once(self))
+    }
+
+    fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
+        Box::new(self.names())
+    }
+
+    fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
+        Box::new(self.names_mut())
+    }
+
+    fn traverse_preorder<'a>(
+        &'a self, 
+        _parent_scopes: &DefinitionScopeStack, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        Ok(())
+    }
+
+    fn traverse_preorder_mut(
+        &mut self, 
+        _parent_scopes: &DefinitionScopeStackMut, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_block_preorder_traversal_mut() {
+    let mut block = Block { pos: TextPosition::NONEXISTING, statements: vec![
+        Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
+            pos: TextPosition::NONEXISTING,
+            name: Name::l("a"),
+            var_type: Type::Static(StaticType {})
+        } }), 
+        Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
+            // empty block
+        ]}),
+        Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
+            pos: TextPosition::NONEXISTING,
+            name: Name::l("b"),
+            var_type: Type::Static(StaticType {})
+        } }),
+        Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
+            // empty block
+        ]}),
+    ]};
+    let mut counter = 0;
+    let mut callback = |_: &mut Block, scopes: &DefinitionScopeStackMut| {
+        println!("callback called {:?}", scopes);
+        if counter % 3 == 0 {
+            assert!(scopes.get(&Name::l("a")).is_none());
+        } else if counter % 3 == 1 {
+            assert!(scopes.get(&Name::l("a")).is_some());
+            assert!(scopes.get(&Name::l("b")).is_none());
+        } else {
+            assert!(scopes.get(&Name::l("b")).is_some());
+        }
+        counter += 1;
+        return Ok(());
+    };
+
+    block.traverse_preorder_mut(&DefinitionScopeStackMut::new(), &mut callback).unwrap();
+
+    assert_eq!(3, counter);
+}

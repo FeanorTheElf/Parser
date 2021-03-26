@@ -267,6 +267,18 @@ impl PartialEq<Literal> for Expression {
     }
 }
 
+impl AstNodeFuncs for Expression {
+    fn pos(&self) -> &TextPosition {
+        match self {
+            Expression::Call(call) => call.pos(),
+            Expression::Variable(var) => var.pos(),
+            Expression::Literal(lit) => lit.pos()
+        }
+    }
+}
+
+impl AstNode for Expression {}
+
 #[cfg(test)]
 impl Expression {
 
@@ -290,7 +302,7 @@ impl Expression {
         Self::from(Literal {
             pos: TextPosition::NONEXISTING,
             value: x,
-            literal_type: unimplemented!()
+            literal_type: Type::Static(StaticType {})
         })
     }
 }

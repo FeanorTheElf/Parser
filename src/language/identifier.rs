@@ -115,11 +115,22 @@ impl Identifier {
         }
     }
 
-    pub fn is_name(&self) -> bool {
+    pub fn as_name(&self) -> Option<&Name> {
         match self {
-            Identifier::BuiltIn(_) => false,
-            Identifier::Name(_) => true
+            Identifier::BuiltIn(_) => None,
+            Identifier::Name(name) => Some(name)
         }
+    }
+
+    pub fn as_name_mut(&mut self) -> Option<&mut Name> {
+        match self {
+            Identifier::BuiltIn(_) => None,
+            Identifier::Name(name) => Some(name)
+        }
+    }
+
+    pub fn is_name(&self) -> bool {
+        self.as_name().is_some()
     }
 
     pub fn is_builtin(&self) -> bool {
