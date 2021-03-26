@@ -1,32 +1,7 @@
-use super::ast::SymbolDefinition;
 use super::identifier::Name;
 use super::position::TextPosition;
 use super::error::{CompileError, ErrorType};
 use std::collections::HashMap;
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct NoData;
-
-impl<'a> From<&'a dyn SymbolDefinition> for NoData {
-    fn from(_: &'a dyn SymbolDefinition) -> Self {
-        NoData
-    }
-}
-
-pub type NameScopeStack<'a> = ScopeStack<'a, NoData>;
-
-pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
-
-#[derive(Debug, Clone)]
-struct ScopeNode<T> {
-    definitions: HashMap<Name, T>,
-}
-
-impl<T> ScopeNode<T> {
-    fn new() -> ScopeNode<T> {
-        ScopeNode { definitions: HashMap::new() }
-    }
-}
 
 struct ScopeStackIter<'a, T> {
     current: Option<&'a ScopeStack<'a, T>>,
@@ -45,21 +20,21 @@ impl<'a, T> Iterator for ScopeStackIter<'a, T> {
 #[derive(Debug, Clone)]
 pub struct ScopeStack<'a, T> {
     parent: Option<&'a ScopeStack<'a, T>>,
-    scopes: ScopeNode<T>,
+    definitions: HashMap<Name, T>,
 }
 
 impl<'a, T> ScopeStack<'a, T> {
     pub fn new() -> ScopeStack<'a, T> {
         ScopeStack {
             parent: None,
-            scopes: ScopeNode::new(),
+            definitions: HashMap::new(),
         }
     }
 
     pub fn child_stack<'b>(&'b self) -> ScopeStack<'b, T> {
         ScopeStack {
             parent: Some(self),
-            scopes: ScopeNode::new(),
+            definitions: HashMap::new(),
         }
     }
 
@@ -74,7 +49,7 @@ impl<'a, T> ScopeStack<'a, T> {
     }
 
     fn this_scope_definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
-        self.scopes.definitions.iter()
+        self.definitions.iter()
     }
 
     pub fn definitions<'b>(&'b self) -> impl 'b + Iterator<Item = (&'b Name, &'b T)> {
@@ -104,7 +79,7 @@ impl<'a, T> ScopeStack<'a, T> {
 
     pub fn get(&self, name: &Name) -> Option<&T> {
         self.all_stacks().find_map(|stack| {
-            stack.scopes.definitions.get(name)
+            stack.definitions.get(name)
         })
     }
 
@@ -112,5 +87,16 @@ impl<'a, T> ScopeStack<'a, T> {
         self.get(name).ok_or_else(|| {
             CompileError::undefined_symbol(name, pos)
         })
+    }
+
+    pub fn register(&mut self, name: Name, val: T) {
+        let old = self.definitions.insert(name, val);
+        assert!(old.is_none());
+    }
+
+    pub fn unregister(&mut self, name: &Name) -> T {
+        let entry = self.definitions.remove(name);
+        assert!(entry.is_some());
+        return entry.unwrap();
     }
 }

@@ -150,8 +150,10 @@ macro_rules! dynamic_trait {
 }
 
 macro_rules! dynamic_subtrait {
-    ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
-        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait { }
+    ($name:ident: $supertrait:ident; $dyn_castable_name:ident; { $($other_fns:tt)* }) => {
+        pub trait $name: std::any::Any + $dyn_castable_name + $supertrait {
+            $($other_fns)*
+        }
 
         impl dyn $name {
             pub fn downcast_box<T: $name>(self: Box<Self>) -> Result<Box<T>, Box<dyn $name>> {
@@ -182,5 +184,8 @@ macro_rules! dynamic_subtrait {
             fn dynamic(&self) -> &dyn $name { self }
             fn dynamic_mut(&mut self) -> &mut dyn $name { self }
         }
+    };
+    ($name:ident: $supertrait:ident; $dyn_castable_name:ident) => {
+        dynamic_subtrait!($name: $supertrait; $dyn_castable_name; {});
     };
 }

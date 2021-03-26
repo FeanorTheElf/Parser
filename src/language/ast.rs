@@ -10,10 +10,6 @@ pub trait AstNodeFuncs: std::fmt::Debug + Any + DynEq {
 
 dynamic_trait!{ AstNode: AstNodeFuncs; AstNodeDynCastable }
 
-pub trait SymbolDefinition: Any + Dynamic + std::fmt::Debug {
-    fn get_name(&self) -> &Name;
-}
-
 pub enum TraversePreorderCancel {
     RealError(CompileError), DoNotRecurse
 }

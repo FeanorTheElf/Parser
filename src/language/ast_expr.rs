@@ -2,10 +2,9 @@ use super::position::TextPosition;
 use super::error::CompileError;
 use super::identifier::{Identifier, Name};
 use super::ast::*;
+use super::types::*;
 
 use std::cell::Cell;
-
-type Type = ();
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
@@ -291,7 +290,7 @@ impl Expression {
         Self::from(Literal {
             pos: TextPosition::NONEXISTING,
             value: x,
-            literal_type: ()
+            literal_type: unimplemented!()
         })
     }
 }
@@ -333,6 +332,22 @@ fn test_preorder_search_abort() {
             _ => Ok(())
         }
     };
-    expr.traverse_preorder(&mut visitor);
+    expr.traverse_preorder(&mut visitor).unwrap();
     assert_eq!(3, counter);
+}
+
+#[test]
+fn test_names_iter() {
+    let expr = Expression::call(
+        Expression::var(Name::l("foo")), 
+        vec![
+            Expression::var(Name::l("bar")),
+            Expression::var(Name::l("baz"))
+        ]
+    );
+    assert_eq!(vec![
+        Name::l("baz"),
+        Name::l("bar"),
+        Name::l("foo")
+    ], expr.names().cloned().collect::<Vec<_>>());
 }
