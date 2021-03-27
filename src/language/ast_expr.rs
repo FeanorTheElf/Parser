@@ -279,10 +279,10 @@ impl AstNodeFuncs for Expression {
 
 impl AstNode for Expression {}
 
-#[cfg(test)]
 impl Expression {
 
-    fn call(f: Expression, params: Vec<Expression>) -> Expression {
+    #[cfg(test)]
+    pub fn call(f: Expression, params: Vec<Expression>) -> Expression {
         Self::from(FunctionCall {
             pos: TextPosition::NONEXISTING,
             function: f,
@@ -291,14 +291,16 @@ impl Expression {
         })
     }
 
-    fn var(n: Name) -> Expression {
+    #[cfg(test)]
+    pub fn var(n: &'static str) -> Expression {
         Self::from(Variable {
             pos: TextPosition::NONEXISTING,
-            identifier: Identifier::Name(n)
+            identifier: Identifier::Name(Name::l(n))
         })
     }
 
-    fn lit(x: i32) -> Expression {
+    #[cfg(test)]
+    pub fn lit(x: i32) -> Expression {
         Self::from(Literal {
             pos: TextPosition::NONEXISTING,
             value: x,
@@ -310,7 +312,7 @@ impl Expression {
 #[test]
 fn test_expression_preorder_search() {
     let expr = Expression::call(
-        Expression::var(Name::l("foo")),
+        Expression::var("foo"),
         vec![Expression::lit(1), Expression::lit(2)]
     );
     let mut found: Vec<&Expression> = Vec::new();
@@ -320,7 +322,7 @@ fn test_expression_preorder_search() {
     };
     expr.traverse_preorder(&mut visitor).unwrap();
     assert_eq!(expr, *found[0]);
-    assert_eq!(Expression::var(Name::l("foo")), *found[1]);
+    assert_eq!(Expression::var("foo"), *found[1]);
     assert_eq!(Expression::lit(1), *found[2]);
     assert_eq!(Expression::lit(2), *found[3]);
 }
@@ -328,10 +330,10 @@ fn test_expression_preorder_search() {
 #[test]
 fn test_preorder_search_abort() {
     let expr = Expression::call(
-        Expression::var(Name::l("foo")),
+        Expression::var("foo"),
         vec![
             Expression::call(
-                Expression::var(Name::l("bar")), 
+                Expression::var("bar"), 
                 vec![Expression::lit(0)]
             )
         ]
@@ -351,10 +353,10 @@ fn test_preorder_search_abort() {
 #[test]
 fn test_names_iter() {
     let expr = Expression::call(
-        Expression::var(Name::l("foo")), 
+        Expression::var("foo"), 
         vec![
-            Expression::var(Name::l("bar")),
-            Expression::var(Name::l("baz"))
+            Expression::var("bar"),
+            Expression::var("baz")
         ]
     );
     assert_eq!(vec![

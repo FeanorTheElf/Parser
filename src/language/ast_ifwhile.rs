@@ -8,8 +8,8 @@ use super::ast_statement::*;
 #[derive(Debug)]
 pub struct If {
     pos: TextPosition,
-    cond: Expression,
-    body: Block
+    pub cond: Expression,
+    pub body: Block
 }
 
 impl PartialEq for If {
@@ -27,7 +27,6 @@ impl AstNodeFuncs for If {
 }
 
 impl AstNode for If {}
-
 
 impl StatementFuncs for If {
     
@@ -76,8 +75,8 @@ impl StatementFuncs for If {
 #[derive(Debug)]
 pub struct While {
     pos: TextPosition,
-    cond: Expression,
-    body: Block
+    pub cond: Expression,
+    pub body: Block
 }
 
 impl PartialEq for While {

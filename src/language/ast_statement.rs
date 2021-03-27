@@ -315,17 +315,36 @@ impl StatementFuncs for Block {
 
 impl Statement for Block {}
 
+impl Block {
+
+    pub fn statements(&self) -> impl Iterator<Item = &dyn Statement> {
+        self.statements.iter().map(|x| &**x)
+    }
+
+    pub fn statements_mut(&mut self) -> impl Iterator<Item = &mut dyn Statement> {
+        self.statements.iter_mut().map(|x| &mut **x)
+    }
+
+    #[cfg(test)]
+    pub fn new<const N: usize>(statements: [Box<dyn Statement>; N]) -> Block {
+        Block {
+            pos: TextPosition::NONEXISTING,
+            statements: std::array::IntoIter::new(statements).collect()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Declaration {
-    pos: TextPosition,
-    name: Name,
-    var_type: Type
+    pub pos: TextPosition,
+    pub name: Name,
+    pub var_type: Type
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LocalVariableDeclaration {
-    declaration: Declaration,
-    value: Option<Expression>
+    pub declaration: Declaration,
+    pub value: Option<Expression>
 }
 
 impl PartialEq for Declaration {
@@ -446,6 +465,21 @@ impl SiblingSymbolDefinitionFuncs for LocalVariableDeclaration {
 
 impl SiblingSymbolDefinition for LocalVariableDeclaration {}
 
+impl LocalVariableDeclaration {
+
+    #[cfg(test)]
+    pub fn new(name: &'static str, var_type: Type) -> LocalVariableDeclaration {
+        LocalVariableDeclaration {
+            declaration: Declaration {
+                pos: TextPosition::NONEXISTING,
+                name: Name::l(name),
+                var_type: var_type
+            },
+            value: None
+        }
+    }
+}
+
 impl StatementFuncs for Expression {
     
     fn subblocks<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Block> + 'a)> {
@@ -491,27 +525,14 @@ impl StatementFuncs for Expression {
 
 #[test]
 fn test_block_preorder_traversal_mut() {
-    let mut block = Block { pos: TextPosition::NONEXISTING, statements: vec![
-        Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
-            pos: TextPosition::NONEXISTING,
-            name: Name::l("a"),
-            var_type: Type::scalar_type(PrimitiveType::Int)
-        } }), 
-        Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
-            // empty block
-        ]}),
-        Box::new(LocalVariableDeclaration { value: None, declaration: Declaration {
-            pos: TextPosition::NONEXISTING,
-            name: Name::l("b"),
-            var_type: Type::scalar_type(PrimitiveType::Int)
-        } }),
-        Box::new(Block { pos: TextPosition::NONEXISTING, statements: vec![
-            // empty block
-        ]}),
-    ]};
+    let mut block = Block::new([
+        Box::new(LocalVariableDeclaration::new("a", SCALAR_INT)), 
+        Box::new(Block::new([])),
+        Box::new(LocalVariableDeclaration::new("b", SCALAR_INT)),
+        Box::new(Block::new([]))
+    ]);
     let mut counter = 0;
     let mut callback = |_: &mut Block, scopes: &DefinitionScopeStackMut| {
-        println!("callback called {:?}", scopes);
         if counter % 3 == 0 {
             assert!(scopes.get(&Name::l("a")).is_none());
         } else if counter % 3 == 1 {

@@ -8,10 +8,10 @@ use super::types::*;
 #[derive(Debug)]
 pub struct Function {
     pos: TextPosition,
-    name: Name,
-    parameters: Vec<Declaration>,
-    return_type: Type,
-    body: Option<Block>
+    pub name: Name,
+    pub parameters: Vec<Declaration>,
+    pub return_type: Option<Type>,
+    pub body: Option<Block>
 }
 
 impl PartialEq for Function {
@@ -106,9 +106,27 @@ impl SiblingSymbolDefinitionFuncs for Function {
 
 impl SiblingSymbolDefinition for Function {}
 
+impl Function {
+
+    #[cfg(test)]
+    pub fn new<const N: usize>(name: &'static str, params: [(&'static str, Type); N], return_type: Option<Type>, body: Block) -> Function {
+        Function {
+            pos: TextPosition::NONEXISTING,
+            name: Name::l(name),
+            parameters: params.iter().map(|(name, ty)| Declaration {
+                name: Name::l(name),
+                var_type: ty.clone(),
+                pos: TextPosition::NONEXISTING
+            }).collect(),
+            return_type: return_type,
+            body: Some(body)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Program {
-    items: Vec<Function>
+    pub items: Vec<Function>
 }
 
 #[derive(Debug)]

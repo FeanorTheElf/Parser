@@ -3,7 +3,6 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(iter_map_while)]
-#![feature(min_const_generics)]
 #![feature(concat_idents)]
 #![feature(never_type)]
 

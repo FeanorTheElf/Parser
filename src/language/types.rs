@@ -4,15 +4,30 @@ pub enum PrimitiveType {
     Int, Bool, Float
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StaticType {
-    base: PrimitiveType,
-    dims: usize
+impl std::fmt::Display for PrimitiveType {
+
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PrimitiveType::Int => write!(f, "int"),
+            PrimitiveType::Bool => write!(f, "bool"),
+            PrimitiveType::Float => write!(f, "float")
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticType {
+    pub base: PrimitiveType,
+    pub dims: usize
+}
+
+pub const SCALAR_INT: Type = Type::Static(StaticType { base: PrimitiveType::Int, dims: 0 });
+pub const SCALAR_BOOL: Type = Type::Static(StaticType { base: PrimitiveType::Bool, dims: 0 });
+pub const SCALAR_FLOAT: Type = Type::Static(StaticType { base: PrimitiveType::Float, dims: 0 });
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewType {
-    view_onto: StaticType
+    pub view_onto: StaticType
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

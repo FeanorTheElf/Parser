@@ -8,14 +8,14 @@ use super::ast_statement::*;
 #[derive(Debug)]
 pub struct Assignment {
     pos: TextPosition,
-    variable: Identifier,
-    value: Expression
+    pub assignee: Expression,
+    pub value: Expression
 }
 
 impl PartialEq for Assignment {
 
     fn eq(&self, rhs: &Assignment) -> bool {
-        self.value == rhs.value && self.variable == rhs.variable
+        self.value == rhs.value && self.assignee == rhs.assignee
     }
 }
 
@@ -47,11 +47,11 @@ impl StatementFuncs for Assignment {
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        Box::new(std::iter::once(&self.variable).filter_map(|x| x.as_name()).chain(self.value.names()))
+        Box::new(self.assignee.names().chain(self.value.names()))
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        Box::new(std::iter::once(&mut self.variable).filter_map(|x| x.as_name_mut()).chain(self.value.names_mut()))
+        Box::new(self.assignee.names_mut().chain(self.value.names_mut()))
     }
 
     fn traverse_preorder<'a>(

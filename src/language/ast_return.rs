@@ -8,7 +8,7 @@ use super::ast_statement::*;
 #[derive(Debug)]
 pub struct Return {
     pos: TextPosition,
-    value: Expression
+    pub value: Option<Expression>
 }
 
 impl PartialEq for Return {
@@ -38,19 +38,19 @@ impl StatementFuncs for Return {
     }
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
-        Box::new(std::iter::once(&self.value))
+        Box::new(std::iter::once(&self.value).filter_map(|x| x.as_ref()))
     }
 
     fn expressions_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
-        Box::new(std::iter::once(&mut self.value))
+        Box::new(std::iter::once(&mut self.value).filter_map(|x| x.as_mut()))
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        Box::new(self.value.names())
+        Box::new(std::iter::once(&self.value).filter_map(|x| x.as_ref()).flat_map(|x|  x.names()))
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        Box::new(self.value.names_mut())
+        Box::new(std::iter::once(&mut self.value).filter_map(|x| x.as_mut()).flat_map(|x|  x.names_mut()))
     }
 
     fn traverse_preorder<'a>(
@@ -70,3 +70,23 @@ impl StatementFuncs for Return {
     }
 }
 
+impl Statement for Return {}
+
+impl Return {
+
+    #[cfg(test)]
+    pub fn return_value(value: Expression) -> Return {
+        Return {
+            pos: TextPosition::NONEXISTING,
+            value: Some(value)
+        }
+    }
+
+    #[cfg(test)]
+    pub fn return_void() -> Return {
+        Return {
+            pos: TextPosition::NONEXISTING,
+            value: None
+        }
+    }
+}

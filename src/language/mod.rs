@@ -13,4 +13,4 @@ pub mod ast_assignment;
 pub mod ast_function;
 pub mod prelude;
 pub mod compiler;
-//pub mod gwaihir_writer;
+pub mod gwaihir_writer;
