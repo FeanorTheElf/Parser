@@ -6,7 +6,6 @@ const INTERNAL_ERROR: &'static str =
     "Compiler error should have been detected earlier, did all checkers run?";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-
 pub enum ErrorType {
     SyntaxError,
     UndefinedSymbol,
@@ -28,7 +27,6 @@ pub enum ErrorType {
 }
 
 #[derive(Debug, Clone)]
-
 pub struct CompileError {
     pos: TextPosition,
     msg: String,

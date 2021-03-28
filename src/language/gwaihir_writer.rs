@@ -171,7 +171,7 @@ impl AstWriter for Expression {
 impl AstWriter for If {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "if (")?;
-        write_expression(&self.cond, i32::MIN, out)?;
+        write_expression(&self.condition, i32::MIN, out)?;
         write!(out, ")")?;
         self.body.write(out)?;
         return Ok(());
@@ -181,7 +181,7 @@ impl AstWriter for If {
 impl AstWriter for While {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "while (")?;
-        write_expression(&self.cond, i32::MIN, out)?;
+        write_expression(&self.condition, i32::MIN, out)?;
         write!(out, ")")?;
         self.body.write(out)?;
         return Ok(());
@@ -375,7 +375,7 @@ impl<'a, T: AstWriter + ?Sized> From<&'a T> for DisplayWrapper<'a, T> {
 
 #[test]
 fn test_gwaihir_writer() {
-    let function = Function::new(
+    let function = Function::test(
         "foo",
         [("a", SCALAR_INT), ("b", SCALAR_BOOL)],
         Some(SCALAR_FLOAT),

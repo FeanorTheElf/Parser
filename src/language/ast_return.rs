@@ -74,6 +74,12 @@ impl Statement for Return {}
 
 impl Return {
 
+    pub fn new(pos: TextPosition, value: Option<Expression>) -> Self {
+        Return {
+            pos, value
+        }
+    }
+
     #[cfg(test)]
     pub fn return_value(value: Expression) -> Return {
         Return {

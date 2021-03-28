@@ -38,11 +38,23 @@ pub enum Type {
 
 impl Type {
 
-    pub fn scalar_type(primitive: PrimitiveType) -> Type {
+    pub fn array_type(base: PrimitiveType, dims: usize) -> Type {
         Type::Static(StaticType {
-            base: primitive,
-            dims: 0
+            base, dims
         })
+    }
+
+    pub fn scalar_type(primitive: PrimitiveType) -> Type {
+        Self::array_type(primitive, 0)
+    }
+
+    pub fn with_view(ty: Type) -> Type {
+        match ty {
+            Type::Static(static_type) => Type::View(ViewType {
+                view_onto: static_type
+            }),
+            Type::View(view_type) => Type::View(view_type)
+        }
     }
 
     pub fn as_view(&self) -> Option<&ViewType> {

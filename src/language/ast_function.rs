@@ -108,8 +108,18 @@ impl SiblingSymbolDefinition for Function {}
 
 impl Function {
 
+    pub fn new(pos: TextPosition, name: Name, parameters: Vec<Declaration>, return_type: Option<Type>, body: Option<Block>) -> Self {
+        Function {
+            pos,
+            name,
+            parameters,
+            return_type,
+            body
+        }
+    }
+
     #[cfg(test)]
-    pub fn new<const N: usize>(name: &'static str, params: [(&'static str, Type); N], return_type: Option<Type>, body: Block) -> Function {
+    pub fn test<const N: usize>(name: &'static str, params: [(&'static str, Type); N], return_type: Option<Type>, body: Block) -> Function {
         Function {
             pos: TextPosition::NONEXISTING,
             name: Name::l(name),

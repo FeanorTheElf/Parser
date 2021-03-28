@@ -1,19 +1,19 @@
 use super::position::TextPosition;
 use super::error::CompileError;
-use super::identifier::{Identifier, Name};
+use super::identifier::{Identifier, Name, BuiltInIdentifier};
 use super::ast::*;
 use super::types::*;
 
 use std::cell::RefCell;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
     Call(Box<FunctionCall>),
     Variable(Variable),
     Literal(Literal),
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
@@ -67,7 +67,7 @@ impl AstNodeFuncs for Variable {
     }
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone)]
 pub struct Literal {
     pub pos: TextPosition,
     pub value: i32,
@@ -246,6 +246,12 @@ impl PartialEq<Identifier> for Expression {
             Expression::Variable(var) => var == rhs,
             _ => false
         }
+    }
+}
+
+impl PartialEq<BuiltInIdentifier> for Expression {
+    fn eq(&self, rhs: &BuiltInIdentifier) -> bool {
+        *self == Identifier::BuiltIn(*rhs)
     }
 }
 

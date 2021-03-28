@@ -70,3 +70,14 @@ impl StatementFuncs for Assignment {
         Ok(())
     }
 }
+
+impl Statement for Assignment {}
+
+impl Assignment {
+
+    pub fn new(pos: TextPosition, assignee: Expression, value: Expression) -> Self {
+        Assignment {
+            pos, assignee, value
+        }
+    }
+}

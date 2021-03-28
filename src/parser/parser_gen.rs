@@ -220,10 +220,10 @@ macro_rules! impl_parse_trait
 				$($variant::is_applicable(stream))||*
             }
 
-            fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
+            fn parse(stream: &mut Stream, context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError>
             {
                 debug_assert_at_most_one_of_applicable!(stream; $($variant)|*);
-                impl_parse_function!(stream; types; $result; "Expected"; $($variant)|*)
+                impl_parse_function!(stream; context; $result; "Expected"; $($variant)|*)
 			}
 		}
     };
@@ -236,11 +236,11 @@ macro_rules! impl_parse_trait
                 impl_is_applicable_predicate!(stream; $($tail)*)
             }
 
-            fn parse(stream: &mut Stream, types: &mut TypeVec) -> Result<Self::ParseOutputType, CompileError>
+            fn parse(stream: &mut Stream, context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError>
             {
                 let pos = stream.pos().clone();
-                let parts = impl_parse_ast_generation!(stream; types; $($tail)*);
-			    Ok(Self::build(pos, types, parts))
+                let parts = impl_parse_ast_generation!(stream; context; $($tail)*);
+			    Ok(Self::build(pos, context, parts))
 			}
 		}
     }
@@ -289,7 +289,7 @@ macro_rules! extract_grammar_variant_children_types_as_tupel
 macro_rules! generate_grammar_rule_temporary_node
 {
     ($result:ident := $($(dyn)? $variant:ident)|*) => {
-        #[derive(Debug, PartialEq, Eq)]
+        #[derive(Debug, PartialEq)]
         enum $result
         {
             $($variant(<$variant as Parseable>::ParseOutputType)),*
@@ -315,7 +315,7 @@ macro_rules! generate_grammar_rule_temporary_node
         $(
             impl Build<<$variant as Parseable>::ParseOutputType> for $result
             {
-                fn build(_pos: TextPosition, _types: &mut TypeVec, params: <$variant as Parseable>::ParseOutputType) -> Self::ParseOutputType
+                fn build(_pos: TextPosition, _: &mut ParserContext, params: <$variant as Parseable>::ParseOutputType) -> Self::ParseOutputType
                 {
                     $result::$variant(params)
                 }
@@ -323,7 +323,7 @@ macro_rules! generate_grammar_rule_temporary_node
         )*
     };
     ($result:ident := $($tail:tt)*) => {
-        #[derive(Debug, Eq)]
+        #[derive(Debug)]
         struct $result(TextPosition, extract_grammar_variant_children_types_as_tupel!($($tail)*));
 
         impl Parseable for $result
@@ -351,14 +351,14 @@ macro_rules! generate_grammar_rule_temporary_node
 
         impl Build<extract_grammar_variant_children_types_as_tupel!($($tail)*)> for $result
         {
-            fn build(pos: TextPosition, _types: &mut TypeVec, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
+            fn build(pos: TextPosition, _: &mut ParserContext, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
             {
                 Self(pos, params)
             }
         }
     };
     (box $result:ident := $($tail:tt)*) => {
-        #[derive(Debug, Eq)]
+        #[derive(Debug)]
         struct $result(TextPosition, extract_grammar_variant_children_types_as_tupel!($($tail)*));
 
         impl Parseable for $result
@@ -386,7 +386,7 @@ macro_rules! generate_grammar_rule_temporary_node
 
         impl Build<extract_grammar_variant_children_types_as_tupel!($($tail)*)> for $result
         {
-            fn build(pos: TextPosition, _types: &mut TypeVec, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
+            fn build(pos: TextPosition, _: &mut ParserContext, params: extract_grammar_variant_children_types_as_tupel!($($tail)*)) -> Self::ParseOutputType
             {
                 Box::new(Self(pos, params))
             }

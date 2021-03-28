@@ -326,10 +326,16 @@ impl Block {
     }
 
     #[cfg(test)]
-    pub fn new<const N: usize>(statements: [Box<dyn Statement>; N]) -> Block {
+    pub fn test<const N: usize>(statements: [Box<dyn Statement>; N]) -> Block {
         Block {
             pos: TextPosition::NONEXISTING,
             statements: std::array::IntoIter::new(statements).collect()
+        }
+    }
+
+    pub fn new(pos: TextPosition, statements: Vec<Box<dyn Statement>>) -> Self {
+        Block {
+            pos, statements
         }
     }
 }
@@ -523,13 +529,15 @@ impl StatementFuncs for Expression {
     }
 }
 
+impl Statement for Expression {}
+
 #[test]
 fn test_block_preorder_traversal_mut() {
-    let mut block = Block::new([
+    let mut block = Block::test([
         Box::new(LocalVariableDeclaration::new("a", SCALAR_INT)), 
-        Box::new(Block::new([])),
+        Box::new(Block::test([])),
         Box::new(LocalVariableDeclaration::new("b", SCALAR_INT)),
-        Box::new(Block::new([]))
+        Box::new(Block::test([]))
     ]);
     let mut counter = 0;
     let mut callback = |_: &mut Block, scopes: &DefinitionScopeStackMut| {

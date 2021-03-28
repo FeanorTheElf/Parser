@@ -21,8 +21,10 @@ mod util;
 #[macro_use]
 mod language;
 
+mod lexer;
+mod parser;
+
 // mod analysis;
-// mod lexer;
 // mod parser;
 // mod transformation;
 

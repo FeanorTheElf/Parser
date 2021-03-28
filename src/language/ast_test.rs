@@ -1,9 +1,6 @@
 pub use super::gwaihir_writer::{DisplayWrapper, AstWriter};
 pub use super::compiler::{StringWriter, CodeWriter};
 
-pub use super::super::lexer::lexer::{lex, lex_str, fragment_lex};
-pub use super::super::parser::{TopLevelParser, Parser};
-
 macro_rules! assert_ast_eq {
     ($expected:expr, $actual:expr) => {{
         let mut expected_str = String::new();
