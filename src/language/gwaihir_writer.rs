@@ -379,9 +379,9 @@ fn test_gwaihir_writer() {
         "foo",
         [("a", SCALAR_INT), ("b", SCALAR_BOOL)],
         Some(SCALAR_FLOAT),
-        Block::new([
+        Block::test([
             Box::new(LocalVariableDeclaration::new("bar", SCALAR_FLOAT)),
-            Box::new(Block::new([
+            Box::new(Block::test([
                 Box::new(Return::return_value(Expression::var("a")))
             ]))
         ])

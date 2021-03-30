@@ -375,7 +375,7 @@ impl Parseable for ParallelFor {
 
 impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPatternData>, Block)> for ParallelFor {
     fn build(
-        pos: TextPosition, context: &mut ParserContext,
+        pos: TextPosition, _context: &mut ParserContext,
         param: (Vec<DeclarationListNode>, Vec<ArrayAccessPatternData>, Block),
     ) -> Self::ParseOutputType {
         ParallelFor::new(pos, param.0.into_iter().map(|x| ((x.1).0, (x.1).1)).collect(), param.1, param.2)
@@ -384,7 +384,7 @@ impl Build<(Vec<DeclarationListNode>, Vec<ArrayAccessPatternData>, Block)> for P
 
 impl Build<ParallelFor> for dyn Statement {
     fn build(_pos: TextPosition, _context: &mut ParserContext, param: ParallelFor) -> Self::ParseOutputType {
-        unimplemented!()
+        Box::new(param)
     }
 }
 
