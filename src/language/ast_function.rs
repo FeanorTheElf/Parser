@@ -148,11 +148,10 @@ enum FunctionMutOrPlaceholder<'a> {
 impl Program {
     
     pub fn for_functions<'a>(
-        &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
+        &'a self,
         f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
-        let mut child_scope = parent_scopes.child_stack();
+        let mut child_scope = DefinitionScopeStack::new();
         for item in &self.items {
             if item.is_backward_visible() {
                 child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic(item));
@@ -169,12 +168,11 @@ impl Program {
 
     pub fn for_functions_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
         f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
         // simpler because there is no polymorphism in the items
-        let mut child_scope = parent_scopes.child_stack();
+        let mut child_scope = DefinitionScopeStackMut::new();
         let mut data = Vec::new();
         for item in &mut self.items {
             if item.is_backward_visible() {
@@ -198,5 +196,23 @@ impl Program {
             }
         }
         return Ok(());
+    }
+
+    pub fn traverse_preorder<'a>(
+        &'a self, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes| {
+            body.traverse_preorder(scopes, f)
+        }))
+    }
+
+    pub fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes| {
+            body.traverse_preorder_mut(scopes, f)
+        }))
     }
 }
