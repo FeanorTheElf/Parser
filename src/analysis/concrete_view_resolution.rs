@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-use super::scope::DefinitionScopeStack;
 use super::export::*;
 use super::types::*;
 

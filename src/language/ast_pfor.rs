@@ -5,6 +5,7 @@ use super::identifier::{Name, Identifier, BuiltInIdentifier};
 use super::ast::*;
 use super::ast_expr::*;
 use super::ast_statement::*;
+use super::gwaihir_writer::*;
 use feanor_la::la::mat::*;
 use feanor_la::algebra::rat::*;
 
@@ -15,7 +16,7 @@ impl CompileError {
     fn no_affine_expression(e: &Expression) -> CompileError {
         CompileError::new(
             e.pos(), 
-            format!("Expressions used as indices in parallel for loops must be affine linear, got {:?}", e), 
+            format!("Expressions used as indices in parallel for loops must be affine linear, got `{}`", DisplayWrapper::from(e)), 
             ErrorType::IllegalPForIndexExpression
         )
     }
@@ -68,6 +69,7 @@ impl PartialEq for ArrayAccessPatternData {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AffineTransform1D {
     linear_part: Vector<VectorOwned<r64>, r64>,
     affine_part: r64
@@ -81,7 +83,7 @@ impl AffineTransform1D {
 
     pub fn only_affine(n: usize, additive_part: r64) -> AffineTransform1D {
         AffineTransform1D {
-            linear_part: Vector::zero(n),
+            linear_part: Vector::zero(n).to_owned(),
             affine_part: additive_part
         }
     }
@@ -98,7 +100,7 @@ impl AffineTransform1D {
     }
 
     pub fn neg(mut self) -> AffineTransform1D {
-        self.linear_part.scale(-r64::ONE);
+        self.linear_part *= -r64::ONE;
         self.affine_part = -self.affine_part;
         return self;
     }
@@ -124,6 +126,7 @@ fn to_constant(expr: &Expression) -> Result<r64, ()> {
             assert!(call.parameters.len() == 1);
             Ok(r64::ONE / to_constant(&call.parameters[0])?)
         },
+        Expression::Literal(lit) => Ok(r64::from(lit.value as i64)),
         _ => Err(())
     }
 }
@@ -140,10 +143,8 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
                     factor *= constant;
                 } else if transform.is_some() {
                     return Err(());
-                } else if let Ok(t) = to_affine_transform(p, vars) {
-                    transform = Some(t);
                 } else {
-                    return Err(());
+                    transform = Some(to_affine_transform(p, vars)?);
                 }
             }
             let mut result = transform.unwrap_or_else(|| AffineTransform1D::only_affine(vars.len(), r64::ONE));
@@ -186,17 +187,26 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AffineTransform {
-    linear_part: Matrix<MatrixOwned<r64>, r64>,
-    affine_part: Vector<VectorOwned<r64>, r64>
+    pub linear_part: Matrix<MatrixOwned<r64>, r64>,
+    pub affine_part: Vector<VectorOwned<r64>, r64>
 }
 
 #[derive(Debug)]
 pub struct ArrayEntryAccess {
     pos: TextPosition,
     alias: Name,
-    writeable: bool,
+    pub writeable: bool,
     entry: AffineTransform
 }
+
+impl AstNodeFuncs for ArrayEntryAccess {
+
+    fn pos(&self) -> &TextPosition {
+        &self.pos
+    }
+}
+
+impl AstNode for ArrayEntryAccess {}
 
 impl PartialEq for ArrayEntryAccess {
 
@@ -214,8 +224,8 @@ impl ArrayEntryAccess {
         indices: Vec<Expression>, 
         vars: &HashMap<Identifier, usize>
     ) -> Result<Self, CompileError> {
-        let mut transform_linear_part = Matrix::zero(indices.len(), vars.len());
-        let mut transform_affine_part = Vector::zero(indices.len());
+        let mut transform_linear_part = Matrix::zero(indices.len(), vars.len()).to_owned();
+        let mut transform_affine_part = Vector::zero(indices.len()).to_owned();
         for i in 0..indices.len() {
             let transform = to_affine_transform(&indices[i], vars)
                 .map_err(|_| CompileError::no_affine_expression(&indices[i]))?;
@@ -229,6 +239,10 @@ impl ArrayEntryAccess {
         return Ok(ArrayEntryAccess {
             pos, alias, writeable, entry
         });
+    }
+
+    pub fn get_transform(&self) -> &AffineTransform {
+        &self.entry
     }
 }
 
@@ -246,6 +260,15 @@ impl PartialEq for ArrayAccessPattern {
     }
 }
 
+impl AstNodeFuncs for ArrayAccessPattern {
+
+    fn pos(&self) -> &TextPosition {
+        &self.pos
+    }
+}
+
+impl AstNode for ArrayAccessPattern {}
+
 impl ArrayAccessPattern {
 
     fn from_data(
@@ -261,6 +284,10 @@ impl ArrayAccessPattern {
                 .map(|a| ArrayEntryAccess::from_data(a.pos, a.alias, a.writeable, a.indices, vars))
                 .collect::<Result<Vec<ArrayEntryAccess>, CompileError>>()?
         })
+    }
+
+    pub fn accessed_entries(&self) -> impl Iterator<Item = &ArrayEntryAccess> {
+        self.pattern.iter()
     }
 }
 
@@ -315,9 +342,11 @@ impl ParallelFor {
                 for index in &access.indices {
                     index.traverse_preorder(&mut |e| {
                         if let Expression::Variable(v) = e {
-                            if vars.get(&v.identifier).is_none() {
-                                vars.insert(v.identifier.clone(), used_variables.len() + index_vars.len());
-                                used_variables.push(e.clone());
+                            if v.identifier.is_name() {
+                                if vars.get(&v.identifier).is_none() {
+                                    vars.insert(v.identifier.clone(), used_variables.len() + index_vars.len());
+                                    used_variables.push(e.clone());
+                                }
                             }
                         }
                         return Ok(());
@@ -333,6 +362,10 @@ impl ParallelFor {
             access_pattern: Self::calc_access_pattern(patterns, &vars),
             body: body
         }
+    }
+
+    pub fn access_pattern(&self) -> Result<impl Iterator<Item = &ArrayAccessPattern>, CompileError> {
+        self.access_pattern.as_ref().map(|v| v.iter()).map_err(CompileError::clone)
     }
 }
 

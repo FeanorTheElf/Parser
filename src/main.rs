@@ -24,7 +24,8 @@ mod language;
 mod lexer;
 mod parser;
 
-// mod analysis;
+mod analysis;
+
 // mod parser;
 // mod transformation;
 

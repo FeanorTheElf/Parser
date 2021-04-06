@@ -1,136 +1,271 @@
 use super::super::language::prelude::*;
-use feanor_la::prelude::*;
-
-#[allow(unused)]
+use super::super::language::ast_pfor::*;
+use super::super::language::gwaihir_writer::*;
+use feanor_la::la::mat::*;
+use feanor_la::algebra::rat::*;
 
 pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
-    for item in &program.items {
-        if let Some(body) = &item.body {
-            call_for_pfor_in_block(body, &mut check_pfor_data_races)?;
+    program.traverse_preorder(&mut |block: &Block, _scopes| {
+        for statement in block.statements() {
+            if let Some(pfor) = statement.any().downcast_ref::<ParallelFor>() {
+                check_pfor_data_races(pfor)?;
+            }
         }
-    }
-    return Ok(());
-}
-
-fn call_for_pfor_in_block<F>(block: &Block, f: &mut F) -> Result<(), CompileError>
-where
-    F: FnMut(&ParallelFor) -> Result<(), CompileError>,
-{
-    for statement in &block.statements {
-        if let Some(pfor) = statement.any().downcast_ref::<ParallelFor>() {
-            f(pfor)?;
-        }
-        for block in statement.subblocks() {
-            call_for_pfor_in_block(&block, f)?;
-        }
-    }
-    return Ok(());
+        return Ok(());
+    })
 }
 
 fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
-    for access_pattern in &pfor.access_pattern {
-        for i in 0..access_pattern.entry_accesses.len() {
-            for j in i..access_pattern.entry_accesses.len() {
-                let entry1 = &access_pattern.entry_accesses[i];
-                let entry2 = &access_pattern.entry_accesses[j];
-                let one_write = entry1.write || entry2.write;
-                let transform1 = entry1.get_transformation_matrix(&pfor.index_variables)?;
-                let transform2 = entry2.get_transformation_matrix(&pfor.index_variables)?;
+    let index_var_count = pfor.index_variables.len();
+    for access_pattern in pfor.access_pattern()? {
+        for (i, entry1) in access_pattern.accessed_entries().enumerate() {
+            for (j, entry2) in access_pattern.accessed_entries().enumerate() {
+
+                let one_write = entry1.writeable || entry2.writeable;
+                let transform1 = entry1.get_transform();
+                let transform2 = entry2.get_transform();
+
                 if one_write {
+                    let index_var_transform1 = transform1.linear_part.submatrix(.., ..index_var_count);
+                    let index_var_transform2 = transform2.linear_part.submatrix(.., ..index_var_count);
+                    let linear_part1 = expect_integral_matrix(index_var_transform1, entry1.pos())?;
+                    let linear_part2 = expect_integral_matrix(index_var_transform2, entry2.pos())?;
+
+                    let other_var_transform1 = transform1.linear_part.submatrix(.., index_var_count..);
+                    let other_var_transform2 = transform2.linear_part.submatrix(.., index_var_count..);
+                    let other_var_difference = expect_integral_matrix(
+                        other_var_transform1 - other_var_transform2,
+                        entry1.pos()
+                    )?;
+
+                    let affine_difference = expect_integral_matrix(
+                        Matrix::col_vec(transform1.affine_part.as_ref() - transform2.affine_part.as_ref()), 
+                        entry1.pos()
+                    )?;
+
                     let collision = get_collision(
-                        transform1.get((.., ..)), transform2.get((.., ..)), i != j
+                        linear_part1.as_ref(), 
+                        linear_part2.as_ref(),
+                        other_var_difference,
+                        affine_difference.col(0), 
+                        i != j
                     );
-                    if let Some((x, y)) = collision {
-                        return Err(CompileError::new(&entry1.pos,
-                            format!("Array index accesses collide, defined at {} and {}. Collision happens e.g. for index variable values {:?} and {:?}", &entry1.pos, &entry2.pos, x.get(..), y.get(..)),
-                            ErrorType::PForAccessCollision));
+                    if let Some((i1, i2, v)) = collision {
+                        return Err(CompileError::pfor_collision(
+                            entry1.pos(), entry2.pos(), i1, i2, v, pfor
+                        ));
                     }
                 }
             }
         }
     }
-
     return Ok(());
 }
 
-// The first column is for the translation
+struct Joined<I>
+    where I: Iterator + Clone, I::Item: std::fmt::Display
+{
+    it: I,
+    separator: &'static str
+}
+
+impl<I> std::fmt::Display for Joined<I>
+    where I: Iterator + Clone, I::Item: std::fmt::Display
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut it_copy = self.it.clone();
+        if let Some(x) = it_copy.next() {
+            write!(f, "{}", x)?;
+        }
+        while let Some(x) = it_copy.next() {
+            write!(f, "{}{}", self.separator, x)?;
+        }
+        return Ok(());
+    }
+}
+
+impl CompileError {
+
+    fn no_integral_range(pos: &TextPosition, index: usize) -> CompileError {
+        CompileError::new(
+            pos, 
+            format!("The {}-th index expression must be guaranteed to take integral values for all values of the referenced variables", index),
+            ErrorType::IllegalPForIndexExpression
+        )
+    }
+
+    fn pfor_collision<V, W, U>(
+        access1: &TextPosition, 
+        access2: &TextPosition, 
+        vars1: Vector<V, i32>, 
+        vars2: Vector<W, i32>, 
+        shared_vars: Vector<U, i32>, 
+        pfor: &ParallelFor
+    ) -> CompileError 
+        where V: VectorView<i32>, W: VectorView<i32>, U: VectorView<i32>
+    {
+        let var_assignment1 = pfor.index_variables.iter().enumerate()
+            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(&variable.name), *vars1.at(i)));
+
+        let var_assignment2 = pfor.index_variables.iter().enumerate()
+            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(&variable.name), *vars2.at(i)));
+
+        let shared_var_assignment = pfor.used_variables.iter().enumerate()
+            .map(|(i, expr)| format!("{} = {}", DisplayWrapper::from(expr), *shared_vars.at(i)));
+
+        CompileError::new(
+            access1,
+            format!(
+                "This index access collides with the index access defined at {}, e.g. for variable assignment {} and {} in the context {{ {} }}", 
+                access2,
+                Joined { it: var_assignment1, separator: ", " },
+                Joined { it: var_assignment2, separator: ", " },
+                Joined { it: shared_var_assignment, separator: ", " }
+            ),
+            ErrorType::PForAccessCollision
+        )
+    }
+}
+
+fn expect_integral_matrix<M>(a: Matrix<M, r64>, pos: &TextPosition) -> Result<Matrix<MatrixOwned<i32>, i32>, CompileError>
+    where M: MatrixView<r64>
+{
+    let mut error = None;
+    let result = Matrix::from_fn(a.row_count(), a.col_count(), |i, j| {
+        let mut value = *a.at(i, j);
+        value.reduce();
+        if value.den() != 1 {
+            error = Some(CompileError::no_integral_range(pos, i));
+        }
+        return value.num() as i32;
+    });
+    if let Some(err) = error {
+        return Err(err);
+    } else {
+        return Ok(result);
+    }
+}
+
+type VariableAssignment = Vector<VectorOwned<i32>, i32>;
+
+///
+/// Tries to find a collision between two accesses, i.e. given
+/// index var transform matrices A1, A2, other var transform matrices
+/// B1, B2 and vectors c1, c2 such that the following holds:
+/// 
+/// A1 * i1 + B1 * v + c1 = A2 * i2 + B2 * v + c2
+/// 
+/// for integral index var assignments i1 resp. i2 and an integral
+/// other var assignment v.
+/// 
+/// Instead of B1 and B2 resp. c1 and c2 this function accepts
+/// their difference for simplicity.
+/// 
+/// The returned values are (i1, i2, v) resp. None if such an assignment
+/// does not exist.
+/// 
 #[allow(non_snake_case)]
-fn get_collision(
-    transform1: MatrixRef<i32>,
-    transform2: MatrixRef<i32>,
+fn get_collision<M, N, P, V>(
+    index_var_transform1: Matrix<M, i32>,
+    index_var_transform2: Matrix<N, i32>,
+    other_var_transform_difference: Matrix<P, i32>,
+    affine_difference: Vector<V, i32>,
     same_index_collides: bool,
-) -> Option<(Vector<i32>, Vector<i32>)> {
+) -> Option<(VariableAssignment, VariableAssignment, VariableAssignment)> 
+    where M: MatrixView<i32>, N: MatrixView<i32>, P: MatrixView<i32>, V: VectorView<i32>
+{
+    assert_eq!(index_var_transform1.col_count(), index_var_transform2.col_count());
+    assert_eq!(index_var_transform1.row_count(), affine_difference.len());
+    assert_eq!(index_var_transform1.row_count(), index_var_transform2.row_count());
+    assert_eq!(index_var_transform1.row_count(), other_var_transform_difference.row_count());
 
-    debug_assert_eq!(transform1.cols(), transform2.cols());
-    debug_assert_eq!(transform1.rows(), transform2.rows());
+    let index_variables_in = index_var_transform1.col_count();
+    let other_variables_in = other_var_transform_difference.col_count();
+    let variables_out = index_var_transform1.row_count();
 
-    let variables_in = transform1.cols() - 1;
-    let variables_out = transform1.rows();
-    let mut joined_transform = Matrix::<i32>::zero(variables_out, 2 * variables_in);
+    let degrees_of_freedom = 2 * index_variables_in + other_variables_in;
 
-    let mut left_half = joined_transform.get_mut((.., 0..variables_in));
-    left_half.assign(Matrix::copy_of(transform1.get((.., 1..(variables_in + 1)))));
+    let mut joined_transform = Matrix::zero(variables_out, degrees_of_freedom).to_owned();
 
-    let mut right_half = joined_transform.get_mut((.., variables_in..(2 * variables_in)));
-    right_half.assign(Matrix::copy_of(transform2.get((.., 1..variables_in + 1))));
-    right_half.scal(-1);
+    // fill the matrix correctly
+    {
+        let mut left_half = joined_transform.submatrix_mut(.., ..index_variables_in);
+        left_half.assign(index_var_transform1);
 
-    let mut joined_translate = Matrix::<i32>::zero(variables_out, 1);
-    let mut translate = joined_translate.get_mut((.., ..));
-    translate -= transform1.get((.., 0..1));
-    translate += transform2.get((.., 0..1));
+        let mut right_half = joined_transform.submatrix_mut(.., index_variables_in..(2 * index_variables_in));
+        right_half.assign(index_var_transform2);
+        right_half *= -1;
 
-    let mut iL = Matrix::<i32>::identity(variables_out);
-    let mut iR = Matrix::<i32>::identity(2 * variables_in);
+        let mut other_var_part = joined_transform.submatrix_mut(.., (2 * index_variables_in)..);
+        other_var_part.assign(other_var_transform_difference);
+    }
+    let mut joined_translate = Matrix::col_vec(affine_difference.to_owned());
+    joined_translate *= -1;
 
-    feanor_la::diophantine::smith(
-        &mut joined_transform.get_mut((.., ..)),
-        &mut iL.get_mut((.., ..)),
-        &mut iR.get_mut((.., ..)),
+    let mut iL = Matrix::<_, i32>::identity(variables_out, variables_out);
+    let mut iR = Matrix::<_, i32>::identity(degrees_of_freedom, degrees_of_freedom);
+
+    feanor_la::algebra::diophantine::partial_smith(
+        joined_transform.as_mut(),
+        iL.as_mut(),
+        iR.as_mut(),
         0,
     );
 
-    let x = (iL * joined_translate).into_column_vector();
-    let mut y = Vector::<i32>::zero(2 * variables_in);
+    let x_mat = iL * joined_translate;
+    let x = x_mat.col(0);
+    let mut y = Vector::zero(degrees_of_freedom).to_owned();
     let mut free_dimensions: Vec<usize> = Vec::new();
 
-    for i in 0..variables_out.min(2 * variables_in) {
-        if joined_transform[i][i] == 0 && x[i] != 0 {
+    for i in 0..variables_out.min(degrees_of_freedom) {
+        if *joined_transform.at(i, i) == 0 && *x.at(i) != 0 {
             return None;
-        } else if joined_transform[i][i] == 0 && x[i] == 0 {
-            free_dimensions.push(i);
-        // y[i] is already zero
-        } else if x[i] % joined_transform[i][i] != 0 {
+        } else if *joined_transform.at(i, i) == 0 && *x.at(i) == 0 {
+            // in this case, we can choose variable i as we want
+            // if it is an index variable, use it for later different-index-collision
+            // check, otherwise ignore it as we can choose the other variables always
+            // arbitrarily
+            if i <= 2 * index_variables_in {
+                free_dimensions.push(i);
+            }
+            // we leave y[i] to be zero, though any value would be ok
+        } else if *x.at(i) % *joined_transform.at(i, i) != 0 {
             return None;
         } else {
-            y[i] = x[i] / joined_transform[i][i];
+            *y.at_mut(i) = *x.at(i) / *joined_transform.at(i, i);
         }
     }
 
     // We are done, since we found a solution
     if same_index_collides {
-        let result = (iR.as_ref() * y.as_ref()).into_column_vector();
+        let result = iR.as_ref() * Matrix::col_vec(y);
         return Some((
-            Vector::copy_of(result.get(0..variables_in)),
-            Vector::copy_of(result.get(variables_in..(2 * variables_in))),
+            result.col(0).subvector(..index_variables_in).to_owned(),
+            result.col(0).subvector(index_variables_in..(2 * index_variables_in)).to_owned(),
+            result.col(0).subvector((2 * index_variables_in)..).to_owned()
         ));
     }
 
     // We have to check whether a solution space looks like (...a... ...a...) * Z^n + ... + (...c... ...c...) * Z^n,
     // so there is a solution but only one where the same thread collides with itself
-    free_dimensions.extend(variables_out..(2 * variables_in));
+
+    // the diagonal matrix has only up to out_variables many entries, so the entries for the other input
+    // variables are implicitly zero, so free dimensions
+    free_dimensions.extend(variables_out..degrees_of_freedom);
 
     // check all solution space basis vectors
     for free_dim in free_dimensions {
-        y[free_dim] = 1;
-        let basis_vector = (iR.as_ref() * y.as_ref()).into_column_vector();
-        if basis_vector.get(0..variables_in) != basis_vector.get(variables_in..(2 * variables_in)) {
+        *y.at_mut(free_dim) = 1;
+        let basis_vector_mat = iR.as_ref() * Matrix::col_vec(y.as_ref());
+        let basis_vector = basis_vector_mat.col(0);
+        if basis_vector.subvector(..index_variables_in) != basis_vector.subvector(index_variables_in..(2 * index_variables_in)) {
             return Some((
-                Vector::copy_of(basis_vector.get(0..variables_in)),
-                Vector::copy_of(basis_vector.get(variables_in..(2 * variables_in))),
+                basis_vector.subvector(..index_variables_in).to_owned(),
+                basis_vector.subvector(index_variables_in..(2 * index_variables_in)).to_owned(),
+                basis_vector.subvector((2 * index_variables_in)..).to_owned()
             ));
         }
-        y[free_dim] = 0;
+        *y.at_mut(free_dim) = 0;
     }
 
     return None;
@@ -139,28 +274,59 @@ fn get_collision(
 #[cfg(test)]
 use super::super::lexer::lexer::fragment_lex;
 #[cfg(test)]
-use super::super::parser::Parser;
+use super::super::parser::{ Parser, ParserContext };
 
 #[test]
-
 fn test_check_collision() {
-
+    let mut context = ParserContext::new();
     let pfor = ParallelFor::parse(&mut fragment_lex(
-        "pfor a: int, with write this[2 * a, ], read this[2 * a + 1, ], in array {}",
-    ), &mut TypeVec::new())
+        "pfor a: int, with write this[2 * a, ] as x, read this[2 * a + 1, ] as y, in array {}",
+    ), &mut context)
     .unwrap();
 
-    assert_eq!((), check_pfor_data_races(&pfor).internal_error());
+    assert_eq!((), check_pfor_data_races(&pfor).unwrap());
 }
 
 #[test]
-
 fn test_check_collision_with_collision() {
-
+    let mut context = ParserContext::new();
     let pfor = ParallelFor::parse(&mut fragment_lex(
-        "pfor a: int, b: int, with write this[2 * a + b, ], read this[2 * a + 1, ], in array {}",
-    ), &mut TypeVec::new())
+        "pfor a: int, b: int, with write this[2 * a + b, ] as x, read this[2 * a + 1, ] as y, in array {}",
+    ), &mut context)
     .unwrap();
 
     assert!(check_pfor_data_races(&pfor).is_err());
+}
+
+#[test]
+fn test_check_collision_collision_through_outer_var() {
+    let mut context = ParserContext::new();
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "pfor a: int, with write this[a, n,] as x, read this[a, 2,] as y, in array {}",
+    ), &mut context)
+    .unwrap();
+
+    assert!(check_pfor_data_races(&pfor).is_err());
+}
+
+#[test]
+fn test_check_collision_self_collision() {
+    let mut context = ParserContext::new();
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "pfor a: int, b: int, with write this[a + b,] as x, in array {}",
+    ), &mut context)
+    .unwrap();
+
+    assert!(check_pfor_data_races(&pfor).is_err());
+}
+
+#[test]
+fn test_check_collision_no_self_collision() {
+    let mut context = ParserContext::new();
+    let pfor = ParallelFor::parse(&mut fragment_lex(
+        "pfor a: int, b: int, with write this[a + b, a,] as x, in array {}",
+    ), &mut context)
+    .unwrap();
+
+    assert_eq!((), check_pfor_data_races(&pfor).unwrap());
 }
