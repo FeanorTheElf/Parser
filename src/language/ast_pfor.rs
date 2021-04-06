@@ -412,8 +412,8 @@ impl StatementFuncs for ParallelFor {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let mut scopes = parent_scopes.child_stack();
         for def in &self.index_variables {
@@ -422,10 +422,10 @@ impl StatementFuncs for ParallelFor {
         self.body.traverse_preorder(&scopes, f)
     }
 
-    fn traverse_preorder_mut(
-        &mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let mut scopes = parent_scopes.child_stack();
         for def in &mut self.index_variables {

@@ -121,8 +121,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
 
     ///
@@ -130,8 +130,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
 
     ///
@@ -227,8 +227,8 @@ impl StatementFuncs for Block {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let result = f(self, parent_scopes);
         match result {
@@ -258,10 +258,10 @@ impl StatementFuncs for Block {
         return Ok(());
     }
 
-    fn traverse_preorder_mut(
-        &mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let result = f(self, parent_scopes);
         match result {
@@ -424,16 +424,16 @@ impl StatementFuncs for LocalVariableDeclaration {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStack, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
 
-    fn traverse_preorder_mut(
-        &mut self, 
-        _parent_scopes: &DefinitionScopeStackMut, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        _parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
@@ -514,16 +514,16 @@ impl StatementFuncs for Expression {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStack, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
 
-    fn traverse_preorder_mut(
-        &mut self, 
-        _parent_scopes: &DefinitionScopeStackMut, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        _parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }

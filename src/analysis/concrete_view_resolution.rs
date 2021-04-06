@@ -21,7 +21,7 @@ fn for_each_function_call<'a, 'b, F>(
                     expression.try_call_tree_preorder_depth_first_search(&mut |call| f(call, scope))?;
                 }
             }
-            return Ok(());
+            return RECURSE;
         })?;
     }
     return Ok(());
@@ -177,7 +177,7 @@ pub fn calculate_required_function_instantiations<'a>(
                     .or_insert_with(HashSet::new);
                 called_function_instantiations.extend(new_instantiations.into_iter());
             }
-            return Ok(());
+            return RECURSE;
         })?;
     }
 

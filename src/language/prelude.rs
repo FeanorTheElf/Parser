@@ -3,6 +3,7 @@ pub use super::error::{CompileError, ErrorType, InternalErrorConvertable};
 pub use super::identifier::*;
 pub use super::position;
 pub use super::position::TextPosition;
+pub use super::scopes::ScopeStack;
 pub use super::types::*;
 pub use super::ast::*;
 pub use super::ast_expr::*;

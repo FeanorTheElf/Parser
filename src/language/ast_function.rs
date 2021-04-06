@@ -35,8 +35,8 @@ impl Function {
     
     pub fn for_content<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> Result<(), CompileError>
+        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = parent_scopes.child_stack();
         for param in &self.parameters {
@@ -50,8 +50,8 @@ impl Function {
 
     pub fn for_content_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> Result<(), CompileError>
+        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        f: &mut dyn FnMut(&'a mut Block, &DefinitionScopeStackMut<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = parent_scopes.child_stack();
         for param in &mut self.parameters {
@@ -65,18 +65,18 @@ impl Function {
     
     pub fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content(parent_scopes, &mut |content: &'a Block, scopes| {
             content.traverse_preorder(scopes, f)
         })
     }
 
-    pub fn traverse_preorder_mut(
-        &mut self, 
-        parent_scopes: &DefinitionScopeStackMut, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+    pub fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes| {
             content.traverse_preorder_mut(scopes, f)
@@ -149,7 +149,7 @@ impl Program {
     
     pub fn for_functions<'a>(
         &'a self,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = DefinitionScopeStack::new();
         for item in &self.items {
@@ -168,7 +168,7 @@ impl Program {
 
     pub fn for_functions_mut<'a>(
         &'a mut self, 
-        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a mut Function, &DefinitionScopeStackMut<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
         // simpler because there is no polymorphism in the items
@@ -200,7 +200,7 @@ impl Program {
 
     pub fn traverse_preorder<'a>(
         &'a self, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack) -> TraversePreorderResult
+        f: &'a mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes| {
             body.traverse_preorder(scopes, f)
@@ -209,10 +209,18 @@ impl Program {
 
     pub fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes| {
             body.traverse_preorder_mut(scopes, f)
         }))
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = &Function> {
+        self.items.iter()
+    }
+
+    pub fn items_mut(&mut self) -> impl Iterator<Item = &mut Function> {
+        self.items.iter_mut()
     }
 }

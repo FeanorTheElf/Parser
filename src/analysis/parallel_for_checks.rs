@@ -11,7 +11,7 @@ pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileErr
                 check_pfor_data_races(pfor)?;
             }
         }
-        return Ok(());
+        return RECURSE;
     })
 }
 

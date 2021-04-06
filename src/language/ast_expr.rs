@@ -131,14 +131,14 @@ impl Expression {
     }
 }
 
-pub struct ExpressionNamesIter<'a> {
+pub struct ExpressionIdentifierIter<'a> {
     iters: Vec<&'a Expression>
 }
 
-impl<'a> Iterator for ExpressionNamesIter<'a> {
-    type Item = &'a Name;
+impl<'a> Iterator for ExpressionIdentifierIter<'a> {
+    type Item = &'a Identifier;
 
-    fn next(&mut self) -> Option<&'a Name> {
+    fn next(&mut self) -> Option<&'a Identifier> {
         loop {
             match self.iters.pop() {
                 None => {
@@ -148,26 +148,21 @@ impl<'a> Iterator for ExpressionNamesIter<'a> {
                     self.iters.push(&call.function);
                     self.iters.extend(call.parameters.iter());
                 },
-                Some(Expression::Variable(var)) => match &var.identifier {
-                    Identifier::Name(name) => {
-                        return Some(name);
-                    },
-                    _ => {}
-                },
+                Some(Expression::Variable(var)) => return Some(&var.identifier),
                 Some(Expression::Literal(_)) => {}
             }
         }
     }
 }
 
-pub struct ExpressionNamesIterMut<'a> {
+pub struct ExpressionIdentifierIterMut<'a> {
     iters: Vec<&'a mut Expression>
 }
 
-impl<'a> Iterator for ExpressionNamesIterMut<'a> {
-    type Item = &'a mut Name;
+impl<'a> Iterator for ExpressionIdentifierIterMut<'a> {
+    type Item = &'a mut Identifier;
 
-    fn next(&mut self) -> Option<&'a mut Name> {
+    fn next(&mut self) -> Option<&'a mut Identifier> {
         loop {
             match self.iters.pop() {
                 None => {
@@ -177,12 +172,7 @@ impl<'a> Iterator for ExpressionNamesIterMut<'a> {
                     self.iters.push(&mut call.function);
                     self.iters.extend(call.parameters.iter_mut());
                 },
-                Some(Expression::Variable(var)) => match &mut var.identifier {
-                    Identifier::Name(name) => {
-                        return Some(name);
-                    },
-                    _ => {}
-                },
+                Some(Expression::Variable(var)) => return Some(&mut var.identifier),
                 Some(Expression::Literal(_)) => {}
             }
         }
@@ -191,16 +181,24 @@ impl<'a> Iterator for ExpressionNamesIterMut<'a> {
 
 impl Expression {
     
-    pub fn names<'a>(&'a self) -> ExpressionNamesIter<'a> {
-        ExpressionNamesIter {
+    pub fn identifiers<'a>(&'a self) -> ExpressionIdentifierIter<'a> {
+        ExpressionIdentifierIter {
             iters: vec![self]
         }
     }
 
-    pub fn names_mut<'a>(&'a mut self) -> ExpressionNamesIterMut<'a> {
-        ExpressionNamesIterMut {
+    pub fn identifiers_mut<'a>(&'a mut self) -> ExpressionIdentifierIterMut<'a> {
+        ExpressionIdentifierIterMut {
             iters: vec![self]
         }
+    }
+
+    pub fn names<'a>(&'a self) -> impl Iterator<Item = &'a Name> {
+        self.identifiers().filter_map(Identifier::as_name)
+    }
+
+    pub fn names_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Name> {
+        self.identifiers_mut().filter_map(Identifier::as_name_mut)
     }
 }
 

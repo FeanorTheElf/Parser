@@ -1,5 +1,4 @@
 use super::super::language::prelude::*;
-use super::scope::ScopeStack;
 use super::super::util::ref_eq::Ptr;
 
 use std::hash::Hash;
@@ -50,39 +49,46 @@ struct CallData<'a> {
     called: HashSet<Ptr<'a, Function>>
 }
 
-fn collect_global_use_data_variable<'a>(var: &'a Variable, parent_function: Ptr<'a, Function>, global_scope: &ScopeStack<&'a Function>, result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>) {
-    if var.identifier.is_name() {
-        if let Some(function) = global_scope.get(var.identifier.unwrap_name()) {
+fn collect_global_use_data_variable<'a>(
+    ident: &'a Identifier, 
+    parent_function: Ptr<'a, Function>, 
+    global_scope: &DefinitionScopeStack<'_, 'a>, 
+    result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>
+) {
+    if ident.is_name() {
+        if let Some(function) = global_scope.get(ident.unwrap_name()) {
             if let Some(use_data) = result.get_mut(&parent_function) {
-                use_data.called.insert(Ptr::from(*function));
+                use_data.called.insert(Ptr::from(function.downcast::<Function>().unwrap()));
             } else {
                 let mut use_data = CallData {
                     called: HashSet::new()
                 };
-                use_data.called.insert(Ptr::from(*function));
+                use_data.called.insert(Ptr::from(function.downcast::<Function>().unwrap()));
                 result.insert(parent_function, use_data);
             }
         }
     }
 }
 
-pub fn call_graph_topological_sort<'a>(program: &'a [Box<Function>]) -> Result<impl Iterator<Item = &'a Function>, CompileError> {
+pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<impl Iterator<Item = &'a Function>, CompileError> {
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
     let empty_call_data: CallData<'a> = CallData { called: HashSet::new() };
-    let global_scope = ScopeStack::global_scope(program);
-    for function in program {
-        if let Some(body) = &function.body {
-            body.scan_top_level_expressions(|expr| {
-                for var in expr.variables() {
-                    collect_global_use_data_variable(var, Ptr::from(&**function), &global_scope, &mut use_data);
+    program.for_functions(&mut |func: &'a Function, global_scopes| {
+        func.traverse_preorder(global_scopes, &mut |block: &'a Block, _| {
+            for statement in block.statements() {
+                for expr in statement.expressions() {
+                    for ident in expr.identifiers() {
+                        collect_global_use_data_variable(ident, Ptr::from(func), global_scopes, &mut use_data);
+                    }
                 }
-            })
-        }
-    }
+            }
+            return RECURSE;
+        })
+    })?;
     return topological_sort(
-        program.iter().map(|fun| Ptr::from(&**fun)), 
+        program.items().map(Ptr::from), 
         |fun| use_data.get(&fun).unwrap_or(&empty_call_data).called.iter().map(|target| *target)
-    ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {:?} can recurse", fun.identifier), ErrorType::Recursion))
+    ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {:?} can recurse", fun.name), ErrorType::Recursion))
     .map(|result| result.map(Ptr::get).collect::<Vec<_>>().into_iter());
 }
 

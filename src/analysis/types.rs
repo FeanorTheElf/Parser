@@ -1,7 +1,5 @@
 use super::super::language::prelude::*;
-use super::scope::*;
 use super::topological_sort::call_graph_topological_sort;
-use super::type_error::*;
 
 fn parent_type(a: PrimitiveType, b: PrimitiveType) -> PrimitiveType
 {

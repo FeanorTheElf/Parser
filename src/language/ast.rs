@@ -27,3 +27,4 @@ pub fn TraverseErr(e: CompileError) -> TraversePreorderResult {
 }
 
 pub const DONT_RECURSE: TraversePreorderResult = Err(TraversePreorderCancel::DoNotRecurse);
+pub const RECURSE: TraversePreorderResult = Ok(());
