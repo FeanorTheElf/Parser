@@ -46,7 +46,7 @@ impl Build<TypeNodeView> for Type {
     fn build(pos: TextPosition, context: &mut ParserContext, param: TypeNodeView) -> Self::ParseOutputType {
         let type_node = (param.1).0;
         let viewn_type = Type::build(pos, context, type_node);
-        return Type::with_view(viewn_type);
+        return Type::with_view(viewn_type, true);
     }
 }
 

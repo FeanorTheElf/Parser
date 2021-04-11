@@ -5,18 +5,8 @@ use super::identifier::Name;
 use super::ast::*;
 use super::ast_expr::*;
 use super::types::*;
-
-// Declare this here, as we need the `cast_statement_mut()`
-
-pub trait SymbolDefinitionFuncs: AstNode {
-    fn get_name(&self) -> &Name;
-    fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement>;
-}
-
-dynamic_subtrait!{ SymbolDefinition: SymbolDefinitionFuncs; SymbolDefinitionDynCastable }
-
-pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
-pub type DefinitionScopeStackMut<'a, 'b> = ScopeStack<'a, &'b mut dyn SymbolDefinition>;
+use super::scopes::*;
+use super::symbol::*;
 
 pub trait StatementFuncs: AstNode {
     ///
@@ -130,8 +120,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
 
     ///
@@ -260,8 +250,8 @@ impl StatementFuncs for Block {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let result = f(self, parent_scopes);
         match result {
@@ -377,6 +367,10 @@ impl SymbolDefinitionFuncs for Declaration {
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
         None
     }
+
+    fn get_type(&self) -> Type {
+        self.var_type.clone()
+    }
 }
 
 impl SymbolDefinition for Declaration {}
@@ -432,8 +426,8 @@ impl StatementFuncs for LocalVariableDeclaration {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
@@ -457,6 +451,10 @@ impl SymbolDefinitionFuncs for LocalVariableDeclaration {
 
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
         Some(self)
+    }
+
+    fn get_type(&self) -> Type {
+        self.declaration.get_type()
     }
 }
 
@@ -522,8 +520,8 @@ impl StatementFuncs for Expression {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }

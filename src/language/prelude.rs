@@ -6,6 +6,8 @@ pub use super::position::TextPosition;
 pub use super::scopes::ScopeStack;
 pub use super::types::*;
 pub use super::ast::*;
+pub use super::scopes::*;
+pub use super::symbol::*;
 pub use super::ast_expr::*;
 pub use super::ast_statement::*;
 pub use super::ast_function::*;

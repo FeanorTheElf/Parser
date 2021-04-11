@@ -18,7 +18,7 @@ pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
     pub parameters: Vec<Expression>,
-    pub result_type_cache: RefCell<Option<Type>>
+    pub result_type_cache: RefCell<Option<VoidableType>>
 }
 
 impl AstNode for FunctionCall {} 

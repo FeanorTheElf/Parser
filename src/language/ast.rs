@@ -1,6 +1,5 @@
-use super::super::util::dynamic::{DynEq, Dynamic};
+use super::super::util::dynamic::DynEq;
 use super::position::TextPosition;
-use super::identifier::Name;
 use super::error::CompileError;
 use std::any::Any;
 

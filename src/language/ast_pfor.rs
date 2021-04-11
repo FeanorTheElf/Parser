@@ -6,6 +6,8 @@ use super::ast::*;
 use super::ast_expr::*;
 use super::ast_statement::*;
 use super::gwaihir_writer::*;
+use super::scopes::*;
+use super::symbol::*;
 use feanor_la::la::mat::*;
 use feanor_la::algebra::rat::*;
 
@@ -424,8 +426,8 @@ impl StatementFuncs for ParallelFor {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let mut scopes = parent_scopes.child_stack();
         for def in &mut self.index_variables {

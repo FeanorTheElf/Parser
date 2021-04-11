@@ -125,12 +125,31 @@ impl AstWriter for ViewType {
         return Ok(());
     }
 }
+
+impl AstWriter for FunctionType {
+
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "fn(")?;
+        for p in self.parameter_types() {
+            p.write(out)?;
+            write!(out, ", ")?;
+        }
+        write!(out, ")")?;
+        if let Some(return_type) = self.return_type() {
+            write!(out, ": ")?;
+            return_type.write(out)?;
+        }
+        return Ok(());
+    }
+}
+
 impl AstWriter for Type {
     
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         match self {
             Type::Static(static_type) => static_type.write(out),
-            Type::View(view_type) => view_type.write(out)
+            Type::View(view_type) => view_type.write(out),
+            Type::Function(function_type) => function_type.write(out)
         }
     }
 }

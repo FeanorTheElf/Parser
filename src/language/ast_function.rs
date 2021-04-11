@@ -4,6 +4,8 @@ use super::identifier::Name;
 use super::ast::*;
 use super::ast_statement::*;
 use super::types::*;
+use super::scopes::*;
+use super::symbol::*;
 
 #[derive(Debug)]
 pub struct Function {
@@ -75,8 +77,8 @@ impl Function {
 
     pub fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes| {
             content.traverse_preorder_mut(scopes, f)
@@ -92,6 +94,10 @@ impl SymbolDefinitionFuncs for Function {
 
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
         None
+    }
+
+    fn get_type(&self) -> Type {
+        Type::function_type(self.parameters.iter().map(|p| p.get_type()), self.return_type.clone())
     }
 }
 
@@ -168,32 +174,24 @@ impl Program {
 
     pub fn for_functions_mut<'a>(
         &'a mut self, 
-        f: &mut dyn FnMut(&'a mut Function, &DefinitionScopeStackMut<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
         // simpler because there is no polymorphism in the items
         let mut child_scope = DefinitionScopeStackMut::new();
         let mut data = Vec::new();
         for item in &mut self.items {
-            if item.is_backward_visible() {
-                data.push(FunctionMutOrPlaceholder::PlaceholderFunctionName(item.get_name().clone()));
-                child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
-            } else {
-                data.push(FunctionMutOrPlaceholder::Function(item));
+            // other things should not exist and are not implemented
+            if !item.is_backward_visible() {
+                unimplemented!();
             }
+            data.push(item.get_name().clone());
+            child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
         }
-        for item in data.into_iter() {
-            match item {
-                FunctionMutOrPlaceholder::Function(item) => {
-                    f(item, &child_scope)?;
-                    child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
-                },
-                FunctionMutOrPlaceholder::PlaceholderFunctionName(name) => {
-                    let item = child_scope.unregister(&name).downcast_mut::<Function>().unwrap();
-                    f(item, &child_scope)?;
-                    child_scope.register(name, <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
-                }
-            }
+        for name in data.into_iter() {
+            let item = child_scope.unregister(&name).downcast_mut::<Function>().unwrap();
+            f(item, &child_scope)?;
+            child_scope.register(name, <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
         }
         return Ok(());
     }
@@ -209,7 +207,7 @@ impl Program {
 
     pub fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes| {
             body.traverse_preorder_mut(scopes, f)

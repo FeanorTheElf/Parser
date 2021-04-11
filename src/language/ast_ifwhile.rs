@@ -4,6 +4,7 @@ use super::identifier::Name;
 use super::ast::*;
 use super::ast_expr::*;
 use super::ast_statement::*;
+use super::scopes::*;
 
 #[derive(Debug)]
 pub struct If {
@@ -64,8 +65,8 @@ impl StatementFuncs for If {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.body.traverse_preorder_mut(parent_scopes, f)
     }
@@ -142,8 +143,8 @@ impl StatementFuncs for While {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.body.traverse_preorder_mut(parent_scopes, f)
     }

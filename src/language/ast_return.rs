@@ -4,6 +4,7 @@ use super::identifier::Name;
 use super::ast::*;
 use super::ast_expr::*;
 use super::ast_statement::*;
+use super::scopes::*;
 
 #[derive(Debug)]
 pub struct Return {
@@ -63,8 +64,8 @@ impl StatementFuncs for Return {
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }

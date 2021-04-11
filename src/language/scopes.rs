@@ -1,7 +1,11 @@
 use super::identifier::Name;
 use super::position::TextPosition;
-use super::error::{CompileError, ErrorType};
+use super::error::CompileError;
+use super::symbol::SymbolDefinition;
 use std::collections::HashMap;
+
+pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
+pub type DefinitionScopeStackMut<'a, 'b> = ScopeStack<'a, &'b mut dyn SymbolDefinition>;
 
 struct ScopeStackIter<'a, T> {
     current: Option<&'a ScopeStack<'a, T>>,
