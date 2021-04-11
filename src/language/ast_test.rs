@@ -1,5 +1,7 @@
 pub use super::gwaihir_writer::{DisplayWrapper, AstWriter};
 pub use super::compiler::{StringWriter, CodeWriter};
+pub use super::super::parser::TopLevelParser;
+pub use super::super::lexer::lexer::lex_str;
 
 macro_rules! assert_ast_eq {
     ($expected:expr, $actual:expr) => {{

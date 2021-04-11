@@ -1,7 +1,7 @@
 use super::super::language::prelude::*;
 use super::super::language::gwaihir_writer::*;
 use super::super::language::concrete_views::*;
-use super::topological_sort::call_graph_topological_sort;
+use super::topological_sort;
 
 fn arithmetic_result_type(pos: &TextPosition, ty1: &Type, ty2: &Type, op: BuiltInIdentifier) -> Result<Type, CompileError> {
     if ty1.is_scalar(PrimitiveType::Int) && ty2.is_scalar(PrimitiveType::Int) {
@@ -34,11 +34,19 @@ impl CompileError {
     }
 
     fn type_error(pos: &TextPosition, expected: &Type, actual: &Type) -> CompileError {
-        unimplemented!()
+        CompileError::new(
+            pos,
+            format!("Expected type {} but got type {}", DisplayWrapper::from(expected), DisplayWrapper::from(actual)),
+            ErrorType::TypeError
+        )
     }
 
     fn wrong_param_count(pos: &TextPosition, expected: usize, actual: usize) -> CompileError {
-        unimplemented!()
+        CompileError::new(
+            pos,
+            format!("Wrong parameter count, expected {} parameters but got {}", expected, actual),
+            ErrorType::TypeError
+        )
     }
 
     fn not_callable(pos: &TextPosition, ty: &Type) -> CompileError {
@@ -64,8 +72,8 @@ impl CompileError {
 /// Created views have concrete view information set.
 /// This function completely consumes the passed param_types iterator (useful if the iterator has side effects).
 /// 
-fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPosition, mut param_types: I) -> Result<Type, CompileError>
-    where I: Iterator<Item = (Result<&'a Type, CompileError>, &'a TextPosition)>
+fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_types: I) -> Result<Type, CompileError>
+    where I: Iterator<Item = (Result<&'a Type, CompileError>, TextPosition)>
 {
     match op {
         BuiltInIdentifier::ViewZeros => {
@@ -73,7 +81,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Int) {
-                    return Err(CompileError::type_error(param.1, &PrimitiveType::Int.scalar(true), param_type));
+                    return Err(CompileError::type_error(&param.1, &PrimitiveType::Int.scalar(true), param_type));
                 }
                 dimension_count += 1;
             }
@@ -84,7 +92,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
         {
             return param_types.try_fold(PrimitiveType::Int.scalar(true), |current, (try_type, pos)| {
                 let param_type = try_type?;
-                arithmetic_result_type(pos, &current, &param_type, op)
+                arithmetic_result_type(&pos, &current, &param_type, op)
             });
         },
         BuiltInIdentifier::FunctionAnd |
@@ -93,7 +101,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Bool) {
-                    return Err(CompileError::bi_operator_not_implemented(param.1, &PrimitiveType::Bool.scalar(true), &param_type, op));
+                    return Err(CompileError::bi_operator_not_implemented(&param.1, &PrimitiveType::Bool.scalar(true), &param_type, op));
                 }
             }
             return Ok(PrimitiveType::Bool.scalar(true));
@@ -107,31 +115,32 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
         {
             param_types.try_fold(PrimitiveType::Int.scalar(true), |current, (try_type, pos)| {
                 let param_type = try_type?;
-                arithmetic_result_type(pos, &current, param_type, op)
+                arithmetic_result_type(&pos, &current, param_type, op)
             })?;
             return Ok(PrimitiveType::Bool.scalar(true));
         },
         BuiltInIdentifier::FunctionIndex => {
-            let (array_type, index_pos) = param_types.next().expect("index function call has no parameters, but the indexed array should be the first parameter");
+            let (try_array_type, index_pos) = param_types.next().expect("index function call has no parameters, but the indexed array should be the first parameter");
             let mut count = 0;
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Int) {
-                    return Err(CompileError::type_error(param.1, &PrimitiveType::Int.scalar(true), param_type));
+                    return Err(CompileError::type_error(&param.1, &PrimitiveType::Int.scalar(true), param_type));
                 }
                 count += 1;
             }
-            match array_type? {
+            let array_type = try_array_type?;
+            match array_type {
                 Type::Static(static_type) => {
                     if static_type.dims != count {
-                        return Err(CompileError::wrong_param_count(index_pos, static_type.dims, count));
+                        return Err(CompileError::wrong_param_count(&index_pos, static_type.dims, count));
                     } else {
                         return Ok(static_type.base.scalar(static_type.is_mutable()).with_concrete_view(VIEW_INDEX));
                     }
                 },
                 Type::View(view_type) => {
                     if view_type.view_onto.dims != count {
-                        return Err(CompileError::wrong_param_count(index_pos, view_type.view_onto.dims, count));
+                        return Err(CompileError::wrong_param_count(&index_pos, view_type.view_onto.dims, count));
                     } else {
                         return Ok(
                             view_type.view_onto.base.scalar(view_type.view_onto.is_mutable())
@@ -141,18 +150,22 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
                                 ))
                         );
                     }
+                },
+                Type::Function(_) => {
+                    return Err(CompileError::un_operator_not_implemented(&index_pos, array_type, op));
                 }
             };
         },
         BuiltInIdentifier::FunctionUnaryDiv | BuiltInIdentifier::FunctionUnaryNeg => {
-            let (base_ty, pos) = param_types.next().expect("unary division and negation has no parameters, but it must be applied to a value");
+            let (try_base_type, pos) = param_types.next().expect("unary division and negation has no parameters, but it must be applied to a value");
+            let base_type = try_base_type?;
             if param_types.next().is_some() {
                 panic!("unary operator has more than one argument");
             }
-            if !base_ty?.is_scalar(PrimitiveType::Int) && !base_ty?.is_scalar(PrimitiveType::Float) {
-                return Err(CompileError::un_operator_not_implemented(pos, base_ty?, op));
+            if !base_type.is_scalar(PrimitiveType::Int) && !base_type.is_scalar(PrimitiveType::Float) {
+                return Err(CompileError::un_operator_not_implemented(&pos, base_type, op));
             } else {
-                return base_ty.map(Type::clone);
+                return Ok(base_type.clone());
             }
         }
     }
@@ -164,21 +177,21 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, pos: &TextPo
 /// This also consumes the param_types iterator.
 ///
 fn calculate_defined_function_call_result_type<'a, I>(
-    call: &FunctionCall, 
+    call_pos: &TextPosition, 
     function_type: &Type, 
-    mut param_types: I
+    param_types: I
 ) -> Result<Option<Type>, CompileError> 
-where I: Iterator<Item = (Result<&'a Type, CompileError>, &'a TextPosition)>
+where I: Iterator<Item = (Result<&'a Type, CompileError>, TextPosition)>
 {
     let function_type = if let Some(ty) = function_type.as_function() {
         ty
     } else {
-        return Err(CompileError::not_callable(call.pos(), function_type))
+        return Err(CompileError::not_callable(call_pos, function_type))
     };
     for (given_param, expected_param) in param_types.zip(function_type.parameter_types()) {
         let param_type = given_param.0?;
         if !param_type.is_implicitly_convertable(expected_param) && !param_type.is_viewable_as(expected_param) {
-            return Err(CompileError::type_error(given_param.1, expected_param, param_type));
+            return Err(CompileError::type_error(&given_param.1, expected_param, param_type));
         }
     }
     assert!(function_type.is_void() || !function_type.return_type().unwrap().is_view());
@@ -196,40 +209,43 @@ where I: Iterator<Item = (Result<&'a Type, CompileError>, &'a TextPosition)>
 /// 
 /// This also performs type checking, i.e. will return a compile error if the types do not match within the expression.
 /// 
-fn calculate_and_store_type<'a>(expr: &'a mut Expression, scopes: &DefinitionScopeStackMut) -> Result<&'a Option<Type>, CompileError> {
-    let result = match expr {
+fn calculate_and_store_type<'a>(expr: &'a mut Expression, scopes: &DefinitionScopeStackMut) -> Result<Option<&'a Type>, CompileError> {
+    match expr {
         Expression::Call(call) => {
             if call.result_type_cache.is_some() {
-                return Ok(call.result_type_cache.as_ref().unwrap());
+                return Ok(call.result_type_cache.as_ref().unwrap().as_ref());
             }
             let mut parameter_types = call.parameters.iter_mut()
-                    .map(|p| (calculate_and_store_type_nonvoid(p, scopes), p.pos())).fuse();
+                    .map(|p| {
+                        let pos = p.pos().clone();
+                        (calculate_and_store_type_nonvoid(p, scopes), pos)
+                    }).fuse();
 
             if let Expression::Variable(var) = &call.function {
                 if let Identifier::BuiltIn(op) = &var.identifier {
                     call.result_type_cache = Some(
-                        Some(calculate_builtin_call_result_type(*op, call.pos(), parameter_types)?)
+                        Some(calculate_builtin_call_result_type(*op, parameter_types.by_ref())?)
                     );
                 } else {
                     let called_function_type = calculate_and_store_type(&mut call.function, scopes)?.unwrap();
                     call.result_type_cache = Some(
-                        calculate_defined_function_call_result_type(call, &called_function_type, parameter_types)?
+                        calculate_defined_function_call_result_type(&call.pos, &called_function_type, parameter_types.by_ref())?
                     )
                 }
             } else {
                 let called_function_type = calculate_and_store_type(&mut call.function, scopes)?.unwrap();
                 call.result_type_cache = Some(
-                    calculate_defined_function_call_result_type(call, &called_function_type, parameter_types)?
+                    calculate_defined_function_call_result_type(&call.pos, &called_function_type, parameter_types.by_ref())?
                 )
             };
             assert!(parameter_types.next().is_none());
-            return Ok(call.result_type_cache.as_ref().unwrap());
+            return Ok(call.result_type_cache.as_ref().unwrap().as_ref());
         },
         Expression::Variable(var) => match &var.identifier {
-            Identifier::Name(name) => unimplemented!(),
+            Identifier::Name(name) => return Ok(Some(&scopes.get_defined(name, var.pos())?.get_type())),
             Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
         },
-        Expression::Literal(lit) => unimplemented!()
+        Expression::Literal(lit) => return Ok(Some(&lit.literal_type))
     };
 }
 
@@ -237,11 +253,11 @@ fn calculate_and_store_type_nonvoid<'a>(
     expr: &'a mut Expression, 
     scopes: &DefinitionScopeStackMut
 ) -> Result<&'a Type, CompileError> {
+    let position = expr.pos().clone();
     if let Some(ty) = calculate_and_store_type(expr, scopes)? {
-        Ok(ty)
-    } else {
-        Err(CompileError::expected_nonvoid(expr.pos()))
+        return Ok(ty);
     }
+    return Err(CompileError::expected_nonvoid(&position));
 }
 
 pub fn determine_types_in_function(
@@ -276,11 +292,10 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
         }
         return Ok(());
     })?;
-    let mut global_scope = DefinitionScopeStackMut::new();
-    for function in call_graph_topological_sort(program)? {
-
-        global_scope.register(function.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(function));
-    }
+    program.for_functions_ordered_mut(
+        |prog| topological_sort::call_graph_topological_sort(prog),
+        &mut |function, global_scope| determine_types_in_function(function, global_scope)
+    )?;
     return Ok(());
 }
 
@@ -331,18 +346,22 @@ fn test_determine_types_in_program() {
     determine_types_in_program(&mut program).internal_error();
 
     assert_eq!(
-        &Template::new(0) as &dyn ConcreteView,
-        program.items[0].body.as_ref().unwrap().statements[0]
+        &ViewTemplate::new(0) as &dyn View,
+        program.items[0].body.as_ref().unwrap()
+            .statements().next().unwrap()
             .downcast::<LocalVariableDeclaration>().unwrap()
-            .declaration.variable_type.deref(program.lifetime())
-            .unwrap_view().get_concrete().unwrap()
+            .declaration.var_type
+            .as_view().unwrap()
+            .get_concrete()
     );
 
     assert_eq!(
-        &ZeroView::new() as &dyn ConcreteView,
-        program.items[0].body.as_ref().unwrap().statements[1]
+        &VIEW_ZEROS as &dyn View,
+        program.items[0].body.as_ref().unwrap()
+            .statements().skip(1).next().unwrap()
             .downcast::<LocalVariableDeclaration>().unwrap()
-            .declaration.variable_type.deref(program.lifetime())
-            .unwrap_view().get_concrete().unwrap()
+            .declaration.var_type
+            .as_view().unwrap()
+            .get_concrete()
     );
 }

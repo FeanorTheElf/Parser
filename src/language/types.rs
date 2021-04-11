@@ -77,6 +77,13 @@ pub struct ViewType {
     pub concrete_view: Option<Box<dyn View>>
 }
 
+impl ViewType {
+
+    pub fn get_concrete(&self) -> &dyn View {
+        &**self.concrete_view.as_ref().expect("concrete view not set")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
     parameters: Vec<Box<Type>>,

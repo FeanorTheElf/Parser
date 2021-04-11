@@ -14,4 +14,5 @@ pub use super::ast_function::*;
 
 pub use std::cell::{Ref, RefCell};
 
-//pub use super::gwaihir_writer::DisplayWrapper;
+#[cfg(test)]
+pub use super::ast_test::*;

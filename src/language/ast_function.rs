@@ -174,9 +174,9 @@ impl Program {
         order: F,
         f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> 
-        where F: FnOnce(&Program) -> Vec<Ptr<Function>>
+        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, CompileError>
     {
-        self.for_functions_stored_order(order(self).into_iter().map(Ptr::get), f)
+        self.for_functions_stored_order(order(self)?.into_iter().map(Ptr::get), f)
     }
 
     pub fn for_functions_ordered_mut<'a, F>(
@@ -184,9 +184,9 @@ impl Program {
         order: F,
         f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> 
-        where F: FnOnce(&Program) -> Vec<Ptr<Function>>
+        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, CompileError>
     {
-        let order_indices = self.get_function_order_indices(order(self)).collect::<Vec<_>>();
+        let order_indices = self.get_function_order_indices(order(self)?).collect::<Vec<_>>();
         self.for_functions_stored_order_mut(order_indices.into_iter(), f)
     }
 
@@ -318,7 +318,7 @@ fn test_for_functions_ordered() {
 
     names.clear();
     program.for_functions_ordered(
-        |prog| [&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect(),
+        |prog| Ok([&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect()),
         &mut |f, _| {
             names.push(f.get_name().clone());
             return Ok(());
@@ -328,7 +328,7 @@ fn test_for_functions_ordered() {
 
     names.clear();
     program.for_functions_ordered_mut(
-        |prog| [&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect(),
+        |prog| Ok([&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect()),
         &mut |f, _| {
             names.push(f.get_name().clone());
             return Ok(());

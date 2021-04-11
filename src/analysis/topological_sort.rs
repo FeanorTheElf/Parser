@@ -10,7 +10,7 @@ use std::collections::{HashSet, HashMap};
 /// it is allowed to contain more graph nodes, possibly all nodes in the graph. The given edge
 /// function should return all outgoing edge targets for a given node.
 /// 
-pub fn topological_sort<T: Sized, N, I, E>(nodes: N, mut edges: E) -> Result<impl Iterator<Item = T>, T>
+pub fn topological_sort<T: Sized, N, I, E>(nodes: N, mut edges: E) -> Result<Vec<T>, T>
     where N: Iterator<Item = T>, E: FnMut(T) -> I, I: Iterator<Item = T>, T: Copy + Hash + Eq
 {
     fn insert_recursive<T: Sized, I, E>(node: T, result: &mut Vec<T>, path: &mut HashSet<T>, inserted_nodes: &mut HashSet<T>, edges: &mut E) -> Result<(), T>
@@ -42,7 +42,7 @@ pub fn topological_sort<T: Sized, N, I, E>(nodes: N, mut edges: E) -> Result<imp
         }
     }
     result.reverse();
-    return Ok(result.into_iter());
+    return Ok(result);
 }
 
 struct CallData<'a> {
@@ -80,7 +80,7 @@ impl CompileError {
     }
 }
 
-pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<impl Iterator<Item = &'a Function>, CompileError> {
+pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<Vec<Ptr<'a, Function>>, CompileError> {
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
     let empty_call_data: CallData<'a> = CallData { called: HashSet::new() };
     program.for_functions(&mut |func: &'a Function, global_scopes| {
@@ -98,14 +98,13 @@ pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<impl Iter
     return topological_sort(
         program.items().map(Ptr::from), 
         |fun| use_data.get(&fun).unwrap_or(&empty_call_data).called.iter().map(|target| *target)
-    ).map_err(|f| CompileError::possible_recursion(&*f))
-    .map(|result| result.map(Ptr::get).collect::<Vec<_>>().into_iter());
+    ).map_err(|f| CompileError::possible_recursion(&*f));
 }
 
 #[test]
 fn test_topological_sort() {
     let ascending = topological_sort(vec![6, 3, 4, 1, 2, 9, 7, 0, 8].into_iter(), |x| x + 1..10);
-    assert_eq!((0..10).collect::<Vec<_>>(), ascending.unwrap().collect::<Vec<_>>());
+    assert_eq!((0..10).collect::<Vec<_>>(), ascending.unwrap());
 }
 
 #[test]
