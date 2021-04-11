@@ -77,7 +77,7 @@ pub trait StatementFuncs: AstNode {
     ///
     /// Calls the given function on all subblocks contained in this statement. These blocks form
     /// a tree, which is traversed in preorder. Additionally, the callback function is given
-    /// scope stack with all definitions that are visible from the current block.
+    /// scope stack with all outer definitions that are visible from the current block.
     /// 
     /// # Details
     /// 
@@ -87,7 +87,7 @@ pub trait StatementFuncs: AstNode {
     /// When the closure is called, the scope stack should therefore contain all symbols
     /// that are defined outside the block but visible from within the block. The reason that
     /// symbols within the block are not contained in the scope stack is compatibility with
-    /// traverse_preorder_mut, for which this is impossible.
+    /// traverse_preorder_mut, for which this is impossible due to aliasing constraints.
     /// 
     /// # Example
     /// ```
@@ -96,7 +96,7 @@ pub trait StatementFuncs: AstNode {
     ///     if (a == 1) {
     ///         let b: int = 2;
     ///     }
-    /// }"), &mut TypeVec::new()).unwrap();
+    /// }"), &mut ParserContext::new()).unwrap();
     /// let mut counter = 0;
     /// let scopes = ScopeStack::new();
     /// a.traverse_preorder(&scopes, &mut |b, s| {
@@ -532,9 +532,9 @@ impl Statement for Expression {}
 #[test]
 fn test_block_preorder_traversal_mut() {
     let mut block = Block::test([
-        Box::new(LocalVariableDeclaration::new("a", SCALAR_INT)), 
+        Box::new(LocalVariableDeclaration::new("a", PrimitiveType::Int.scalar(true))), 
         Box::new(Block::test([])),
-        Box::new(LocalVariableDeclaration::new("b", SCALAR_INT)),
+        Box::new(LocalVariableDeclaration::new("b", PrimitiveType::Int.scalar(true))),
         Box::new(Block::test([]))
     ]);
     let mut counter = 0;

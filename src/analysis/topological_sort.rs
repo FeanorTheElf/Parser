@@ -70,6 +70,16 @@ fn collect_global_use_data_variable<'a>(
     }
 }
 
+impl CompileError {
+
+    fn possible_recursion(function: &Function) -> CompileError {
+        CompileError::new(
+            function.pos(), 
+            format!("Function {:?} can recurse", function.name), 
+            ErrorType::Recursion)
+    }
+}
+
 pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<impl Iterator<Item = &'a Function>, CompileError> {
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
     let empty_call_data: CallData<'a> = CallData { called: HashSet::new() };
@@ -88,7 +98,7 @@ pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<impl Iter
     return topological_sort(
         program.items().map(Ptr::from), 
         |fun| use_data.get(&fun).unwrap_or(&empty_call_data).called.iter().map(|target| *target)
-    ).map_err(|fun| CompileError::new(fun.pos(), format!("Function {:?} can recurse", fun.name), ErrorType::Recursion))
+    ).map_err(|f| CompileError::possible_recursion(&*f))
     .map(|result| result.map(Ptr::get).collect::<Vec<_>>().into_iter());
 }
 

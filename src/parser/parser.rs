@@ -32,13 +32,13 @@ impl Parseable for Type {
 }
 
 impl Build<TypeNodeNoView> for Type {
-    fn build(_pos: TextPosition, context: &mut ParserContext, param: TypeNodeNoView) -> Self::ParseOutputType {
+    fn build(_pos: TextPosition, _context: &mut ParserContext, param: TypeNodeNoView) -> Self::ParseOutputType {
         let base = match (param.1).1 {
             PrimitiveTypeNode::IntTypeNode(_) => PrimitiveType::Int,
             PrimitiveTypeNode::FloatTypeNode(_) => PrimitiveType::Float
         };
         let dims = (param.1).2.map(|x| (x.1).0 as usize).unwrap_or(0);
-        return Type::array_type(base, dims);
+        return Type::array_type(base, dims, true);
     }
 }
 
@@ -46,7 +46,7 @@ impl Build<TypeNodeView> for Type {
     fn build(pos: TextPosition, context: &mut ParserContext, param: TypeNodeView) -> Self::ParseOutputType {
         let type_node = (param.1).0;
         let viewn_type = Type::build(pos, context, type_node);
-        return Type::with_view(viewn_type, true);
+        return Type::with_view(viewn_type);
     }
 }
 
@@ -102,12 +102,12 @@ impl Parser for Literal {
         stream.is_next_literal()
     }
 
-    fn parse(stream: &mut Stream, context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError> {
+    fn parse(stream: &mut Stream, _context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError> {
 
         Ok(Literal {
             pos: stream.pos().clone(),
             value: stream.next_literal()?,
-            literal_type: SCALAR_INT
+            literal_type: PrimitiveType::Int.scalar(true)
         })
     }
 }
@@ -405,7 +405,7 @@ fn build_function_call(
             identifier: Identifier::BuiltIn(function),
         }),
         parameters: params,
-        result_type_cache: std::cell::RefCell::from(None)
+        result_type_cache: None
     }))
 }
 
@@ -589,7 +589,7 @@ impl Build<ExprNodeLevelCall> for Expression {
                             pos: function_call.0,
                             function: current,
                             parameters: (function_call.1).0,
-                            result_type_cache: std::cell::RefCell::from(None)
+                            result_type_cache: None
                         }))
                     }
                 },
@@ -810,7 +810,7 @@ fn test_parser() {
     let param0 = &ast.items[0].parameters[0];
     assert_eq!(Name::l("a"), param0.name);
     assert_eq!(
-        Type::array_type(PrimitiveType::Int, 1), 
+        Type::array_type(PrimitiveType::Int, 1, true), 
         param0.var_type
     );
 
@@ -822,7 +822,7 @@ fn test_parser() {
 
     let index_var = &pfor.index_variables[0];
     assert_eq!(Name::l("c"), index_var.name);
-    assert_eq!(SCALAR_INT, index_var.var_type);
+    assert_eq!(PrimitiveType::Int.scalar(true), index_var.var_type);
 
     let assignment = pfor.body
         .statements().next().unwrap()
@@ -865,7 +865,7 @@ fn test_parse_index_expressions() {
                     identifier: Identifier::Name(Name::l("b"))
                 })
             ],
-            result_type_cache: std::cell::RefCell::from(None)
+            result_type_cache: None
         })),
         expr
     );

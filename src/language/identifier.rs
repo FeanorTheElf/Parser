@@ -42,6 +42,14 @@ impl Ord for Name {
     }
 }
 
+#[cfg(test)]
+impl PartialEq<&'static str> for Name {
+
+    fn eq(&self, rhs: &&'static str) -> bool {
+        self.name == *rhs
+    }
+}
+
 impl std::fmt::Debug for Name {
     
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

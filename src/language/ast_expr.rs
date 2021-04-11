@@ -18,7 +18,7 @@ pub struct FunctionCall {
     pub pos: TextPosition,
     pub function: Expression,
     pub parameters: Vec<Expression>,
-    pub result_type_cache: RefCell<Option<VoidableType>>
+    pub result_type_cache: Option<VoidableType>
 }
 
 impl AstNode for FunctionCall {} 
@@ -291,7 +291,7 @@ impl Expression {
             pos: TextPosition::NONEXISTING,
             function: f,
             parameters: params,
-            result_type_cache: RefCell::from(None)
+            result_type_cache: None
         })
     }
 
@@ -308,7 +308,7 @@ impl Expression {
         Self::from(Literal {
             pos: TextPosition::NONEXISTING,
             value: x,
-            literal_type: Type::scalar_type(PrimitiveType::Int)
+            literal_type: Type::scalar_type(PrimitiveType::Int, true)
         })
     }
 }

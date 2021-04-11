@@ -7,12 +7,12 @@ pub enum PrimitiveType {
 
 impl PrimitiveType {
 
-    pub const fn array(self, dims: usize) -> Type {
-        Type::array_type(self, dims)
+    pub const fn array(self, dims: usize, mutable: bool) -> Type {
+        Type::array_type(self, dims, mutable)
     }
 
-    pub const fn scalar(self) -> Type {
-        self.array(0)
+    pub const fn scalar(self, mutable: bool) -> Type {
+        self.array(0, mutable)
     }
 }
 
@@ -30,7 +30,8 @@ impl std::fmt::Display for PrimitiveType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaticType {
     pub base: PrimitiveType,
-    pub dims: usize
+    pub dims: usize,
+    pub mutable: bool
 }
 
 impl StaticType {
@@ -39,18 +40,14 @@ impl StaticType {
         self.dims == 0
     }
 
-    pub fn as_scalar(&self) -> Option<&PrimitiveType> {
-        if self.is_scalar() {
-            return Some(&self.base);
-        } else {
-            return None;
-        }
+    pub fn get_base(&self) -> PrimitiveType {
+        self.base
+    }
+
+    pub fn is_mutable(&self) -> bool {
+        self.mutable
     }
 }
-
-pub const SCALAR_INT: Type = PrimitiveType::Int.scalar();
-pub const SCALAR_BOOL: Type = PrimitiveType::Bool.scalar();
-pub const SCALAR_FLOAT: Type = PrimitiveType::Float.scalar();
 
 pub trait ViewFuncs: std::fmt::Debug + std::any::Any + DynEq {
 
@@ -58,50 +55,27 @@ pub trait ViewFuncs: std::fmt::Debug + std::any::Any + DynEq {
 
 dynamic_trait_cloneable!{ View: ViewFuncs; ViewDynCastable }
 
-#[derive(Debug)]
+impl Clone for Box<dyn View> {
+
+    fn clone(&self) -> Box<dyn View> {
+        self.dyn_clone()
+    }
+}
+
+impl PartialEq for Box<dyn View> {
+
+    fn eq(&self, rhs: &Box<dyn View>) -> bool {
+        self.dyn_eq(rhs)
+    }
+}
+
+impl Eq for Box<dyn View> {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewType {
     pub view_onto: StaticType,
-    pub concrete_view: Option<Box<dyn View>>,
-    mutable: bool
+    pub concrete_view: Option<Box<dyn View>>
 }
-
-impl ViewType {
-    
-    pub fn is_mutable(&self) -> bool {
-        self.mutable
-    }
-}
-
-impl Clone for ViewType {
-
-    fn clone(&self) -> ViewType {
-        ViewType {
-            view_onto: self.view_onto.clone(),
-            concrete_view: self.concrete_view.as_ref().map(|x| x.dyn_clone()),
-            mutable: self.mutable
-        }
-    }
-}
-
-impl PartialEq for ViewType {
-
-    fn eq(&self, rhs: &ViewType) -> bool {
-        if self.view_onto != rhs.view_onto {
-            return false;
-        }
-        if self.concrete_view.is_some() != rhs.concrete_view.is_some() {
-            return false;
-        }
-        if self.concrete_view.is_some() && 
-            !self.concrete_view.as_ref().unwrap().dyn_eq(rhs.concrete_view.as_ref().unwrap().any()) 
-        {
-            return false;
-        }
-        return true;
-    }
-}
-
-impl Eq for ViewType {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
@@ -133,9 +107,9 @@ pub enum Type {
 
 impl Type {
 
-    pub const fn array_type(base: PrimitiveType, dims: usize) -> Type {
+    pub const fn array_type(base: PrimitiveType, dims: usize, mutable: bool) -> Type {
         Type::Static(StaticType {
-            base, dims
+            base, dims, mutable
         })
     }
 
@@ -148,28 +122,30 @@ impl Type {
         })
     }
 
-    pub const fn scalar_type(primitive: PrimitiveType) -> Type {
-        Self::array_type(primitive, 0)
+    pub const fn scalar_type(primitive: PrimitiveType, mutable: bool) -> Type {
+        Self::array_type(primitive, 0, mutable)
     }
 
-    pub fn with_concrete_view<T: View>(self, concrete_view: T, mutable: bool) -> Type {
+    pub fn with_concrete_view<T: View>(self, concrete_view: T) -> Type {
+        self.with_concrete_view_dyn(Box::new(concrete_view))
+    }
+
+    pub fn with_concrete_view_dyn(self, concrete_view: Box<dyn View>) -> Type {
         match self {
             Type::Static(static_type) => Type::View(ViewType {
                 view_onto: static_type,
-                concrete_view: Some(Box::new(concrete_view)),
-                mutable: mutable
+                concrete_view: Some(concrete_view)
             }),
             Type::View(_) => panic!("with_concrete_view() will not override existing concrete_view attribute"),
             Type::Function(_) => unimplemented!("TODO: what are views on functions?")
         }
     }
 
-    pub fn with_view(self, mutable: bool) -> Type {
+    pub fn with_view(self) -> Type {
         match self {
             Type::Static(static_type) => Type::View(ViewType {
                 view_onto: static_type,
-                concrete_view: None,
-                mutable: mutable
+                concrete_view: None
             }),
             Type::View(view_type) => Type::View(view_type),
             Type::Function(_) => unimplemented!("TODO: what are views on functions?")
@@ -181,6 +157,10 @@ impl Type {
             Type::View(v) => Some(v),
             _ => None
         }
+    }
+
+    pub fn is_view(&self) -> bool {
+        self.as_view().is_some()
     }
 
     pub fn as_view_mut(&mut self) -> Option<&mut ViewType> {
@@ -218,12 +198,42 @@ impl Type {
         }
     }
 
-    pub fn as_scalar(&self) -> Option<&PrimitiveType> {
-        self.as_static().and_then(StaticType::as_scalar)
+    ///
+    /// Returns whether a value of this type is implicitly convertable into
+    /// a value of the target type.
+    /// Currently, this is only the case for identical types and extending
+    /// scalar type conversions.
+    /// 
+    pub fn is_implicitly_convertable(&self, target: &Type) -> bool {
+        *self == *target || (self.is_scalar(PrimitiveType::Int) && target.is_scalar(PrimitiveType::Float)) 
     }
 
-    pub fn is_implicitly_convertable(&self, target: &Type) -> bool {
-        *self == *target || (*self == SCALAR_INT && *target == SCALAR_FLOAT) 
+    ///
+    /// Returns whether a view that has the target type can be taken of an
+    /// object of this type
+    /// 
+    pub fn is_viewable_as(&self, target: &Type) -> bool {
+        assert!(target.is_view());
+        match (self, target) {
+            (Type::Static(from), Type::View(to)) => {
+                from.base == to.view_onto.base &&
+                    from.dims == to.view_onto.dims &&
+                    (from.mutable || !to.view_onto.mutable)
+            },
+            (Type::View(from), Type::View(to)) => {
+                from.view_onto.base == to.view_onto.base &&
+                    from.view_onto.dims == to.view_onto.dims &&
+                    (from.view_onto.mutable || !to.view_onto.mutable)
+            },
+            (_, _) => false
+        }
+    }
+
+    pub fn is_scalar(&self, rhs: PrimitiveType) -> bool {
+        match self {
+            Type::Static(s) if s.is_scalar() => s.get_base() == rhs,
+            _ => false
+        }
     }
 }
 
@@ -240,12 +250,5 @@ impl PartialEq<ViewType> for Type {
 
     fn eq(&self, rhs: &ViewType) -> bool {
         self.as_view().map(|s| s == rhs).unwrap_or(false)
-    }
-}
-
-impl PartialEq<PrimitiveType> for Type {
-
-    fn eq(&self, rhs: &PrimitiveType) -> bool {
-        self.as_scalar().map(|s| s == rhs).unwrap_or(false)
     }
 }

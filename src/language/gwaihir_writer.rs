@@ -396,10 +396,10 @@ impl<'a, T: AstWriter + ?Sized> From<&'a T> for DisplayWrapper<'a, T> {
 fn test_gwaihir_writer() {
     let function = Function::test(
         "foo",
-        [("a", SCALAR_INT), ("b", SCALAR_BOOL)],
-        Some(SCALAR_FLOAT),
+        [("a", PrimitiveType::Int.scalar(true)), ("b", PrimitiveType::Bool.scalar(true))],
+        Some(PrimitiveType::Float.scalar(true)),
         Block::test([
-            Box::new(LocalVariableDeclaration::new("bar", SCALAR_FLOAT)),
+            Box::new(LocalVariableDeclaration::new("bar", PrimitiveType::Float.scalar(true))),
             Box::new(Block::test([
                 Box::new(Return::return_value(Expression::var("a")))
             ]))

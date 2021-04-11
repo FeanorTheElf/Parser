@@ -7,6 +7,8 @@ use super::types::*;
 use super::scopes::*;
 use super::symbol::*;
 
+use super::super::util::ref_eq::Ptr;
+
 #[derive(Debug)]
 pub struct Function {
     pos: TextPosition,
@@ -157,38 +159,99 @@ impl Program {
         &'a self,
         f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
-        let mut child_scope = DefinitionScopeStack::new();
-        for item in &self.items {
-            if item.is_backward_visible() {
-                child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic(item));
-            }
-        }
-        for item in &self.items {
-            f(item, &child_scope)?;
-            if !item.is_backward_visible() {
-                child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic(item));
-            }
-        }
-        return Ok(());
+        self.for_functions_stored_order(self.items(), f)
     }
 
     pub fn for_functions_mut<'a>(
         &'a mut self, 
         f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
-        // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
-        // simpler because there is no polymorphism in the items
-        let mut child_scope = DefinitionScopeStackMut::new();
-        let mut data = Vec::new();
-        for item in &mut self.items {
+        self.for_functions_stored_order_mut(0..self.items.len(), f)
+    }
+
+    pub fn for_functions_ordered<'a, F>(
+        &'a self,
+        order: F,
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> 
+        where F: FnOnce(&Program) -> Vec<Ptr<Function>>
+    {
+        self.for_functions_stored_order(order(self).into_iter().map(Ptr::get), f)
+    }
+
+    pub fn for_functions_ordered_mut<'a, F>(
+        &'a mut self,
+        order: F,
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> 
+        where F: FnOnce(&Program) -> Vec<Ptr<Function>>
+    {
+        let order_indices = self.get_function_order_indices(order(self)).collect::<Vec<_>>();
+        self.for_functions_stored_order_mut(order_indices.into_iter(), f)
+    }
+
+    fn get_function_order_indices<'a>(
+        &'a self,
+        order: Vec<Ptr<'a, Function>>
+    ) -> impl 'a + Iterator<Item = usize> 
+    {
+        self.items.iter().map(move |f: &Function| order.iter().enumerate().find(|(i, g)| g.get_name() == f.get_name()).unwrap().0)
+    }
+
+    fn for_functions_stored_order<'a, I>(
+        &'a self,
+        order: I,
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> 
+        where I: Iterator<Item = &'a Function>
+    {
+        let mut child_scope = DefinitionScopeStack::new();
+        for item in &self.items {
             // other things should not exist and are not implemented
             if !item.is_backward_visible() {
                 unimplemented!();
             }
-            data.push(item.get_name().clone());
+            child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic(item));
+        }
+        for item in order {
+            f(item, &child_scope)?;
+        }
+        return Ok(());
+    }
+
+    ///
+    /// Iterates over all items in the order specified by the given iterator. The iterator
+    /// should have exactly the same length as there are items, and assigns each item a
+    /// unique number according to which the items are sorted prior to iteration.
+    /// 
+    /// For the non-order-related contract, see `for_functions_mut()`.
+    /// 
+    fn for_functions_stored_order_mut<'a, I>(
+        &'a mut self,
+        mut order: I,
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> 
+        where I: Iterator<Item = usize>
+    {
+        // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
+        // simpler because there is no polymorphism in the items
+        let mut child_scope = DefinitionScopeStackMut::new();
+        let mut data = Vec::new();
+        let mut item_iter = self.items.iter_mut();
+        for (item, order_index) in (&mut item_iter).zip(&mut order) {
+            // other things currently not exist and are not implemented
+            if !item.is_backward_visible() {
+                unimplemented!();
+            }
+            data.push((order_index, item.get_name().clone()));
             child_scope.register(item.get_name().clone(), <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
         }
-        for name in data.into_iter() {
+        assert!(item_iter.next().is_none());
+        assert!(order.next().is_none());
+
+        data.sort_unstable_by_key(|(order_index, _)| *order_index);
+
+        for (_order_index, name) in data.into_iter() {
             let item = child_scope.unregister(&name).downcast_mut::<Function>().unwrap();
             f(item, &child_scope)?;
             child_scope.register(name, <_ as SymbolDefinitionDynCastable>::dynamic_mut(item));
@@ -221,4 +284,55 @@ impl Program {
     pub fn items_mut(&mut self) -> impl Iterator<Item = &mut Function> {
         self.items.iter_mut()
     }
+}
+
+#[cfg(test)]
+use super::super::parser::TopLevelParser;
+#[cfg(test)]
+use super::super::lexer::lexer::lex_str;
+
+#[test]
+fn test_for_functions_ordered() {
+    let mut program = Program::parse(&mut lex_str("
+    
+        fn foo() {}
+        fn bar() {}
+        fn foobar() {}
+        fn baz() {}
+    
+    ")).unwrap();
+
+    let mut names = Vec::new();
+    program.for_functions(&mut |f, _| {
+        names.push(f.get_name().clone());
+        return Ok(());
+    }).unwrap();
+    assert_eq!(names, vec!["foo", "bar", "foobar", "baz"]);
+
+    names.clear();
+    program.for_functions_mut(&mut |f, _| {
+        names.push(f.get_name().clone());
+        return Ok(());
+    }).unwrap();
+    assert_eq!(names, vec!["foo", "bar", "foobar", "baz"]);
+
+    names.clear();
+    program.for_functions_ordered(
+        |prog| [&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect(),
+        &mut |f, _| {
+            names.push(f.get_name().clone());
+            return Ok(());
+        }
+    ).unwrap();
+    assert_eq!(names, vec!["foo", "foobar", "bar", "baz"]);
+
+    names.clear();
+    program.for_functions_ordered_mut(
+        |prog| [&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect(),
+        &mut |f, _| {
+            names.push(f.get_name().clone());
+            return Ok(());
+        }
+    ).unwrap();
+    assert_eq!(names, vec!["foo", "foobar", "bar", "baz"]);
 }
