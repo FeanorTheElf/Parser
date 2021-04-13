@@ -142,11 +142,40 @@ fn write_expr_value_device(out: &mut CodeWriter, expr: OutExpression) -> OutResu
 
 impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
 
-    fn write_scalar_assign(&mut self, assignee: OutExpression, value: OutExpression) -> OutResult {
-        write_expr_value_host(&mut self.out, assignee)?;
-        write!(self.out, " = ")?;
-        write_expr_value_host(&mut self.out, value)?;
-        write!(self.out, ";")?;
+    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
+        let copy_fn = match ty.storage {
+            OutStorage::Value => panic!("Cannot copy scalar types"),
+            OutStorage::SmartPtrDevice | OutStorage::PtrDevice => format!("gwh_copy_device<{}>(", get_base_type_str(ty.clone())),
+            OutStorage::PtrHost | OutStorage::SmartPtrHost => format!("gwh_copy_host<{}>(", get_base_type_str(ty.clone()))
+        };
+        match ty.storage {
+            OutStorage::Value | OutStorage::SmartPtrDevice | OutStorage::SmartPtrHost => {
+                let write_args = |out: &mut CodeWriter| -> OutResult {
+                    write_expr_value_host(out, target)?;
+                    write!(out, ".get(), ")?;
+                    write_expr_value_host(out, source)?;
+                    write!(out, ".get(), ")?;
+                    write_expr_value_host(out, len)?;
+                    return Ok(());
+                };
+                write!(self.out, "{}(", copy_fn)?;
+                write_args(&mut self.out)?;
+                write!(self.out, ");")?;
+            },
+            OutStorage::PtrHost | OutStorage::PtrDevice => {
+                let write_args = |out: &mut CodeWriter| -> OutResult {
+                    write_expr_value_host(out, target)?;
+                    write!(out, ", ")?;
+                    write_expr_value_host(out, source)?;
+                    write!(out, ", ")?;
+                    write_expr_value_host(out, len)?;
+                    return Ok(());
+                };
+                write!(self.out, "{}(", copy_fn)?;
+                write_args(&mut self.out)?;
+                write!(self.out, ");")?;
+            }
+        };
         self.out.newline()?;
         return Ok(());
     }
@@ -332,11 +361,20 @@ pub struct CudaDeviceBlockGenerator<'a> {
 
 impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
 
-    fn write_scalar_assign(&mut self, assignee: OutExpression, value: OutExpression) -> OutResult {
-        write_expr_value_device(&mut self.out, assignee)?;
-        write!(self.out, " = ")?;
-        write_expr_value_device(&mut self.out, value)?;
-        write!(self.out, ";")?;
+    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
+        match ty.storage {
+            OutStorage::PtrDevice => {
+                write!(self.out, "std::memcpy(")?;
+                write!(self.out, "static_cast<void*>(")?;
+                write_expr_value_device(&mut self.out, target)?;
+                write!(self.out, "), static_cast<void*>(")?;
+                write_expr_value_device(&mut self.out, source)?;
+                write!(self.out, "), sizeof({}) * (", get_base_type_str(ty))?;
+                write_expr_value_device(&mut self.out, len)?;
+                write!(self.out, "));")?;
+            },
+            _ => panic!("can only memcpy device ptr on device")
+        };
         self.out.newline()?;
         return Ok(());
     }

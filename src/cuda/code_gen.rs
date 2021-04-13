@@ -26,7 +26,7 @@ pub trait CodeGenerator {
 
 pub trait BlockGenerator {
 
-    fn write_scalar_assign(&mut self, assignee: OutExpression, value: OutExpression) -> OutResult;
+    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult;
     fn write_variable_declaration(&mut self, name: String, ty: OutType, value: Option<OutExpression>) -> OutResult;
     fn write_return(&mut self, value: Option<OutExpression>) -> OutResult;
     fn write_expr_statement(&mut self, expr: OutExpression) -> OutResult;
@@ -54,8 +54,8 @@ pub trait BlockGenerator {
 
 impl<'c> BlockGenerator for &'c mut dyn BlockGenerator {
 
-    fn write_scalar_assign(&mut self, assignee: OutExpression, value: OutExpression) -> OutResult {
-        (**self).write_scalar_assign(assignee, value)
+    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
+        (**self).write_copy(ty, target, source, len)
     }
 
     fn write_variable_declaration(&mut self, name: String, ty: OutType, value: Option<OutExpression>) -> OutResult {
