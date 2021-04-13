@@ -8,12 +8,17 @@ pub struct Name {
 }
 
 impl Name {
+
     pub fn new(name: String, id: u32) -> Name {
         Name { 
             name: name, 
             id: id,
             extra_data: Vec::new() 
         }
+    }
+
+    pub fn string_part(&self) -> &str {
+        &self.name
     }
 
     #[cfg(test)]
@@ -46,7 +51,7 @@ impl Ord for Name {
 impl PartialEq<&'static str> for Name {
 
     fn eq(&self, rhs: &&'static str) -> bool {
-        self.name == *rhs
+        self.string_part() == *rhs
     }
 }
 
