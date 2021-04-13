@@ -148,7 +148,7 @@ impl<'a> CodeWriter<'a> {
         Ok(())
     }
 
-    pub fn write_many<I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E>
+    pub fn write_many<'b, I, E>(&mut self, it: I) -> std::prelude::v1::Result<(), E>
     where
         I: Iterator,
         I::Item: FnOnce(&mut CodeWriter<'a>) -> std::prelude::v1::Result<(), E>,

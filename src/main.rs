@@ -25,12 +25,9 @@ mod lexer;
 mod parser;
 
 mod analysis;
-
-// mod parser;
 // mod transformation;
 
-// #[macro_use]
-// mod cuda;
+mod cuda;
 
 // mod cli;
 
