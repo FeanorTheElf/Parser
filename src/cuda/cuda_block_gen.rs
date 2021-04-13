@@ -142,40 +142,30 @@ fn write_expr_value_device(out: &mut CodeWriter, expr: OutExpression) -> OutResu
 
 impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
 
-    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
-        let copy_fn = match ty.storage {
-            OutStorage::Value => panic!("Cannot copy scalar types"),
-            OutStorage::SmartPtrDevice | OutStorage::PtrDevice => format!("gwh_copy_device<{}>(", get_base_type_str(ty.clone())),
-            OutStorage::PtrHost | OutStorage::SmartPtrHost => format!("gwh_copy_host<{}>(", get_base_type_str(ty.clone()))
+    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
+        assert!(target_ty.base == source_ty.base);
+        assert!(target_ty.mutable);
+        assert!(target_ty.storage != OutStorage::Value);
+        assert!(source_ty.storage != OutStorage::Value);
+        let copy_param = match (target_ty.storage.is_device(), source_ty.storage.is_device()) {
+            (false, false) => "cudaMemcpyHostToHost",
+            (false, true) => "cudaMemcpyDeviceToHost",
+            (true, false) => "cudaMemcpyHostToDevice",
+            (true, true) => "cudaMemcpyDeviceToDevice"
         };
-        match ty.storage {
-            OutStorage::Value | OutStorage::SmartPtrDevice | OutStorage::SmartPtrHost => {
-                let write_args = |out: &mut CodeWriter| -> OutResult {
-                    write_expr_value_host(out, target)?;
-                    write!(out, ".get(), ")?;
-                    write_expr_value_host(out, source)?;
-                    write!(out, ".get(), ")?;
-                    write_expr_value_host(out, len)?;
-                    return Ok(());
-                };
-                write!(self.out, "{}(", copy_fn)?;
-                write_args(&mut self.out)?;
-                write!(self.out, ");")?;
-            },
-            OutStorage::PtrHost | OutStorage::PtrDevice => {
-                let write_args = |out: &mut CodeWriter| -> OutResult {
-                    write_expr_value_host(out, target)?;
-                    write!(out, ", ")?;
-                    write_expr_value_host(out, source)?;
-                    write!(out, ", ")?;
-                    write_expr_value_host(out, len)?;
-                    return Ok(());
-                };
-                write!(self.out, "{}(", copy_fn)?;
-                write_args(&mut self.out)?;
-                write!(self.out, ");")?;
-            }
-        };
+        write!(self.out, "gwh_check(cudaMemcpy(")?;
+        write_expr_value_host(&mut self.out, target)?;
+        if target_ty.storage.is_owned() {
+            write!(self.out, ".get()")?;
+        }
+        write!(self.out, ", ")?;
+        write_expr_value_host(&mut self.out, source)?;
+        if target_ty.storage.is_owned() {
+            write!(self.out, ".get()")?;
+        }
+        write!(self.out, ", ")?;
+        write_expr_value_host(&mut self.out, len)?;
+        write!(self.out, ", copy_param);")?;
         self.out.newline()?;
         return Ok(());
     }
@@ -361,20 +351,19 @@ pub struct CudaDeviceBlockGenerator<'a> {
 
 impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
 
-    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
-        match ty.storage {
-            OutStorage::PtrDevice => {
-                write!(self.out, "std::memcpy(")?;
-                write!(self.out, "static_cast<void*>(")?;
-                write_expr_value_device(&mut self.out, target)?;
-                write!(self.out, "), static_cast<void*>(")?;
-                write_expr_value_device(&mut self.out, source)?;
-                write!(self.out, "), sizeof({}) * (", get_base_type_str(ty))?;
-                write_expr_value_device(&mut self.out, len)?;
-                write!(self.out, "));")?;
-            },
-            _ => panic!("can only memcpy device ptr on device")
-        };
+    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
+        assert!(target_ty.storage == OutStorage::PtrDevice);
+        assert!(source_ty.storage == OutStorage::PtrDevice);
+        assert!(target_ty.base == source_ty.base);
+        assert!(target_ty.mutable);
+        write!(self.out, "std::memcpy(")?;
+        write!(self.out, "static_cast<void*>(")?;
+        write_expr_value_device(&mut self.out, target)?;
+        write!(self.out, "), static_cast<void*>(")?;
+        write_expr_value_device(&mut self.out, source)?;
+        write!(self.out, "), sizeof({}) * (", get_base_type_str(target_ty))?;
+        write_expr_value_device(&mut self.out, len)?;
+        write!(self.out, "));")?;
         self.out.newline()?;
         return Ok(());
     }

@@ -10,16 +10,6 @@ std::unique_ptr<T, gwh_deleter_host<T>> gwh_allocate_device(size_t len) {
 }
 
 template<typename T>
-void gwh_copy_host(T* dst, const T* src, size_t len) {
-
-}
-
-template<typename T>
-void gwh_copy_device(T* dst, const T* src, size_t len) {
-    
-}
-
-template<typename T>
 T gwh_read_at(const T* array, size_t index) {
     return T();
 }

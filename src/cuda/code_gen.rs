@@ -26,7 +26,7 @@ pub trait CodeGenerator {
 
 pub trait BlockGenerator {
 
-    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult;
+    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult;
     fn write_variable_declaration(&mut self, name: String, ty: OutType, value: Option<OutExpression>) -> OutResult;
     fn write_return(&mut self, value: Option<OutExpression>) -> OutResult;
     fn write_expr_statement(&mut self, expr: OutExpression) -> OutResult;
@@ -54,8 +54,8 @@ pub trait BlockGenerator {
 
 impl<'c> BlockGenerator for &'c mut dyn BlockGenerator {
 
-    fn write_copy(&mut self, ty: OutType, target: OutExpression, source: OutExpression, len: OutExpression) -> OutResult {
-        (**self).write_copy(ty, target, source, len)
+    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
+        (**self).write_copy(target_ty, target, source_ty, source, len)
     }
 
     fn write_variable_declaration(&mut self, name: String, ty: OutType, value: Option<OutExpression>) -> OutResult {
@@ -108,6 +108,17 @@ pub enum OutPrimitiveType {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutStorage {
     Value, PtrHost, PtrDevice, SmartPtrHost, SmartPtrDevice
+}
+
+impl OutStorage {
+
+    pub fn is_device(&self) -> bool {
+        *self == OutStorage::PtrDevice || *self == OutStorage::SmartPtrDevice
+    }
+
+    pub fn is_owned(&self) -> bool {
+        *self == OutStorage::SmartPtrHost || *self == OutStorage::SmartPtrDevice
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
