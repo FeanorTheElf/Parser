@@ -184,7 +184,7 @@ macro_rules! impl_parse_function
 			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
 			Err(CompileError::new(($stream.pos()),
-				format!("{} or {}, got {} while parsing {}", $expected_string, stringify!($variant), ($stream).peek().unwrap(), stringify!($result)), ErrorType::SyntaxError))
+				format!("{} or {}, got {:?} while parsing {}", $expected_string, stringify!($variant), ($stream).peek().unwrap(), stringify!($result)), ErrorType::SyntaxError))
 		}
     };
     ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident | $($tail:tt)*) =>

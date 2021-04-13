@@ -57,6 +57,7 @@ fn lex_keyword(string: &str) -> Option<Token> {
         "in" => Some(Token::In),
         "this" => Some(Token::This),
         "as" => Some(Token::As),
+        "init" => Some(Token::Init),
         _ => None,
     }
 }

@@ -1,13 +1,14 @@
 use super::super::language::prelude::*;
 use super::super::language::gwaihir_writer::*;
 use super::super::language::concrete_views::*;
+use super::super::language::ast_assignment::*;
 use super::topological_sort;
 
 fn arithmetic_result_type(pos: &TextPosition, ty1: &Type, ty2: &Type, op: BuiltInIdentifier) -> Result<Type, CompileError> {
-    if ty1.is_scalar(PrimitiveType::Int) && ty2.is_scalar(PrimitiveType::Int) {
+    if ty1.is_scalar_of(PrimitiveType::Int) && ty2.is_scalar_of(PrimitiveType::Int) {
         Ok(SCALAR_INT)
-    } else if (ty1.is_scalar(PrimitiveType::Float) || ty1.is_scalar(PrimitiveType::Int)) &&
-        (ty2.is_scalar(PrimitiveType::Float) || ty2.is_scalar(PrimitiveType::Int)) 
+    } else if (ty1.is_scalar_of(PrimitiveType::Float) || ty1.is_scalar_of(PrimitiveType::Int)) &&
+        (ty2.is_scalar_of(PrimitiveType::Float) || ty2.is_scalar_of(PrimitiveType::Int)) 
     {
         Ok(SCALAR_FLOAT)
     } else {
@@ -80,7 +81,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             let mut dimension_count = 0;
             for param in param_types {
                 let param_type = param.0?;
-                if !param_type.is_scalar(PrimitiveType::Int) {
+                if !param_type.is_scalar_of(PrimitiveType::Int) {
                     return Err(CompileError::type_error(&param.1, &SCALAR_INT, param_type));
                 }
                 dimension_count += 1;
@@ -100,7 +101,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
         {
             for param in param_types {
                 let param_type = param.0?;
-                if !param_type.is_scalar(PrimitiveType::Bool) {
+                if !param_type.is_scalar_of(PrimitiveType::Bool) {
                     return Err(CompileError::bi_operator_not_implemented(&param.1, &SCALAR_BOOL, &param_type, op));
                 }
             }
@@ -124,7 +125,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             let mut count = 0;
             for param in param_types {
                 let param_type = param.0?;
-                if !param_type.is_scalar(PrimitiveType::Int) {
+                if !param_type.is_scalar_of(PrimitiveType::Int) {
                     return Err(CompileError::type_error(&param.1, &SCALAR_INT, param_type));
                 }
                 count += 1;
@@ -162,7 +163,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             if param_types.next().is_some() {
                 panic!("unary operator has more than one argument");
             }
-            if !base_type.is_scalar(PrimitiveType::Int) && !base_type.is_scalar(PrimitiveType::Float) {
+            if !base_type.is_scalar_of(PrimitiveType::Int) && !base_type.is_scalar_of(PrimitiveType::Float) {
                 return Err(CompileError::un_operator_not_implemented(&pos, base_type, op));
             } else {
                 return Ok(base_type.clone());
@@ -260,6 +261,30 @@ fn calculate_and_store_type_nonvoid<'a>(
     return Err(CompileError::expected_nonvoid(&position));
 }
 
+fn determine_types_in_statement(
+    statement: &mut dyn Statement,
+    scopes: &DefinitionScopeStackMut
+) -> Result<(), CompileError> {
+    for expression in statement.expressions_mut() {
+        calculate_and_store_type(expression, &scopes)?;
+    }
+    if let Some(decl) = statement.downcast_mut::<LocalVariableDeclaration>() {
+        let assigned_type = get_expression_type_nonvoid(&decl.value, scopes)?;
+        let target_type = &mut decl.declaration.var_type;
+        if !assigned_type.is_implicitly_convertable(target_type) && !assigned_type.is_viewable_as(target_type) {
+            Err(CompileError::type_error(&decl.value.pos(), target_type, assigned_type))?;
+        }
+        if target_type.is_view() && assigned_type.is_view() {
+            target_type.as_view_mut().unwrap().concrete_view = Some(assigned_type.as_view().unwrap().get_concrete().dyn_clone());
+        } else if target_type.is_view() && !assigned_type.is_view() {
+            target_type.as_view_mut().unwrap().concrete_view = Some(Box::new(VIEW_REFERENCE));
+        }
+    } else if let Some(assignment) = statement.downcast_mut::<Assignment>() {
+
+    }
+    return Ok(());
+}
+
 pub fn determine_types_in_function(
     function: &mut Function,
     global_scope: &DefinitionScopeStackMut
@@ -267,21 +292,7 @@ pub fn determine_types_in_function(
     function.traverse_preorder_mut(global_scope, &mut |block, parent_scopes| {
         let mut scopes = parent_scopes.child_stack();
         for statement in block.statements_mut() {
-            for expression in statement.expressions_mut() {
-                calculate_and_store_type(expression, &scopes)?;
-            }
-            if let Some(decl) = statement.downcast_mut::<LocalVariableDeclaration>() {
-                let assigned_type = get_expression_type(&decl.value, &scopes).ok_or_else(|| CompileError::expected_nonvoid(decl.value.pos()))?;
-                let target_type = &mut decl.declaration.var_type;
-                if !assigned_type.is_implicitly_convertable(target_type) && !assigned_type.is_viewable_as(target_type) {
-                    Err(CompileError::type_error(&decl.value.pos(), target_type, assigned_type))?;
-                }
-                if target_type.is_view() && assigned_type.is_view() {
-                    target_type.as_view_mut().unwrap().concrete_view = Some(assigned_type.as_view().unwrap().get_concrete().dyn_clone());
-                } else if target_type.is_view() && !assigned_type.is_view() {
-                    target_type.as_view_mut().unwrap().concrete_view = Some(Box::new(VIEW_REFERENCE));
-                }
-            } 
+            determine_types_in_statement(statement, &scopes)?;
             if let Some(def) = statement.as_sibling_symbol_definition_mut() {
                 // if we have backward visible declarations here, we need to watch out for dependency order,
                 // so everything will get a good deal more complicated
@@ -344,13 +355,17 @@ pub fn get_expression_type<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expre
     }
 }
 
+pub fn get_expression_type_nonvoid<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expression, scopes: &'a D) -> Result<&'a Type, CompileError> {
+    get_expression_type(expr, scopes).ok_or_else(|| CompileError::expected_nonvoid(expr.pos()))
+}
+
 #[test]
 fn test_determine_types_in_program() {
     let mut program = Program::parse(&mut lex_str("
     
     fn foo(x: &int[,],) {
-        let a: &int[,] = x;
-        let b: &int[,,] = zeros(5, 8,);
+        let a: &int[,] init x;
+        let b: &int[,,] init zeros(5, 8,);
     }
     
     ")).unwrap();

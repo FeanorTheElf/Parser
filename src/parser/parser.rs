@@ -719,7 +719,7 @@ impl_parse_trait! { Return := Token#Return [ Expression ] Token#Semicolon }
 
 grammar_rule! { ExpressionNode := Expression Token#Semicolon }
 
-impl_parse_trait! { LocalVariableDeclaration := Token#Let Name Token#Colon Type Token#Assign Expression Token#Semicolon }
+impl_parse_trait! { LocalVariableDeclaration := Token#Let Name Token#Colon Type Token#Init Expression Token#Semicolon }
 
 grammar_rule! { Alias := Token#As Name }
 

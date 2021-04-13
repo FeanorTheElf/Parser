@@ -172,6 +172,10 @@ impl Type {
         }
     }
 
+    pub fn is_scalar(&self) -> bool {
+        self.as_static().map(|s| s.is_scalar()).unwrap_or(false)
+    }
+
     pub fn as_view(&self) -> Option<&ViewType> {
         match self {
             Type::View(v) => Some(v),
@@ -225,7 +229,8 @@ impl Type {
     /// scalar type conversions.
     /// 
     pub fn is_implicitly_convertable(&self, target: &Type) -> bool {
-        *self == *target || (self.is_scalar(PrimitiveType::Int) && target.is_scalar(PrimitiveType::Float)) 
+        (self.is_scalar() && *self == *target) || 
+            (self.is_scalar_of(PrimitiveType::Int) && target.is_scalar_of(PrimitiveType::Float))
     }
 
     ///
@@ -249,7 +254,7 @@ impl Type {
         }
     }
 
-    pub fn is_scalar(&self, rhs: PrimitiveType) -> bool {
+    pub fn is_scalar_of(&self, rhs: PrimitiveType) -> bool {
         match self {
             Type::Static(s) if s.is_scalar() => s.get_base() == rhs,
             _ => false

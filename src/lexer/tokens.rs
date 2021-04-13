@@ -3,8 +3,7 @@ use super::super::language::position::TextPosition;
 use std::string::String;
 use std::vec::Vec;
 
-#[derive(Debug, PartialEq, Eq)]
-
+#[derive(PartialEq, Eq)]
 pub enum Token {
     Literal(i32),
     Identifier(String),
@@ -53,9 +52,10 @@ pub enum Token {
     Target,
     EOF,
     BOF,
+    Init,
 }
 
-impl std::fmt::Display for Token {
+impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 
         match self {
@@ -106,12 +106,12 @@ impl std::fmt::Display for Token {
             Token::Target => write!(f, "'@'"),
             Token::EOF => write!(f, "EOF"),
             Token::BOF => write!(f, "BOF"),
+            Token::Init => write!(f, "'init'")
         }
     }
 }
 
 #[derive(Debug)]
-
 pub struct PosToken {
     token: Token,
     pos: TextPosition,
