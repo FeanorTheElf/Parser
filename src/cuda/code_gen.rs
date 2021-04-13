@@ -18,7 +18,9 @@ pub trait CodeGenerator {
         &'a mut self, 
         params: Vec<(OutType, String)>, 
         return_type: OutType, 
-        body: Box<dyn 'b + FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+        body: Box<dyn 'b + FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>,
+        device_called: bool,
+        host_called: bool
     ) -> OutResult;
 }
 

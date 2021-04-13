@@ -11,6 +11,7 @@ pub use super::symbol::*;
 pub use super::ast_expr::*;
 pub use super::ast_statement::*;
 pub use super::ast_function::*;
+pub use super::super::util::ref_eq::*;
 
 pub use std::cell::{Ref, RefCell};
 

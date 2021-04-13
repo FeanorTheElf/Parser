@@ -21,6 +21,22 @@ impl From<CompileError> for TraversePreorderCancel {
 
 pub type TraversePreorderResult = Result<(), TraversePreorderCancel>;
 
+pub trait IgnoreTraversePreorderResultCancel {
+
+    fn ignore_cancel(self) -> Result<(), CompileError>;
+}
+
+impl IgnoreTraversePreorderResultCancel for TraversePreorderResult {
+
+    fn ignore_cancel(self) -> Result<(), CompileError> {
+        match self {
+            Ok(()) | Err(TraversePreorderCancel::DoNotRecurse) => Ok(()),
+            Err(TraversePreorderCancel::RealError(e)) => Err(e)
+        }
+    }
+}
+
+#[allow(non_snake_case)]
 pub fn TraverseErr(e: CompileError) -> TraversePreorderResult {
     Err(TraversePreorderCancel::RealError(e))
 }

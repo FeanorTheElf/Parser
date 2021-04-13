@@ -351,7 +351,7 @@ impl ParallelFor {
                                 }
                             }
                         }
-                        return Ok(());
+                        return RECURSE;
                     }).unwrap();
                 }
             }
@@ -405,35 +405,53 @@ impl StatementFuncs for ParallelFor {
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        unimplemented!()
+        Box::new(
+            self.index_variables.iter().map(|d| d.get_name())
+                .chain(
+                    self.access_pattern.iter().flat_map(|p| p.iter()).map(|p| &p.array)
+                        .chain(self.used_variables.iter())
+                        .flat_map(|e| e.names())
+                )
+                .chain(self.body.names())
+        )
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        unimplemented!()
+        Box::new(
+            self.index_variables.iter_mut().map(|d| d.get_name_mut())
+            .chain(
+                self.access_pattern.iter_mut().flat_map(|p| p.iter_mut()).map(|p| &mut p.array)
+                    .chain(self.used_variables.iter_mut())
+                    .flat_map(|e| e.names_mut())
+            )
+            .chain(self.body.names_mut())
+        )
     }
 
     fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
+        let recurse = f(self, parent_scopes);
         let mut scopes = parent_scopes.child_stack();
         for def in &self.index_variables {
             scopes.register(def.name.clone(), def as &dyn SymbolDefinition);
         }
-        self.body.traverse_preorder(&scopes, f)
+        self.body.traverse_preorder_base(&scopes, f, recurse)
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
+        let recurse = f(self, parent_scopes);
         let mut scopes = parent_scopes.child_stack();
         for def in &mut self.index_variables {
             scopes.register(def.name.clone(), def as &mut dyn SymbolDefinition);
         }
-        self.body.traverse_preorder_mut(&scopes, f)
+        self.body.traverse_preorder_mut_base(&scopes, f, recurse)
     }
 }
 

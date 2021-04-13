@@ -118,6 +118,14 @@ impl<'a, T> ScopeStack<'a, T> {
         })
     }
 
+    pub fn get_global_scope(&self) -> &ScopeStack<'a, T> {
+        let mut result = self;
+        while let Some(parent) = result.parent {
+            result = parent;
+        }
+        return result;
+    }
+
     pub fn register(&mut self, name: Name, val: T) {
         let old = self.definitions.insert(name, val);
         assert!(old.is_none());

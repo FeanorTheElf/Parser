@@ -4,8 +4,6 @@ use super::identifier::{Identifier, Name, BuiltInIdentifier};
 use super::ast::*;
 use super::types::*;
 
-use std::cell::RefCell;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
     Call(Box<FunctionCall>),

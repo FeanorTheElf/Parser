@@ -45,20 +45,20 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
             out.write_separated(
                 summands.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host)),
                 |out| write!(out, " + ").map_err(Box::<dyn OutError>::from)
-            );
+            )?;
         },
         OutExpression::Prod(factors) => {
             out.write_separated(
                 factors.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host)),
                 |out| write!(out, " * ").map_err(Box::<dyn OutError>::from)
-            );
+            )?;
         },
         OutExpression::Call(function, params) => {
             write_expr_value(out, *function, is_host)?;
             write!(out, "(")?;
             out.write_comma_separated(
                 params.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host))
-            );
+            )?;
             write!(out, ")")?;
         },
         OutExpression::Symbol(sym) => {
@@ -266,9 +266,9 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         write!(self.out, ");")?;
         self.out.newline()?;
 
-        write!(self.out, "dim3 gwh_blocksize(512);");
+        write!(self.out, "dim3 gwh_blocksize(512);")?;
         self.out.newline()?;
-        write!(self.out, "dim3 gwh_gridsize((gwh_thread_count - 1) / 512 + 1);");
+        write!(self.out, "dim3 gwh_gridsize((gwh_thread_count - 1) / 512 + 1);")?;
         self.out.newline()?;
         write!(self.out, "{}<<< gwh_gridsize, gwh_blocksize >>>(", kernel_name)?;
         self.out.enter_indented_level()?;
@@ -378,7 +378,7 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
         write_expr_value_device(&mut self.out, index)?;
         write!(self.out, "] = ")?;
         write_expr_value_device(&mut self.out, val)?;
-        write!(self.out, ";");
+        write!(self.out, ";")?;
         self.out.newline()?;
         return Ok(());
     }

@@ -84,7 +84,7 @@ pub fn call_graph_topological_sort<'a>(program: &'a Program) -> Result<Vec<Ptr<'
     let mut use_data: HashMap<Ptr<'a, Function>, CallData<'a>> = HashMap::new();
     let empty_call_data: CallData<'a> = CallData { called: HashSet::new() };
     program.for_functions(&mut |func: &'a Function, global_scopes| {
-        func.traverse_preorder(global_scopes, &mut |block: &'a Block, _, _| {
+        func.traverse_preorder_block(global_scopes, &mut |block: &'a Block, _, _| {
             for statement in block.statements() {
                 for expr in statement.expressions() {
                     for ident in expr.identifiers() {

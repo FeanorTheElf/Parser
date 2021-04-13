@@ -92,23 +92,55 @@ impl Function {
         return Ok(());
     }
     
+    ///
+    /// See the corresponding method on Statement
+    /// 
     pub fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>, &FunctionType) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>, &FunctionType) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content(parent_scopes, &mut |content: &'a Block, scopes, ty| {
             content.traverse_preorder(scopes, &mut |c, s| f(c, s, ty))
         })
     }
 
+    ///
+    /// See the corresponding method on Statement
+    /// 
     pub fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>, &mut FunctionType) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes, ty| {
+            content.traverse_preorder_mut(scopes, &mut |c, s| f(c, s, ty))
+        })
+    }
+
+    ///
+    /// See the corresponding method on Statement
+    /// 
+    pub fn traverse_preorder_block<'a>(
+        &'a self, 
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>, &FunctionType) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_content(parent_scopes, &mut |content: &'a Block, scopes, ty| {
+            content.traverse_preorder_block(scopes, &mut |c, s| f(c, s, ty))
+        })
+    }
+
+    ///
+    /// See the corresponding method on Statement
+    /// 
+    pub fn traverse_preorder_block_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
         f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>, &mut FunctionType) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes, ty| {
-            content.traverse_preorder_mut(scopes, &mut |c, s| f(c, s, ty))
+            content.traverse_preorder_block_mut(scopes, &mut |c, s| f(c, s, ty))
         })
     }
 }
@@ -117,6 +149,10 @@ impl SymbolDefinitionFuncs for Function {
 
     fn get_name(&self) -> &Name {
         &self.name
+    }
+
+    fn get_name_mut(&mut self) -> &mut Name {
+        &mut self.name
     }
 
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
@@ -274,21 +310,51 @@ impl Program {
         return Ok(());
     }
 
+    ///
+    /// See the corresponding method on Statement
+    /// 
     pub fn traverse_preorder<'a>(
         &'a self, 
-        f: &'a mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &'a mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes, _| {
             body.traverse_preorder(scopes, f)
         }))
     }
 
+    ///
+    /// See the corresponding method on Statement
+    /// 
     pub fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes, _| {
+            body.traverse_preorder_mut(scopes, f)
+        }))
+    }
+
+    ///
+    /// See the corresponding method on Statement
+    /// 
+    pub fn traverse_preorder_block<'a>(
+        &'a self, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes, _| {
+            body.traverse_preorder_block(scopes, f)
+        }))
+    }
+
+    ///
+    /// See the corresponding method on Statement
+    /// 
+    pub fn traverse_preorder_block_mut<'a>(
         &'a mut self, 
         f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes, _| {
-            body.traverse_preorder_mut(scopes, f)
+            body.traverse_preorder_block_mut(scopes, f)
         }))
     }
 

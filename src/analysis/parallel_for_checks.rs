@@ -5,7 +5,7 @@ use feanor_la::la::mat::*;
 use feanor_la::algebra::rat::*;
 
 pub fn check_program_pfor_data_races(program: &Program) -> Result<(), CompileError> {
-    program.traverse_preorder(&mut |block: &Block, _scopes| {
+    program.traverse_preorder_block(&mut |block: &Block, _scopes| {
         for statement in block.statements() {
             if let Some(pfor) = statement.any().downcast_ref::<ParallelFor>() {
                 check_pfor_data_races(pfor)?;

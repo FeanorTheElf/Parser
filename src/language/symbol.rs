@@ -9,6 +9,8 @@ pub trait SymbolDefinitionFuncs: AstNode {
 
     fn get_name(&self) -> &Name;
 
+    fn get_name_mut(&mut self) -> &mut Name;
+
     // AFAIK, this is the only way to implement such a cast.
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement>;
 

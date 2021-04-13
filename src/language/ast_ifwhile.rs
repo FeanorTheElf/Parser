@@ -58,17 +58,19 @@ impl StatementFuncs for If {
     fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.body.traverse_preorder(parent_scopes, f)
+        let recurse = f(self, parent_scopes);
+        self.body.traverse_preorder_base(parent_scopes, f, recurse)
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.body.traverse_preorder_mut(parent_scopes, f)
+        let recurse = f(self, parent_scopes);
+        self.body.traverse_preorder_mut_base(parent_scopes, f, recurse)
     }
 }
 
@@ -136,17 +138,19 @@ impl StatementFuncs for While {
     fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.body.traverse_preorder(parent_scopes, f)
+        let recurse = f(self, parent_scopes);
+        self.body.traverse_preorder_base(parent_scopes, f, recurse)
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.body.traverse_preorder_mut(parent_scopes, f)
+        let recurse = f(self, parent_scopes);
+        self.body.traverse_preorder_mut_base(parent_scopes, f, recurse)
     }
 }
 

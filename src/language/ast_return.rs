@@ -56,18 +56,18 @@ impl StatementFuncs for Return {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 }
 

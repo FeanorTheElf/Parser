@@ -341,7 +341,7 @@ pub fn determine_types_in_function(
     function: &mut Function,
     global_scope: &DefinitionScopeStackMut
 ) -> Result<(), CompileError> {
-    function.traverse_preorder_mut(global_scope, &mut |block, parent_scopes, function_type| {
+    function.traverse_preorder_block_mut(global_scope, &mut |block, parent_scopes, function_type| {
         let mut scopes = parent_scopes.child_stack();
         for statement in block.statements_mut() {
             determine_types_in_statement(statement, &scopes, function_type)?;

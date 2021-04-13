@@ -1,6 +1,5 @@
 use super::position::TextPosition;
 use super::error::CompileError;
-use super::scopes::ScopeStack;
 use super::identifier::Name;
 use super::ast::*;
 use super::ast_expr::*;
@@ -35,7 +34,7 @@ pub trait StatementFuncs: AstNode {
     /// # Details
     /// This will not yield nested expressions. If this statement is only one expression, only the statement itself will be returned.
     /// The expressions will be returned in the order of execution. If this statement contains other statements that in turn contain
-    /// expressions, these expressions will also not be returned.
+    /// expressions, these expressions will not be returned.
     /// 
     /// # Example
     /// ```
@@ -75,19 +74,22 @@ pub trait StatementFuncs: AstNode {
     }
 
     ///
-    /// Calls the given function on all subblocks contained in this statement. These blocks form
+    /// Calls the given function on all statements contained in this statement. These statements form
     /// a tree, which is traversed in preorder. Additionally, the callback function is given
-    /// scope stack with all outer definitions that are visible from the current block.
+    /// scope stack with all outer definitions that are visible from the current statement.
     /// 
     /// # Details
     /// 
-    /// When called on a block, the block itself is the first element the callback is called with.
+    /// When called on a statement, the statement itself is the first element the callback is called with.
     /// After that, the search will then continue with the statements in the block
     /// 
-    /// When the closure is called, the scope stack should therefore contain all symbols
-    /// that are defined outside the block but visible from within the block. The reason that
-    /// symbols within the block are not contained in the scope stack is compatibility with
-    /// traverse_preorder_mut, for which this is impossible due to aliasing constraints.
+    /// When the callback is called on a statement, the scope stack should therefore contain all symbols
+    /// that are defined outside the statement and are either visible before declaration, or declared
+    /// before the statement in the parent block.
+    /// 
+    /// By returning `RECURSE` resp. `DONT_RECURSE`, one can control whether the search continues
+    /// in potential subblocks of the current statement. If `DONT_RECURSE` is returned, the whole
+    /// subtree whose root is the current statement is skipped.
     /// 
     /// # Example
     /// ```
@@ -101,18 +103,20 @@ pub trait StatementFuncs: AstNode {
     /// let scopes = ScopeStack::new();
     /// a.traverse_preorder(&scopes, &mut |b, s| {
     ///     counter += 1;
-    ///     if counter == 2 { // the block of the if
+    ///     if counter > 1 { // the if
     ///         assert!(s.get(&Name::l("a")).is_some());
     ///         assert!(s.get(&Name::l("b")).is_none());
+    ///     } else {
+    ///         assert!(s.get(&Name::l("a")).is_none());
     ///     }
     /// });
-    /// assert_eq!(2, counter);
+    /// assert_eq!(3, counter);
     /// ```
     /// 
     fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
 
     ///
@@ -121,8 +125,51 @@ pub trait StatementFuncs: AstNode {
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
+
+    ///
+    /// Similar to `traverse_preorder()`, however instead of a statement, the closure is called
+    /// for each block contained in the statement. In particular, for many statements this will 
+    /// not call the callback at all. For blocks, the callback will be called once for the whole block,
+    /// and then for each subblock in the scope tree.
+    /// 
+    /// For details, see `traverse_preorder()`.
+    /// 
+    fn traverse_preorder_block<'a>(
+        &'a self, 
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.traverse_preorder(parent_scopes, &mut |statement, scopes| {
+            let mut subblocks = statement.subblocks();
+            if let Some(block) = subblocks.next() {
+                assert!(subblocks.next().is_none());
+                return f(block, scopes);
+            } else {
+                return DONT_RECURSE;
+            }
+        })
+    }
+
+    ///
+    /// See `traverse_preorder_block()`.
+    /// 
+    fn traverse_preorder_block_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        self.traverse_preorder_mut(parent_scopes, &mut |statement, scopes| {
+            let mut subblocks = statement.subblocks_mut();
+            if let Some(block) = subblocks.next() {
+                assert!(subblocks.next().is_none());
+                return f(block, scopes);
+            } else {
+                return DONT_RECURSE;
+            }
+        })
+    }
 
     ///
     /// If this statement defines a symbol that is visible in the whole parent scope
@@ -218,10 +265,31 @@ impl StatementFuncs for Block {
     fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        let result = f(self, parent_scopes);
-        match result {
+        let recurse = f(self, parent_scopes);
+        self.traverse_preorder_base(parent_scopes, f, recurse)
+    }
+
+    fn traverse_preorder_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        let recurse = f(self, parent_scopes);
+        self.traverse_preorder_mut_base(parent_scopes, f, recurse)
+    }
+}
+
+impl Block {
+    
+    pub fn traverse_preorder_base<'a>(
+        &'a self, 
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult,
+        recurse: TraversePreorderResult
+    ) -> Result<(), CompileError> {
+        match recurse {
             Err(TraversePreorderCancel::RealError(e)) => return Err(e),
             Err(TraversePreorderCancel::DoNotRecurse) => {},
             Ok(_) => {
@@ -248,13 +316,13 @@ impl StatementFuncs for Block {
         return Ok(());
     }
 
-    fn traverse_preorder_mut<'a>(
+    pub fn traverse_preorder_mut_base<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult,
+        recurse: TraversePreorderResult
     ) -> Result<(), CompileError> {
-        let result = f(self, parent_scopes);
-        match result {
+        match recurse {
             Err(TraversePreorderCancel::RealError(e)) => return Err(e),
             Err(TraversePreorderCancel::DoNotRecurse) => {},
             Ok(_) => {
@@ -280,7 +348,7 @@ impl StatementFuncs for Block {
                 for statement in data.into_iter() {
                     match statement {
                         StatementMutOrPlaceholder::Statement(statement) => {
-                            statement.traverse_preorder_mut(&child_scope, f)?;
+                            statement.traverse_preorder_mut(&child_scope, &mut *f)?;
                             // in case this is a sibling symbol definition and found here, it must be 
                             // forward-only visible, so add it now to the scope stack to be visible in
                             // subsequent traversals
@@ -291,7 +359,7 @@ impl StatementFuncs for Block {
                         },
                         StatementMutOrPlaceholder::PlaceholderDefOfName(name) => {
                             let statement = child_scope.unregister(&name).cast_statement_mut().unwrap();
-                            statement.traverse_preorder_mut(&child_scope, f)?;
+                            statement.traverse_preorder_mut(&child_scope, &mut *f)?;
                             let def = statement.as_sibling_symbol_definition_mut().unwrap();
                             child_scope.register(name, <_ as SymbolDefinitionDynCastable>::dynamic_mut(def));
                         }
@@ -364,6 +432,10 @@ impl SymbolDefinitionFuncs for Declaration {
         &self.name
     }
 
+    fn get_name_mut(&mut self) -> &mut Name {
+        &mut self.name
+    }
+
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
         None
     }
@@ -418,18 +490,18 @@ impl StatementFuncs for LocalVariableDeclaration {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 
     fn as_sibling_symbol_definition(&self) -> Option<&dyn SiblingSymbolDefinition> {
@@ -446,7 +518,11 @@ impl Statement for LocalVariableDeclaration {}
 impl SymbolDefinitionFuncs for LocalVariableDeclaration {
 
     fn get_name(&self) -> &Name {
-        &self.declaration.name
+        self.declaration.get_name()
+    }
+
+    fn get_name_mut(&mut self) -> &mut Name {
+        self.declaration.get_name_mut()
     }
 
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
@@ -512,18 +588,18 @@ impl StatementFuncs for Expression {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 
     fn traverse_preorder_mut<'a>(
         &'a mut self, 
-        _parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        _f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        Ok(())
+        f(self, parent_scopes).ignore_cancel()
     }
 }
 
@@ -538,7 +614,10 @@ fn test_block_preorder_traversal_mut() {
         Box::new(Block::test([]))
     ]);
     let mut counter = 0;
-    let mut callback = |_: &mut Block, scopes: &DefinitionScopeStackMut| {
+    let mut callback = |statement: &mut dyn Statement, scopes: &DefinitionScopeStackMut| {
+        if statement.downcast::<Block>().is_none() {
+            return RECURSE;
+        }
         if counter % 3 == 0 {
             assert!(scopes.get(&Name::l("a")).is_none());
         } else if counter % 3 == 1 {
@@ -548,7 +627,7 @@ fn test_block_preorder_traversal_mut() {
             assert!(scopes.get(&Name::l("b")).is_some());
         }
         counter += 1;
-        return Ok(());
+        return RECURSE;
     };
 
     block.traverse_preorder_mut(&DefinitionScopeStackMut::new(), &mut callback).unwrap();
