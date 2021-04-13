@@ -5,11 +5,11 @@ use super::topological_sort;
 
 fn arithmetic_result_type(pos: &TextPosition, ty1: &Type, ty2: &Type, op: BuiltInIdentifier) -> Result<Type, CompileError> {
     if ty1.is_scalar(PrimitiveType::Int) && ty2.is_scalar(PrimitiveType::Int) {
-        Ok(PrimitiveType::Int.scalar(true))
+        Ok(SCALAR_INT)
     } else if (ty1.is_scalar(PrimitiveType::Float) || ty1.is_scalar(PrimitiveType::Int)) &&
         (ty2.is_scalar(PrimitiveType::Float) || ty2.is_scalar(PrimitiveType::Int)) 
     {
-        Ok(PrimitiveType::Float.scalar(true))
+        Ok(SCALAR_FLOAT)
     } else {
         Err(CompileError::bi_operator_not_implemented(pos, &ty1, &ty2, op))
     }
@@ -81,7 +81,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Int) {
-                    return Err(CompileError::type_error(&param.1, &PrimitiveType::Int.scalar(true), param_type));
+                    return Err(CompileError::type_error(&param.1, &SCALAR_INT, param_type));
                 }
                 dimension_count += 1;
             }
@@ -90,7 +90,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
         BuiltInIdentifier::FunctionAdd |
             BuiltInIdentifier::FunctionMul => 
         {
-            return param_types.try_fold(PrimitiveType::Int.scalar(true), |current, (try_type, pos)| {
+            return param_types.try_fold(SCALAR_INT, |current, (try_type, pos)| {
                 let param_type = try_type?;
                 arithmetic_result_type(&pos, &current, &param_type, op)
             });
@@ -101,10 +101,10 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Bool) {
-                    return Err(CompileError::bi_operator_not_implemented(&param.1, &PrimitiveType::Bool.scalar(true), &param_type, op));
+                    return Err(CompileError::bi_operator_not_implemented(&param.1, &SCALAR_BOOL, &param_type, op));
                 }
             }
-            return Ok(PrimitiveType::Bool.scalar(true));
+            return Ok(SCALAR_BOOL);
         },
         BuiltInIdentifier::FunctionEq |
             BuiltInIdentifier::FunctionGeq |
@@ -113,11 +113,11 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             BuiltInIdentifier::FunctionLs |
             BuiltInIdentifier::FunctionGt => 
         {
-            param_types.try_fold(PrimitiveType::Int.scalar(true), |current, (try_type, pos)| {
+            param_types.try_fold(SCALAR_INT, |current, (try_type, pos)| {
                 let param_type = try_type?;
                 arithmetic_result_type(&pos, &current, param_type, op)
             })?;
-            return Ok(PrimitiveType::Bool.scalar(true));
+            return Ok(SCALAR_BOOL);
         },
         BuiltInIdentifier::FunctionIndex => {
             let (try_array_type, index_pos) = param_types.next().expect("index function call has no parameters, but the indexed array should be the first parameter");
@@ -125,7 +125,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
             for param in param_types {
                 let param_type = param.0?;
                 if !param_type.is_scalar(PrimitiveType::Int) {
-                    return Err(CompileError::type_error(&param.1, &PrimitiveType::Int.scalar(true), param_type));
+                    return Err(CompileError::type_error(&param.1, &SCALAR_INT, param_type));
                 }
                 count += 1;
             }
@@ -209,7 +209,7 @@ where I: Iterator<Item = (Result<&'a Type, CompileError>, TextPosition)>
 /// 
 /// This also performs type checking, i.e. will return a compile error if the types do not match within the expression.
 /// 
-fn calculate_and_store_type<'a>(expr: &'a mut Expression, scopes: &DefinitionScopeStackMut) -> Result<Option<&'a Type>, CompileError> {
+fn calculate_and_store_type<'a>(expr: &'a mut Expression, scopes: &'a DefinitionScopeStackMut<'_, 'a>) -> Result<Option<&'a Type>, CompileError> {
     match expr {
         Expression::Call(call) => {
             if call.result_type_cache.is_some() {
@@ -251,7 +251,7 @@ fn calculate_and_store_type<'a>(expr: &'a mut Expression, scopes: &DefinitionSco
 
 fn calculate_and_store_type_nonvoid<'a>(
     expr: &'a mut Expression, 
-    scopes: &DefinitionScopeStackMut
+    scopes: &'a DefinitionScopeStackMut<'_, 'a>
 ) -> Result<&'a Type, CompileError> {
     let position = expr.pos().clone();
     if let Some(ty) = calculate_and_store_type(expr, scopes)? {
@@ -268,8 +268,20 @@ pub fn determine_types_in_function(
         let mut scopes = parent_scopes.child_stack();
         for statement in block.statements_mut() {
             for expression in statement.expressions_mut() {
-                calculate_and_store_type(expression, &scopes);
+                calculate_and_store_type(expression, &scopes)?;
             }
+            if let Some(decl) = statement.downcast_mut::<LocalVariableDeclaration>() {
+                let assigned_type = get_expression_type(&decl.value, &scopes).ok_or_else(|| CompileError::expected_nonvoid(decl.value.pos()))?;
+                let target_type = &mut decl.declaration.var_type;
+                if !assigned_type.is_implicitly_convertable(target_type) && !assigned_type.is_viewable_as(target_type) {
+                    Err(CompileError::type_error(&decl.value.pos(), target_type, assigned_type))?;
+                }
+                if target_type.is_view() && assigned_type.is_view() {
+                    target_type.as_view_mut().unwrap().concrete_view = Some(assigned_type.as_view().unwrap().get_concrete().dyn_clone());
+                } else if target_type.is_view() && !assigned_type.is_view() {
+                    target_type.as_view_mut().unwrap().concrete_view = Some(Box::new(VIEW_REFERENCE));
+                }
+            } 
             if let Some(def) = statement.as_sibling_symbol_definition_mut() {
                 // if we have backward visible declarations here, we need to watch out for dependency order,
                 // so everything will get a good deal more complicated
@@ -319,16 +331,16 @@ impl TypeStored for Literal {
     }
 }
 
-pub fn get_expression_type(expr: &Expression, scopes: &DefinitionScopeStack) -> Option<Type> {
+pub fn get_expression_type<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expression, scopes: &'a D) -> Option<&'a Type> {
     match expr {
         Expression::Call(call) => {
-            call.get_stored_voidable_type().map(Type::clone)
+            call.get_stored_voidable_type()
         },
         Expression::Variable(var) => match &var.identifier {
             Identifier::Name(name) => Some(scopes.get_defined(name, var.pos()).internal_error().get_type()),
             Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
         },
-        Expression::Literal(lit) => lit.get_stored_voidable_type().map(Type::clone)
+        Expression::Literal(lit) => lit.get_stored_voidable_type()
     }
 }
 
@@ -338,7 +350,7 @@ fn test_determine_types_in_program() {
     
     fn foo(x: &int[,],) {
         let a: &int[,] = x;
-        let b: &int[,] = zeros(5, 8,);
+        let b: &int[,,] = zeros(5, 8,);
     }
     
     ")).unwrap();

@@ -62,10 +62,19 @@ impl Clone for Box<dyn View> {
     }
 }
 
+impl PartialEq for &dyn View {
+
+    fn eq(&self, rhs: &&dyn View) -> bool {
+        (*self).dyn_eq((*rhs).any())
+    }
+}
+
+impl Eq for &dyn View {}
+
 impl PartialEq for Box<dyn View> {
 
     fn eq(&self, rhs: &Box<dyn View>) -> bool {
-        self.dyn_eq(rhs)
+        self.dyn_eq(&*rhs)
     }
 }
 
@@ -111,6 +120,10 @@ pub enum Type {
     View(ViewType),
     Function(FunctionType)
 }
+
+pub const SCALAR_INT: Type = PrimitiveType::Int.scalar(false);
+pub const SCALAR_FLOAT: Type = PrimitiveType::Float.scalar(false);
+pub const SCALAR_BOOL: Type = PrimitiveType::Bool.scalar(false);
 
 impl Type {
 

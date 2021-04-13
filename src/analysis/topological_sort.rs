@@ -52,7 +52,7 @@ struct CallData<'a> {
 fn collect_global_use_data_variable<'a>(
     ident: &'a Identifier, 
     parent_function: Ptr<'a, Function>, 
-    global_scope: &DefinitionScopeStack<'_, 'a>, 
+    global_scope: &DefinitionScopeStackConst<'_, 'a>, 
     result: &mut HashMap<Ptr<'a, Function>, CallData<'a>>
 ) {
     if ident.is_name() {

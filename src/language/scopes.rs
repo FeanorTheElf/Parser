@@ -4,8 +4,33 @@ use super::error::CompileError;
 use super::symbol::SymbolDefinition;
 use std::collections::HashMap;
 
-pub type DefinitionScopeStack<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
+pub type DefinitionScopeStackConst<'a, 'b> = ScopeStack<'a, &'b dyn SymbolDefinition>;
 pub type DefinitionScopeStackMut<'a, 'b> = ScopeStack<'a, &'b mut dyn SymbolDefinition>;
+
+pub trait DefinitionEnvironment<'a, 'b>: std::fmt::Debug {
+
+    fn get<'c>(&'c self, name: &Name) -> Option<&'c dyn SymbolDefinition>;
+
+    fn get_defined<'c>(&'c self, name: &Name, pos: &TextPosition) -> Result<&'c dyn SymbolDefinition, CompileError> {
+        self.get(name).ok_or_else(|| {
+            CompileError::undefined_symbol(name, pos)
+        })
+    }
+}
+
+impl<'a, 'b> DefinitionEnvironment<'a, 'b> for DefinitionScopeStackMut<'a, 'b> {
+    
+    fn get<'c>(&'c self, name: &Name) -> Option<&'c dyn SymbolDefinition> {
+        self.get(name).map(|x| *x as &dyn SymbolDefinition)
+    }
+}
+
+impl<'a, 'b> DefinitionEnvironment<'a, 'b> for DefinitionScopeStackConst<'a, 'b> {
+    
+    fn get<'c>(&'c self, name: &Name) -> Option<&'c dyn SymbolDefinition> {
+        self.get(name).map(|x| *x)
+    }
+}
 
 struct ScopeStackIter<'a, T> {
     current: Option<&'a ScopeStack<'a, T>>,
@@ -81,13 +106,13 @@ impl<'a, T> ScopeStack<'a, T> {
         }
     }
 
-    pub fn get(&self, name: &Name) -> Option<&T> {
+    pub fn get<'b>(&'b self, name: &Name) -> Option<&'b T> {
         self.all_stacks().find_map(|stack| {
             stack.definitions.get(name)
         })
     }
 
-    pub fn get_defined(&self, name: &Name, pos: &TextPosition) -> Result<&T, CompileError> {
+    pub fn get_defined<'b>(&'b self, name: &Name, pos: &TextPosition) -> Result<&'b T, CompileError> {
         self.get(name).ok_or_else(|| {
             CompileError::undefined_symbol(name, pos)
         })

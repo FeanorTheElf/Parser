@@ -105,7 +105,11 @@ fn write_expression(expr: &Expression, parent_priority: i32, out: &mut CodeWrite
 impl AstWriter for StaticType {
     
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        write!(out, "{}", self.base)?;
+        if self.mutable {
+            write!(out, "write {}", self.base)?;
+        } else {
+            write!(out, "{}", self.base)?;
+        }
         if self.dims > 0 {
             write!(out, "[")?;
             for _ in 0..self.dims {
@@ -295,10 +299,8 @@ impl AstWriter for LocalVariableDeclaration {
         self.declaration.name.write(out)?;
         write!(out, ": ")?;
         self.declaration.var_type.write(out)?;
-        if let Some(val) = &self.value {
-            write!(out, " = ")?;
-            write_expression(val, i32::MIN, out)?;
-        }
+        write!(out, " = ")?;
+        write_expression(&self.value, i32::MIN, out)?;
         write!(out, ";")?;
         return Ok(());
     }
@@ -332,6 +334,7 @@ impl AstWriter for Assignment {
 // }
 
 impl AstWriter for Function {
+
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "fn ", )?;
         self.name.write(out)?;
@@ -343,7 +346,7 @@ impl AstWriter for Function {
             write!(out, ", ")?;
         }
         write!(out, ")")?;
-        if let Some(return_type) = &self.return_type {
+        if let Some(return_type) = self.return_type() {
             write!(out, ": ")?;
             return_type.write(out)?;
         }
@@ -396,10 +399,10 @@ impl<'a, T: AstWriter + ?Sized> From<&'a T> for DisplayWrapper<'a, T> {
 fn test_gwaihir_writer() {
     let function = Function::test(
         "foo",
-        [("a", PrimitiveType::Int.scalar(true)), ("b", PrimitiveType::Bool.scalar(true))],
-        Some(PrimitiveType::Float.scalar(true)),
+        [("a", SCALAR_INT), ("b", SCALAR_BOOL)],
+        Some(SCALAR_FLOAT),
         Block::test([
-            Box::new(LocalVariableDeclaration::new("bar", PrimitiveType::Float.scalar(true))),
+            Box::new(LocalVariableDeclaration::new("bar", SCALAR_FLOAT, Expression::var("a"))),
             Box::new(Block::test([
                 Box::new(Return::return_value(Expression::var("a")))
             ]))
@@ -408,7 +411,7 @@ fn test_gwaihir_writer() {
     #[rustfmt::skip]
     assert_eq!(
 "fn foo(a: int, b: bool, ): float {
-    let bar: float;
+    let bar: float = a;
     {
         return a;
     }

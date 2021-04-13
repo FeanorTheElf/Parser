@@ -57,8 +57,8 @@ impl StatementFuncs for Assignment {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }

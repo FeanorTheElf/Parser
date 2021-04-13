@@ -111,8 +111,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError>;
 
     ///
@@ -217,8 +217,8 @@ impl StatementFuncs for Block {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         let result = f(self, parent_scopes);
         match result {
@@ -340,7 +340,7 @@ pub struct Declaration {
 #[derive(Debug, PartialEq)]
 pub struct LocalVariableDeclaration {
     pub declaration: Declaration,
-    pub value: Option<Expression>
+    pub value: Expression
 }
 
 impl PartialEq for Declaration {
@@ -368,8 +368,8 @@ impl SymbolDefinitionFuncs for Declaration {
         None
     }
 
-    fn get_type(&self) -> Type {
-        self.var_type.clone()
+    fn get_type(&self) -> &Type {
+        &self.var_type
     }
 }
 
@@ -395,31 +395,31 @@ impl StatementFuncs for LocalVariableDeclaration {
     }
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
-        Box::new(std::iter::once(&self.value).filter_map(|x| x.as_ref()))
+        Box::new(std::iter::once(&self.value))
     }
 
     fn expressions_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
-        Box::new(std::iter::once(&mut self.value).filter_map(|x| x.as_mut()))
+        Box::new(std::iter::once(&mut self.value))
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
         Box::new(
             std::iter::once(&self.declaration.name).chain(
-            std::iter::once(&self.value).filter_map(|x| x.as_ref()).flat_map(|expr| expr.names())
+            self.value.names()
         ))
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
         Box::new(
             std::iter::once(&mut self.declaration.name).chain(
-            std::iter::once(&mut self.value).filter_map(|x| x.as_mut()).flat_map(|expr| expr.names_mut())
+            self.value.names_mut()
         ))
     }
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
@@ -453,7 +453,7 @@ impl SymbolDefinitionFuncs for LocalVariableDeclaration {
         Some(self)
     }
 
-    fn get_type(&self) -> Type {
+    fn get_type(&self) -> &Type {
         self.declaration.get_type()
     }
 }
@@ -472,14 +472,14 @@ impl SiblingSymbolDefinition for LocalVariableDeclaration {}
 impl LocalVariableDeclaration {
 
     #[cfg(test)]
-    pub fn new(name: &'static str, var_type: Type) -> LocalVariableDeclaration {
+    pub fn new(name: &'static str, var_type: Type, value: Expression) -> LocalVariableDeclaration {
         LocalVariableDeclaration {
             declaration: Declaration {
                 pos: TextPosition::NONEXISTING,
                 name: Name::l(name),
                 var_type: var_type
             },
-            value: None
+            value: value
         }
     }
 }
@@ -512,8 +512,8 @@ impl StatementFuncs for Expression {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        _parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        _parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        _f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         Ok(())
     }
@@ -532,9 +532,9 @@ impl Statement for Expression {}
 #[test]
 fn test_block_preorder_traversal_mut() {
     let mut block = Block::test([
-        Box::new(LocalVariableDeclaration::new("a", PrimitiveType::Int.scalar(true))), 
+        Box::new(LocalVariableDeclaration::new("a", SCALAR_INT, Expression::var("x"))), 
         Box::new(Block::test([])),
-        Box::new(LocalVariableDeclaration::new("b", PrimitiveType::Int.scalar(true))),
+        Box::new(LocalVariableDeclaration::new("b", SCALAR_INT, Expression::var("x"))),
         Box::new(Block::test([]))
     ]);
     let mut counter = 0;

@@ -12,7 +12,7 @@ pub trait SymbolDefinitionFuncs: AstNode {
     // AFAIK, this is the only way to implement such a cast.
     fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement>;
 
-    fn get_type(&self) -> Type;
+    fn get_type(&self) -> &Type;
 }
 
 dynamic_subtrait!{ SymbolDefinition: SymbolDefinitionFuncs; SymbolDefinitionDynCastable }

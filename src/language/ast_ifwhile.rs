@@ -57,8 +57,8 @@ impl StatementFuncs for If {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.body.traverse_preorder(parent_scopes, f)
     }
@@ -135,8 +135,8 @@ impl StatementFuncs for While {
 
     fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.body.traverse_preorder(parent_scopes, f)
     }

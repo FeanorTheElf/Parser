@@ -17,6 +17,14 @@ impl View for ViewIndex {}
 pub const VIEW_INDEX: ViewIndex = ViewIndex {};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewReference {}
+
+impl ViewFuncs for ViewReference {}
+impl View for ViewReference {}
+
+pub const VIEW_REFERENCE: ViewReference = ViewReference {};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewComposed {
     parts: Vec<Box<dyn View>>
 }

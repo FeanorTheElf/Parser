@@ -33,12 +33,16 @@ impl Parseable for Type {
 
 impl Build<TypeNodeNoView> for Type {
     fn build(_pos: TextPosition, _context: &mut ParserContext, param: TypeNodeNoView) -> Self::ParseOutputType {
+        let mutable = match (param.1).0 {
+            Some(ReadWrite::TypeWrite(_)) => true,
+            _ => false
+        };
         let base = match (param.1).1 {
             PrimitiveTypeNode::IntTypeNode(_) => PrimitiveType::Int,
             PrimitiveTypeNode::FloatTypeNode(_) => PrimitiveType::Float
         };
         let dims = (param.1).2.map(|x| (x.1).0 as usize).unwrap_or(0);
-        return Type::array_type(base, dims, true);
+        return Type::array_type(base, dims, mutable);
     }
 }
 
@@ -103,11 +107,10 @@ impl Parser for Literal {
     }
 
     fn parse(stream: &mut Stream, _context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError> {
-
         Ok(Literal {
             pos: stream.pos().clone(),
             value: stream.next_literal()?,
-            literal_type: PrimitiveType::Int.scalar(true)
+            literal_type: SCALAR_INT
         })
     }
 }
@@ -284,7 +287,7 @@ impl
     Build<(
         Name,
         <Type as Parseable>::ParseOutputType,
-        Option<<Expression as Parseable>::ParseOutputType>,
+        <Expression as Parseable>::ParseOutputType,
     )> for LocalVariableDeclaration
 {
     fn build(
@@ -292,7 +295,7 @@ impl
         param: (
             Name,
             <Type as Parseable>::ParseOutputType,
-            Option<<Expression as Parseable>::ParseOutputType>,
+            <Expression as Parseable>::ParseOutputType,
         ),
     ) -> Self::ParseOutputType {
 
@@ -716,7 +719,7 @@ impl_parse_trait! { Return := Token#Return [ Expression ] Token#Semicolon }
 
 grammar_rule! { ExpressionNode := Expression Token#Semicolon }
 
-impl_parse_trait! { LocalVariableDeclaration := Token#Let Name Token#Colon Type [Token#Assign Expression] Token#Semicolon }
+impl_parse_trait! { LocalVariableDeclaration := Token#Let Name Token#Colon Type Token#Assign Expression Token#Semicolon }
 
 grammar_rule! { Alias := Token#As Name }
 
@@ -810,7 +813,7 @@ fn test_parser() {
     let param0 = &ast.items[0].parameters[0];
     assert_eq!(Name::l("a"), param0.name);
     assert_eq!(
-        Type::array_type(PrimitiveType::Int, 1, true), 
+        Type::array_type(PrimitiveType::Int, 1, false), 
         param0.var_type
     );
 
@@ -822,7 +825,7 @@ fn test_parser() {
 
     let index_var = &pfor.index_variables[0];
     assert_eq!(Name::l("c"), index_var.name);
-    assert_eq!(PrimitiveType::Int.scalar(true), index_var.var_type);
+    assert_eq!(SCALAR_INT, index_var.var_type);
 
     let assignment = pfor.body
         .statements().next().unwrap()

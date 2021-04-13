@@ -14,15 +14,36 @@ pub struct Function {
     pos: TextPosition,
     pub name: Name,
     pub parameters: Vec<Declaration>,
-    pub return_type: Option<Type>,
-    pub body: Option<Block>
+    pub body: Option<Block>,
+    function_type: Type
+}
+
+impl Function {
+
+    pub fn new(pos: TextPosition, name: Name, parameters: Vec<Declaration>, return_type: Option<Type>, body: Option<Block>) -> Function {
+        Function {
+            pos: pos,
+            name: name,
+            function_type: Type::function_type(parameters.iter().map(|d| d.var_type.clone()), return_type),
+            parameters: parameters,
+            body: body
+        }
+    }
+
+    pub fn get_type(&self) -> &FunctionType {
+        self.function_type.as_function().unwrap()
+    }
+
+    pub fn return_type(&self) -> Option<&Type> {
+        self.get_type().return_type()
+    }
 }
 
 impl PartialEq for Function {
     
     fn eq(&self, rhs: &Function) -> bool {
         self.name == rhs.name && self.parameters == rhs.parameters &&
-        self.return_type == rhs.return_type && self.body == rhs.body
+        self.function_type == rhs.function_type && self.body == rhs.body
     }
 }
 
@@ -39,8 +60,8 @@ impl Function {
     
     pub fn for_content<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = parent_scopes.child_stack();
         for param in &self.parameters {
@@ -69,8 +90,8 @@ impl Function {
     
     pub fn traverse_preorder<'a>(
         &'a self, 
-        parent_scopes: &DefinitionScopeStack<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_content(parent_scopes, &mut |content: &'a Block, scopes| {
             content.traverse_preorder(scopes, f)
@@ -98,8 +119,8 @@ impl SymbolDefinitionFuncs for Function {
         None
     }
 
-    fn get_type(&self) -> Type {
-        Type::function_type(self.parameters.iter().map(|p| p.get_type()), self.return_type.clone())
+    fn get_type(&self) -> &Type {
+        &self.function_type
     }
 }
 
@@ -116,29 +137,19 @@ impl SiblingSymbolDefinition for Function {}
 
 impl Function {
 
-    pub fn new(pos: TextPosition, name: Name, parameters: Vec<Declaration>, return_type: Option<Type>, body: Option<Block>) -> Self {
-        Function {
-            pos,
-            name,
-            parameters,
-            return_type,
-            body
-        }
-    }
-
     #[cfg(test)]
     pub fn test<const N: usize>(name: &'static str, params: [(&'static str, Type); N], return_type: Option<Type>, body: Block) -> Function {
-        Function {
-            pos: TextPosition::NONEXISTING,
-            name: Name::l(name),
-            parameters: params.iter().map(|(name, ty)| Declaration {
+        Function::new(
+            TextPosition::NONEXISTING,
+            Name::l(name),
+            params.iter().map(|(name, ty)| Declaration {
                 name: Name::l(name),
                 var_type: ty.clone(),
                 pos: TextPosition::NONEXISTING
             }).collect(),
-            return_type: return_type,
-            body: Some(body)
-        }
+            return_type,
+            Some(body)
+        )
     }
 }
 
@@ -157,7 +168,7 @@ impl Program {
     
     pub fn for_functions<'a>(
         &'a self,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         self.for_functions_stored_order(self.items(), f)
     }
@@ -172,7 +183,7 @@ impl Program {
     pub fn for_functions_ordered<'a, F>(
         &'a self,
         order: F,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> 
         where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, CompileError>
     {
@@ -201,11 +212,11 @@ impl Program {
     fn for_functions_stored_order<'a, I>(
         &'a self,
         order: I,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStack<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
     ) -> Result<(), CompileError> 
         where I: Iterator<Item = &'a Function>
     {
-        let mut child_scope = DefinitionScopeStack::new();
+        let mut child_scope = DefinitionScopeStackConst::new();
         for item in &self.items {
             // other things should not exist and are not implemented
             if !item.is_backward_visible() {
@@ -261,7 +272,7 @@ impl Program {
 
     pub fn traverse_preorder<'a>(
         &'a self, 
-        f: &'a mut dyn FnMut(&'a Block, &DefinitionScopeStack<'_, 'a>) -> TraversePreorderResult
+        f: &'a mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
         self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes| {
             body.traverse_preorder(scopes, f)
@@ -303,7 +314,7 @@ fn test_for_functions_ordered() {
     ")).unwrap();
 
     let mut names = Vec::new();
-    program.for_functions(&mut |f, _| {
+    program.for_functions(&mut |f: &Function, _| {
         names.push(f.get_name().clone());
         return Ok(());
     }).unwrap();
