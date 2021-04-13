@@ -40,19 +40,19 @@ impl StatementFuncs for Assignment {
     }
 
     fn expressions<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Expression> + 'a)> {
-        Box::new(std::iter::once(&self.value))
+        Box::new(std::iter::once(&self.value).chain(std::iter::once(&self.assignee)))
     }
 
     fn expressions_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Expression> + 'a)> {
-        Box::new(std::iter::once(&mut self.value))
+        Box::new(std::iter::once(&mut self.value).chain(std::iter::once(&mut self.assignee)))
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        Box::new(self.assignee.names().chain(self.value.names()))
+        Box::new(self.value.names().chain(self.assignee.names()))
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        Box::new(self.assignee.names_mut().chain(self.value.names_mut()))
+        Box::new(self.value.names_mut().chain(self.assignee.names_mut()))
     }
 
     fn traverse_preorder<'a>(

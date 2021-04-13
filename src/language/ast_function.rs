@@ -30,12 +30,16 @@ impl Function {
         }
     }
 
-    pub fn get_type(&self) -> &FunctionType {
+    pub fn function_type(&self) -> &FunctionType {
         self.function_type.as_function().unwrap()
     }
 
+    pub fn function_type_mut(&mut self) -> &mut FunctionType {
+        self.function_type.as_function_mut().unwrap()
+    }
+
     pub fn return_type(&self) -> Option<&Type> {
-        self.get_type().return_type()
+        self.function_type().return_type()
     }
 }
 
@@ -61,14 +65,14 @@ impl Function {
     pub fn for_content<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>, &FunctionType) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = parent_scopes.child_stack();
         for param in &self.parameters {
             child_scope.register(param.get_name().clone(), param);
         }
         if let Some(content) = &self.body {
-            f(content, &child_scope)?;
+            f(content, &child_scope, self.function_type())?;
         }
         return Ok(());
     }
@@ -76,14 +80,14 @@ impl Function {
     pub fn for_content_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, 'a>, 
-        f: &mut dyn FnMut(&'a mut Block, &DefinitionScopeStackMut<'_, 'a>) -> Result<(), CompileError>
+        f: &mut dyn FnMut(&'a mut Block, &DefinitionScopeStackMut<'_, 'a>, &mut FunctionType) -> Result<(), CompileError>
     ) -> Result<(), CompileError> {
         let mut child_scope = parent_scopes.child_stack();
         for param in &mut self.parameters {
             child_scope.register(param.get_name().clone(), param);
         }
         if let Some(content) = &mut self.body {
-            f(content, &child_scope)?;
+            f(content, &child_scope, self.function_type.as_function_mut().unwrap())?;
         }
         return Ok(());
     }
@@ -91,20 +95,20 @@ impl Function {
     pub fn traverse_preorder<'a>(
         &'a self, 
         parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
-        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>, &FunctionType) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.for_content(parent_scopes, &mut |content: &'a Block, scopes| {
-            content.traverse_preorder(scopes, f)
+        self.for_content(parent_scopes, &mut |content: &'a Block, scopes, ty| {
+            content.traverse_preorder(scopes, &mut |c, s| f(c, s, ty))
         })
     }
 
     pub fn traverse_preorder_mut<'a>(
         &'a mut self, 
         parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
-        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>, &mut FunctionType) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes| {
-            content.traverse_preorder_mut(scopes, f)
+        self.for_content_mut(parent_scopes, &mut |content: &mut Block, scopes, ty| {
+            content.traverse_preorder_mut(scopes, &mut |c, s| f(c, s, ty))
         })
     }
 }
@@ -274,7 +278,7 @@ impl Program {
         &'a self, 
         f: &'a mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes| {
+        self.for_functions(&mut |function, scopes| function.for_content(scopes, &mut |body, scopes, _| {
             body.traverse_preorder(scopes, f)
         }))
     }
@@ -283,7 +287,7 @@ impl Program {
         &'a mut self, 
         f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> TraversePreorderResult
     ) -> Result<(), CompileError> {
-        self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes| {
+        self.for_functions_mut(&mut |function, scopes| function.for_content_mut(scopes, &mut |body, scopes, _| {
             body.traverse_preorder_mut(scopes, f)
         }))
     }

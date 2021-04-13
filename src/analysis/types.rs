@@ -2,6 +2,7 @@ use super::super::language::prelude::*;
 use super::super::language::gwaihir_writer::*;
 use super::super::language::concrete_views::*;
 use super::super::language::ast_assignment::*;
+use super::super::language::ast_return::*;
 use super::topological_sort;
 
 fn arithmetic_result_type(pos: &TextPosition, ty1: &Type, ty2: &Type, op: BuiltInIdentifier) -> Result<Type, CompileError> {
@@ -54,6 +55,43 @@ impl CompileError {
         CompileError::new(
             pos, 
             format!("Type {} not callable", DisplayWrapper::from(ty)),
+            ErrorType::TypeError
+        )
+    }
+
+    fn not_initializable(pos: &TextPosition, variable: &Type, value: &Type) -> CompileError {
+        CompileError::new(
+            pos,
+            format!("Cannot initialize a variable of type {} with a value of type {}", DisplayWrapper::from(variable), DisplayWrapper::from(value)),
+            ErrorType::TypeError
+        )
+    }
+
+    fn not_returnable(pos: &TextPosition, return_type: Option<&Type>, value: Option<&Type>) -> CompileError {
+        match (value, return_type) {
+            (Some(v), Some(r)) => CompileError::new(
+                pos,
+                format!("Cannot return a value of type {} from a function with return type {}", DisplayWrapper::from(v), DisplayWrapper::from(r)),
+                ErrorType::TypeError
+            ),
+            (None, Some(r)) => CompileError::new(
+                pos,
+                format!("This function must return a value of type {}", DisplayWrapper::from(r)),
+                ErrorType::TypeError
+            ),
+            (Some(v), None) => CompileError::new(
+                pos,
+                format!("Cannot return a value from a void function"),
+                ErrorType::TypeError
+            ),
+            (None, None) => panic!("returning void from a void function is always legal")
+        }
+    }
+
+    fn not_assignable(pos: &TextPosition, variable: &Type, value: &Type) -> CompileError {
+        CompileError::new(
+            pos,
+            format!("Cannot assign a value of type {} to an expression of type {}", DisplayWrapper::from(value), DisplayWrapper::from(variable)),
             ErrorType::TypeError
         )
     }
@@ -136,7 +174,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
                     if static_type.dims != count {
                         return Err(CompileError::wrong_param_count(&index_pos, static_type.dims, count));
                     } else {
-                        return Ok(static_type.base.scalar(static_type.is_mutable()).with_concrete_view(VIEW_INDEX));
+                        return Ok(static_type.base.as_scalar_type(static_type.is_mutable()).with_concrete_view(VIEW_INDEX));
                     }
                 },
                 Type::View(view_type) => {
@@ -144,7 +182,7 @@ fn calculate_builtin_call_result_type<'a, I>(op: BuiltInIdentifier, mut param_ty
                         return Err(CompileError::wrong_param_count(&index_pos, view_type.view_onto.dims, count));
                     } else {
                         return Ok(
-                            view_type.view_onto.base.scalar(view_type.view_onto.is_mutable())
+                            view_type.view_onto.base.as_scalar_type(view_type.view_onto.is_mutable())
                                 .with_concrete_view_dyn(ViewComposed::compose(
                                     VIEW_INDEX, 
                                     view_type.concrete_view.as_ref().expect("Concrete view of dependency not available, current calculation only works with linear dependencies").clone()
@@ -263,7 +301,8 @@ fn calculate_and_store_type_nonvoid<'a>(
 
 fn determine_types_in_statement(
     statement: &mut dyn Statement,
-    scopes: &DefinitionScopeStackMut
+    scopes: &DefinitionScopeStackMut,
+    function_type: &FunctionType
 ) -> Result<(), CompileError> {
     for expression in statement.expressions_mut() {
         calculate_and_store_type(expression, &scopes)?;
@@ -271,8 +310,8 @@ fn determine_types_in_statement(
     if let Some(decl) = statement.downcast_mut::<LocalVariableDeclaration>() {
         let assigned_type = get_expression_type_nonvoid(&decl.value, scopes)?;
         let target_type = &mut decl.declaration.var_type;
-        if !assigned_type.is_implicitly_convertable(target_type) && !assigned_type.is_viewable_as(target_type) {
-            Err(CompileError::type_error(&decl.value.pos(), target_type, assigned_type))?;
+        if !target_type.is_initializable_by(target_type) {
+            Err(CompileError::not_initializable(&decl.value.pos(), target_type, assigned_type))?;
         }
         if target_type.is_view() && assigned_type.is_view() {
             target_type.as_view_mut().unwrap().concrete_view = Some(assigned_type.as_view().unwrap().get_concrete().dyn_clone());
@@ -280,7 +319,20 @@ fn determine_types_in_statement(
             target_type.as_view_mut().unwrap().concrete_view = Some(Box::new(VIEW_REFERENCE));
         }
     } else if let Some(assignment) = statement.downcast_mut::<Assignment>() {
-
+        let assigned_type = get_expression_type_nonvoid(&assignment.value, scopes)?;
+        let assignee_type = get_expression_type_nonvoid(&assignment.assignee, scopes)?;
+        if !assigned_type.is_copyable_to(assignee_type) {
+            Err(CompileError::not_assignable(&assignment.pos(), assignee_type, assigned_type))?;
+        }
+    } else if let Some(ret) = statement.downcast_mut::<Return>() {
+        let returned_type = ret.value.as_ref().map(|e| get_expression_type_nonvoid(e, scopes)).transpose()?;
+        if returned_type.is_some() && function_type.return_type().is_some() {
+            if !function_type.return_type().unwrap().is_initializable_by(returned_type.unwrap()) {
+                Err(CompileError::not_returnable(&ret.pos(), function_type.return_type(), returned_type))?;
+            }
+        } else if returned_type.is_some() != function_type.return_type().is_some() {
+            Err(CompileError::not_returnable(&ret.pos(), function_type.return_type(), returned_type))?;
+        }
     }
     return Ok(());
 }
@@ -289,10 +341,10 @@ pub fn determine_types_in_function(
     function: &mut Function,
     global_scope: &DefinitionScopeStackMut
 ) -> Result<(), CompileError> {
-    function.traverse_preorder_mut(global_scope, &mut |block, parent_scopes| {
+    function.traverse_preorder_mut(global_scope, &mut |block, parent_scopes, function_type| {
         let mut scopes = parent_scopes.child_stack();
         for statement in block.statements_mut() {
-            determine_types_in_statement(statement, &scopes)?;
+            determine_types_in_statement(statement, &scopes, function_type)?;
             if let Some(def) = statement.as_sibling_symbol_definition_mut() {
                 // if we have backward visible declarations here, we need to watch out for dependency order,
                 // so everything will get a good deal more complicated
@@ -391,4 +443,56 @@ fn test_determine_types_in_program() {
             .as_view().unwrap()
             .get_concrete()
     );
+}
+
+#[test]
+fn test_typecheck_assignment() {
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn test(x: &int[,],) {
+        let a: int[,] init x;
+        a[1,] = x[1,];
+    }
+    
+    ")).unwrap();
+
+    assert!(*determine_types_in_program(&mut program).unwrap_err().error_type() == ErrorType::TypeError);
+    
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn test(x: &int[,],) {
+        let a: write int[,] init x;
+        a[1,] = x[1,];
+    }
+    
+    ")).unwrap();
+
+    determine_types_in_program(&mut program).unwrap();
+}
+
+#[test]
+fn test_typecheck_return() {
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn test(x: &int[,],): int[,] {
+        let a: write int[,] init x;
+        a[1,] = 1;
+        return 1;
+    }
+    
+    ")).unwrap();
+
+    assert!(*determine_types_in_program(&mut program).unwrap_err().error_type() == ErrorType::TypeError);
+    
+    let mut program = Program::parse(&mut lex_str("
+    
+    fn test(x: &int[,],): int[,] {
+        let a: write int[,] init x;
+        a[1,] = 1;
+        return a;
+    }
+    
+    ")).unwrap();
+
+    determine_types_in_program(&mut program).unwrap();
 }

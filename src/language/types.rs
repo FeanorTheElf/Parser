@@ -11,7 +11,7 @@ impl PrimitiveType {
         Type::array_type(self, dims, mutable)
     }
 
-    pub const fn scalar(self, mutable: bool) -> Type {
+    pub const fn as_scalar_type(self, mutable: bool) -> Type {
         self.array(0, mutable)
     }
 }
@@ -121,9 +121,9 @@ pub enum Type {
     Function(FunctionType)
 }
 
-pub const SCALAR_INT: Type = PrimitiveType::Int.scalar(false);
-pub const SCALAR_FLOAT: Type = PrimitiveType::Float.scalar(false);
-pub const SCALAR_BOOL: Type = PrimitiveType::Bool.scalar(false);
+pub const SCALAR_INT: Type = PrimitiveType::Int.as_scalar_type(false);
+pub const SCALAR_FLOAT: Type = PrimitiveType::Float.as_scalar_type(false);
+pub const SCALAR_BOOL: Type = PrimitiveType::Bool.as_scalar_type(false);
 
 impl Type {
 
@@ -238,7 +238,6 @@ impl Type {
     /// object of this type
     /// 
     pub fn is_viewable_as(&self, target: &Type) -> bool {
-        assert!(target.is_view());
         match (self, target) {
             (Type::Static(from), Type::View(to)) => {
                 from.base == to.view_onto.base &&
@@ -251,6 +250,32 @@ impl Type {
                     (from.view_onto.mutable || !to.view_onto.mutable)
             },
             (_, _) => false
+        }
+    }
+
+    pub fn is_copyable_to(&self, target: &Type) -> bool {
+        let from = match self {
+            Type::Static(s) => s,
+            Type::View(v) => &v.view_onto,
+            Type::Function(_) => return false
+        };
+        let to = match target {
+            Type::Static(s) => s,
+            Type::View(v) => &v.view_onto,
+            Type::Function(_) => return false
+        };
+        return from.base == to.base && from.dims == to.dims && to.mutable;
+    }
+
+    pub fn is_initializable_by(&self, value: &Type) -> bool {
+        match self {
+            Type::Static(to) => match value {
+                Type::Static(from) => from.dims == to.dims && from.base == to.base,
+                Type::View(from) => from.view_onto.dims == to.dims && from.view_onto.base == to.base,
+                Type::Function(_) => false
+            },
+            Type::View(_) => value.is_viewable_as(self),
+            Type::Function(_) => false
         }
     }
 

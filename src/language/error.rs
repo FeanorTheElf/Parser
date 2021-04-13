@@ -34,8 +34,8 @@ pub struct CompileError {
 }
 
 impl CompileError {
+    
     pub fn new(pos: &TextPosition, msg: String, error_type: ErrorType) -> Self {
-
         CompileError {
             pos: pos.clone(),
             msg: msg,
@@ -51,8 +51,12 @@ impl CompileError {
         }
     }
 
-    pub fn get_position(&self) -> &TextPosition {
+    pub fn pos(&self) -> &TextPosition {
         &self.pos
+    }
+
+    pub fn error_type(&self) -> &ErrorType {
+        &self.error_type
     }
 
     pub fn throw(self) -> ! {
