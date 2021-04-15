@@ -11,7 +11,9 @@ pub const GWH_THREADCOUNT: &'static str = "gwh_thread_count";
 pub const GWH_BLOCKSIZE: &'static str = "gwh_blocksize";
 pub const GWH_GRIDSIZE: &'static str = "gwh_gridsize";
 
-pub const GWH_COPY_FOR_LOOP_INDEX_PREFIX: &'static str = "gwh_ci_" /* + dimension */;
+pub const GWH_COPY_FOR_LOOP_INDEX_PREFIX: &'static str = "gwh_ci_" /* + dimensions */;
 pub const GWH_KERNEL_PREFIX: &'static str = "gwh_kernel_" /* + unique number */;
 pub const GWH_FOR_LOOP_INDEX_PREFIX: &'static str = "gwh_i_" /* + unique number */;
 pub const GWH_FOR_LOOP_THREADCOUNT_PREFIX: &'static str = "gwh_thread_count_" /* + unique number */;
+
+pub const GWH_ZERO_VIEW_STRUCT_NAME_PREFIX: &'static str = "GwhZeros" /* + dimensions */;

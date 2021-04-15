@@ -156,6 +156,15 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
             write_expr_value(out, *expr, is_host)?;
             write!(out, ")")?;
         }
+        OutExpression::IndexOffset(ty, arr, index) => {
+            write_expr_value(out, *arr, is_host)?;
+            if ty.storage.is_owned() {
+                write!(out, ".get() + ")?;
+            } else {
+                write!(out, " + ")?;
+            }
+            write_expr_value(out, *index, is_host)?;
+        },
     };
     return Ok(());
 }

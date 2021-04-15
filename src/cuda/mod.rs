@@ -7,3 +7,5 @@ pub mod repr;
 pub mod repr_utils;
 pub mod array_repr;
 pub mod scalar_repr;
+pub mod zero_view_repr;
+pub mod index_view_repr;

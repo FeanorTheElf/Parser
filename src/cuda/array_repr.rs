@@ -21,7 +21,7 @@ impl ArrayRepr {
         }
     }
 
-    fn get_data_type(&self) -> OutType {
+    pub fn get_data_type(&self) -> OutType {
         OutType {
             base: convert_base_type(self.array_type().base),
             storage: self.get_data_storage(),
@@ -64,9 +64,7 @@ fn write_for_loop_copy_recursive(
                         Box::new(OutExpression::Symbol(target_name.to_owned())),
                         format!("data")
                     ),
-                    OutExpression::Sum(
-                        indices.clone()
-                    ),
+                    OutExpression::sum(indices.iter().cloned()),
                     source.get_entry_at(source_name, indices)
                 )
             }
@@ -183,11 +181,11 @@ impl TypeRepresentationFuncs for ArrayRepr {
                 Box::new(OutExpression::Symbol(name.to_owned())),
                 format!("data")
             )),
-            Box::new(OutExpression::Sum(
+            Box::new(OutExpression::sum(
                 indices.into_iter().enumerate()
-                    .map(|(i, index)| OutExpression::Prod(vec![
+                    .map(|(i, index)| OutExpression::prod(vec![
                         self.get_aggregated_len(name, i), index
-                    ])).collect()
+                    ].into_iter()))
             ))
         )
     }

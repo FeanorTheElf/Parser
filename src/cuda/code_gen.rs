@@ -178,5 +178,60 @@ pub enum OutExpression {
     StructMember(Box<OutExpression>, String),
     StructLiteral(Vec<OutExpression>),
     StaticCast(OutType, Box<OutExpression>),
+    IndexOffset(OutType, Box<OutExpression>, Box<OutExpression>),
     Nullptr
+}
+
+impl OutExpression {
+
+    fn priority(&self) -> i64 {
+        match self {
+            OutExpression::Sum(_) => 0,
+            OutExpression::Prod(_) => 1,
+            OutExpression::Call(_, _) => i64::MAX,
+            OutExpression::Symbol(_) => i64::MAX,
+            OutExpression::Literal(_) => i64::MAX,
+            OutExpression::ThreadIndex(_) => i64::MAX,
+            OutExpression::Allocate(_, _) => i64::MAX,
+            OutExpression::BracketExpr(_) => i64::MAX,
+            OutExpression::IndexRead(_, _, _) => i64::MAX,
+            OutExpression::StructMember(_, _) => i64::MAX,
+            OutExpression::StructLiteral(_) => i64::MAX,
+            OutExpression::StaticCast(_, _) => i64::MAX,
+            OutExpression::IndexOffset(_, _, _) => 0,
+            OutExpression::Nullptr => i64::MAX
+        }
+    }
+
+    fn wrap_if_prio_leq(expr: OutExpression, prio: i64) -> OutExpression {
+        if expr.priority() <= prio { 
+            OutExpression::BracketExpr(Box::new(expr)) 
+        } else { 
+            expr 
+        }
+    }
+
+    fn wrap_iter_if_prio_leq<I: Iterator<Item = OutExpression>>(it: I, prio: i64) -> impl Iterator<Item = OutExpression> {
+        it.map(move |e| Self::wrap_if_prio_leq(e, prio))
+    }
+
+    pub fn sum<I: Iterator<Item = OutExpression>>(it: I) -> Self {
+        OutExpression::Sum(
+            Self::wrap_iter_if_prio_leq(it, 0).collect()
+        )
+    }
+
+    pub fn prod<I: Iterator<Item = OutExpression>>(it: I) -> Self {
+        OutExpression::Prod(
+            Self::wrap_iter_if_prio_leq(it, 1).collect()
+        )
+    }
+
+    pub fn index_offset(ty: OutType, arr: OutExpression, offset: OutExpression) -> Self {
+        OutExpression::IndexOffset(
+            ty,
+            Box::new(Self::wrap_if_prio_leq(arr, 0)),
+            Box::new(Self::wrap_if_prio_leq(offset, 0))
+        )
+    }
 }

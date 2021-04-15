@@ -100,15 +100,11 @@ impl TypeRepresentationFuncs for ScalarRepr {
     }
 
     fn get_aggregated_len(&self, name: &str, index: usize) -> OutExpression {
-        assert!(index < self.get_dims());
-        OutExpression::StructMember(
-            Box::new(OutExpression::Symbol(name.to_owned())),
-            format!("agg_len{}", index)
-        )
+        panic!("no array")
     }
 
     fn get_entry_at(&self, _name: &str, _indices: Vec<OutExpression>) -> OutExpression {
-        panic!()
+        panic!("no array")
     }
 }
 
