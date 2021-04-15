@@ -79,7 +79,7 @@ impl CompileError {
                 format!("This function must return a value of type {}", DisplayWrapper::from(r)),
                 ErrorType::TypeError
             ),
-            (Some(v), None) => CompileError::new(
+            (Some(_v), None) => CompileError::new(
                 pos,
                 format!("Cannot return a value from a void function"),
                 ErrorType::TypeError

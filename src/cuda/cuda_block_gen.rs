@@ -1,4 +1,5 @@
 use super::code_gen::*;
+use super::gwh_str::*;
 use super::super::language::compiler::CodeWriter;
 
 use std::io::Write;
@@ -9,19 +10,25 @@ pub struct CudaHostBlockGenerator<'a> {
     unique_identifier: &'a mut usize
 }
 
-fn get_base_type_str(ty: OutType) -> &'static str {
-    match ty.base {
+fn get_base_type_str(ty: &OutType) -> &str {
+    match &ty.base {
         OutPrimitiveType::Int => "int",
         OutPrimitiveType::Float => "float",
         OutPrimitiveType::Double => "double",
         OutPrimitiveType::Bool => "bool",
         OutPrimitiveType::Long => "long",
-        OutPrimitiveType::UInt => "unsigned int"
+        OutPrimitiveType::UInt => "unsigned int",
+        OutPrimitiveType::SizeT => "size_t",
+        OutPrimitiveType::Struct(name) => name.as_str()
     }
 }
 
 fn write_type(out: &mut CodeWriter, ty: OutType) -> OutResult {
-    let base_str = get_base_type_str(ty.clone());
+    let base_str = if ty.mutable {
+        get_base_type_str(&ty).to_owned()
+    } else {
+        "const".to_owned() + get_base_type_str(&ty)
+    };
     match ty.storage {
         OutStorage::Value => {
             write!(out, "{}", base_str)?;
@@ -30,10 +37,10 @@ fn write_type(out: &mut CodeWriter, ty: OutType) -> OutResult {
             write!(out, "{}*", base_str)?;
         },
         OutStorage::SmartPtrDevice => {
-            write!(out, "std::unique_ptr<{}, gwh_deleter_device<{}>>", base_str, base_str)?;
+            write!(out, "std::unique_ptr<{}, {}<{}>>", base_str, GWH_DELETER_DEVICE, base_str)?;
         },
         OutStorage::SmartPtrHost => {
-            write!(out, "std::unique_ptr<{}, gwh_deleter_host<{}>>", base_str, base_str)?;
+            write!(out, "std::unique_ptr<{}, {}<{}>>", base_str, GWH_DELETER_HOST, base_str)?;
         }
     };
     return Ok(());
@@ -43,13 +50,13 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
     match expr {
         OutExpression::Sum(summands) => {
             out.write_separated(
-                summands.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host)),
+                summands.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, s, is_host)),
                 |out| write!(out, " + ").map_err(Box::<dyn OutError>::from)
             )?;
         },
         OutExpression::Prod(factors) => {
             out.write_separated(
-                factors.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host)),
+                factors.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, s, is_host)),
                 |out| write!(out, " * ").map_err(Box::<dyn OutError>::from)
             )?;
         },
@@ -57,7 +64,7 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
             write_expr_value(out, *function, is_host)?;
             write!(out, "(")?;
             out.write_comma_separated(
-                params.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, *s, is_host))
+                params.into_iter().map(|s| move |out: &mut CodeWriter| write_expr_value(out, s, is_host))
             )?;
             write!(out, ")")?;
         },
@@ -77,12 +84,12 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
                     panic!("Can only allocate smart pointer types!")
                 },
                 OutStorage::SmartPtrDevice => {
-                    write!(out, "gwh_allocate_device<{}>(", get_base_type_str(ty))?;
+                    write!(out, "{}<{}>(", GWH_ALLOCATE_DEVICE, get_base_type_str(&ty))?;
                     write_expr_value(out, *len, is_host)?;
                     write!(out, ")")?;
                 },
                 OutStorage::SmartPtrHost => {
-                    write!(out, "gwh_allocate_host<{}>(", get_base_type_str(ty))?;
+                    write!(out, "{}<{}>(", GWH_ALLOCATE_HOST, get_base_type_str(&ty))?;
                     write_expr_value(out, *len, is_host)?;
                     write!(out, ")")?;
                 }
@@ -100,14 +107,14 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
                 },
                 OutStorage::SmartPtrDevice => {
                     assert!(is_host);
-                    write!(out, "gwh_read_at<{}>((", get_base_type_str(ty))?;
+                    write!(out, "{}<{}>((", GWH_READ_AT, get_base_type_str(&ty))?;
                     write_expr_value(out, *arr, is_host)?;
                     write!(out, ").get(), ")?;
                     write_expr_value(out, *index, is_host)?;
                     write!(out, ")")?;
                 },
                 OutStorage::PtrDevice if is_host => {
-                    write!(out, "gwh_read_at<{}>(", get_base_type_str(ty))?;
+                    write!(out, "{}<{}>(", GWH_READ_AT, get_base_type_str(&ty))?;
                     write_expr_value(out, *arr, is_host)?;
                     write!(out, "), ")?;
                     write_expr_value(out, *index, is_host)?;
@@ -127,6 +134,27 @@ fn write_expr_value<'a, 'b>(out: &'a mut CodeWriter<'b>, expr: OutExpression, is
                     write!(out, "]")?;
                 }
             }
+        },
+        OutExpression::StructLiteral(values) => {
+            write!(out, "{{")?;
+            out.write_comma_separated(
+                values.into_iter().map(|v| move |out: &mut CodeWriter| write_expr_value(out, v, is_host)
+            ))?;
+            write!(out, "}}")?;
+        },
+        OutExpression::StructMember(accessed_struct, member_name) => {
+            write_expr_value(out, *accessed_struct, is_host)?;
+            write!(out, ".{}", member_name)?;
+        },
+        OutExpression::Nullptr => {
+            write!(out, "nullptr")?;
+        },
+        OutExpression::StaticCast(ty, expr) => {
+            write!(out, "static_cast<")?;
+            write_type(out, ty)?;
+            write!(out, ">(")?;
+            write_expr_value(out, *expr, is_host)?;
+            write!(out, ")")?;
         }
     };
     return Ok(());
@@ -142,7 +170,17 @@ fn write_expr_value_device(out: &mut CodeWriter, expr: OutExpression) -> OutResu
 
 impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
 
-    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
+    fn write_value_assign(&mut self, ty: OutType, assignee: OutExpression, val: OutExpression) -> OutResult {
+        assert!(ty.storage == OutStorage::Value);
+        write_expr_value_host(&mut self.out, assignee)?;
+        write!(self.out, " = ")?;
+        write_expr_value_host(&mut self.out, val)?;
+        write!(self.out, ";")?;
+        self.out.newline()?;
+        return Ok(());
+    }
+
+    fn write_range_assign(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
         assert!(target_ty.base == source_ty.base);
         assert!(target_ty.mutable);
         assert!(target_ty.storage != OutStorage::Value);
@@ -153,7 +191,7 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
             (true, false) => "cudaMemcpyHostToDevice",
             (true, true) => "cudaMemcpyDeviceToDevice"
         };
-        write!(self.out, "gwh_check(cudaMemcpy(")?;
+        write!(self.out, "{}(cudaMemcpy(", GWH_CHECK)?;
         write_expr_value_host(&mut self.out, target)?;
         if target_ty.storage.is_owned() {
             write!(self.out, ".get()")?;
@@ -165,7 +203,15 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         }
         write!(self.out, ", ")?;
         write_expr_value_host(&mut self.out, len)?;
-        write!(self.out, ", copy_param);")?;
+        write!(self.out, ", {});", copy_param)?;
+        self.out.newline()?;
+        return Ok(());
+    }
+    
+    fn write_assert(&mut self, value: OutExpression) -> OutResult {
+        write!(self.out, "assert(")?;
+        write_expr_value_host(&mut self.out, value)?;
+        write!(self.out, ");")?;
         self.out.newline()?;
         return Ok(());
     }
@@ -200,13 +246,13 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         return Ok(());
     }
 
-    fn write_index_assign(&mut self, ty: OutType, arr: OutExpression, index: OutExpression, val: OutExpression) -> OutResult {
+    fn write_entry_assign(&mut self, ty: OutType, arr: OutExpression, index: OutExpression, val: OutExpression) -> OutResult {
         match ty.storage {
             OutStorage::Value => {
                 panic!("Cannot index into scalar types")
             },
             OutStorage::SmartPtrDevice => {
-                write!(self.out, "gwh_write_at<{}>((", get_base_type_str(ty))?;
+                write!(self.out, "{}<{}>((", GWH_WRITE_AT, get_base_type_str(&ty))?;
                 write_expr_value_host(&mut self.out, arr)?;
                 write!(self.out, ").get(), ")?;
                 write_expr_value_host(&mut self.out, index)?;
@@ -215,7 +261,7 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
                 write!(self.out, ")")?;
             },
             OutStorage::PtrDevice => {
-                write!(self.out, "gwh_write_at<{}>(", get_base_type_str(ty))?;
+                write!(self.out, "{}<{}>(", GWH_WRITE_AT, get_base_type_str(&ty))?;
                 write_expr_value_host(&mut self.out, arr)?;
                 write!(self.out, ", ")?;
                 write_expr_value_host(&mut self.out, index)?;
@@ -233,6 +279,29 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         }
         write!(self.out, ";")?;
         self.out.newline()?;
+        return Ok(());
+    }
+
+    fn write_integer_for<'b>(
+        &mut self, 
+        name: String,
+        init: OutExpression,
+        limit: OutExpression,
+        increment: OutExpression, 
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult {
+        write!(self.out, "for (size_t {} = ", name)?;
+        write_expr_value_host(&mut self.out, init)?;
+        write!(self.out, "; {} < ", name)?;
+        write_expr_value_host(&mut self.out, limit)?;
+        write!(self.out, "; {} += ", name)?;
+        write_expr_value_host(&mut self.out, increment)?;
+        write!(self.out, ") ")?;
+        self.out.enter_block()?;
+
+        body(Box::new(self as &mut dyn BlockGenerator))?;
+
+        self.out.exit_block()?;
         return Ok(());
     }
 
@@ -277,19 +346,19 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
 
         let kernel_index = *self.unique_identifier;
         *self.unique_identifier += 1;
-        let kernel_name = format!("gwh_kernel_{}", kernel_index);
+        let kernel_name = format!("{}{}", GWH_KERNEL_PREFIX, kernel_index);
 
         self.out.enter_block()?;
-        write!(self.out, "size_t gwh_thread_count = static_cast<size_t>(")?;
+        write!(self.out, "size_t {} = static_cast<size_t>(", GWH_THREADCOUNT)?;
         write_expr_value_host(&mut self.out, thread_count)?;
         write!(self.out, ");")?;
         self.out.newline()?;
 
-        write!(self.out, "dim3 gwh_blocksize(512);")?;
+        write!(self.out, "dim3 {}(512);", GWH_BLOCKSIZE)?;
         self.out.newline()?;
-        write!(self.out, "dim3 gwh_gridsize((gwh_thread_count - 1) / 512 + 1);")?;
+        write!(self.out, "dim3 {}(({} - 1) / 512 + 1);", GWH_GRIDSIZE, GWH_THREADCOUNT)?;
         self.out.newline()?;
-        write!(self.out, "{}<<< gwh_gridsize, gwh_blocksize >>>(", kernel_name)?;
+        write!(self.out, "{}<<< {}, {} >>>(", kernel_name, GWH_GRIDSIZE, GWH_BLOCKSIZE)?;
         self.out.enter_indented_level()?;
 
         self.global_out.newline()?;
@@ -297,8 +366,8 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         write!(self.global_out, "__global__ void {}(", kernel_name)?;
 
 
-        write!(self.out, "gwh_thread_count")?;
-        write!(self.global_out, "size_t gwh_thread_count")?;
+        write!(self.out, "{}", GWH_THREADCOUNT)?;
+        write!(self.global_out, "size_t {}", GWH_THREADCOUNT)?;
         for (var_type, used_var) in used_outer_vars {
             match var_type.storage {
                 OutStorage::Value | OutStorage::PtrDevice => {
@@ -329,7 +398,7 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
 
         write!(self.global_out, ") ")?;
         self.global_out.enter_block()?;
-        write!(self.global_out, "if (threadIdx.x < gwh_thread_count) ")?;
+        write!(self.global_out, "if (threadIdx.x < {}) ", GWH_THREADCOUNT)?;
         self.global_out.enter_block()?;
 
         body(Box::new(CudaDeviceBlockGenerator {
@@ -351,7 +420,25 @@ pub struct CudaDeviceBlockGenerator<'a> {
 
 impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
 
-    fn write_copy(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
+    fn write_value_assign(&mut self, ty: OutType, assignee: OutExpression, val: OutExpression) -> OutResult {
+        assert!(ty.storage == OutStorage::Value);
+        write_expr_value_device(&mut self.out, assignee)?;
+        write!(self.out, " = ")?;
+        write_expr_value_device(&mut self.out, val)?;
+        write!(self.out, ";")?;
+        self.out.newline()?;
+        return Ok(());
+    }
+
+    fn write_assert(&mut self, value: OutExpression) -> OutResult {
+        write!(self.out, "assert(")?;
+        write_expr_value_device(&mut self.out, value)?;
+        write!(self.out, ");")?;
+        self.out.newline()?;
+        return Ok(());
+    }
+
+    fn write_range_assign(&mut self, target_ty: OutType, target: OutExpression, source_ty: OutType, source: OutExpression, len: OutExpression) -> OutResult {
         assert!(target_ty.storage == OutStorage::PtrDevice);
         assert!(source_ty.storage == OutStorage::PtrDevice);
         assert!(target_ty.base == source_ty.base);
@@ -361,7 +448,7 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
         write_expr_value_device(&mut self.out, target)?;
         write!(self.out, "), static_cast<void*>(")?;
         write_expr_value_device(&mut self.out, source)?;
-        write!(self.out, "), sizeof({}) * (", get_base_type_str(target_ty))?;
+        write!(self.out, "), sizeof({}) * (", get_base_type_str(&target_ty))?;
         write_expr_value_device(&mut self.out, len)?;
         write!(self.out, "));")?;
         self.out.newline()?;
@@ -398,7 +485,7 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
         return Ok(());
     }
 
-    fn write_index_assign(&mut self, ty: OutType, arr: OutExpression, index: OutExpression, val: OutExpression) -> OutResult {
+    fn write_entry_assign(&mut self, ty: OutType, arr: OutExpression, index: OutExpression, val: OutExpression) -> OutResult {
         assert!(ty.storage == OutStorage::PtrDevice);
         write_expr_value_device(&mut self.out, arr)?;
         write!(self.out, "[")?;
@@ -407,6 +494,29 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
         write_expr_value_device(&mut self.out, val)?;
         write!(self.out, ";")?;
         self.out.newline()?;
+        return Ok(());
+    }
+
+    fn write_integer_for<'b>(
+        &mut self, 
+        name: String,
+        init: OutExpression,
+        limit: OutExpression,
+        increment: OutExpression, 
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult {
+        write!(self.out, "for (size_t {} = ", name)?;
+        write_expr_value_host(&mut self.out, init)?;
+        write!(self.out, "; {} < ", name)?;
+        write_expr_value_host(&mut self.out, limit)?;
+        write!(self.out, "; {} += ", name)?;
+        write_expr_value_host(&mut self.out, increment)?;
+        write!(self.out, ") ")?;
+        self.out.enter_block()?;
+
+        body(Box::new(self as &mut dyn BlockGenerator))?;
+
+        self.out.exit_block()?;
         return Ok(());
     }
 
@@ -451,11 +561,11 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
 
         let index_var_index = *self.unique_identifier;
         *self.unique_identifier += 1;
-        let index_var = format!("gwh_i_{}", index_var_index);
+        let index_var = format!("{}{}", GWH_FOR_LOOP_INDEX_PREFIX, index_var_index);
 
         let thread_count_index = *self.unique_identifier;
         *self.unique_identifier += 1;
-        let thread_count_var = format!("gwh_thread_count_{}", thread_count_index);
+        let thread_count_var = format!("{}{}", GWH_FOR_LOOP_THREADCOUNT_PREFIX, thread_count_index);
 
         self.out.enter_block()?;
         write!(self.out, "size_t {} = static_cast<size_t>(", thread_count_var)?;
@@ -507,7 +617,7 @@ fn test_cuda_block_gen() {
         main_gen.write_parallel_code(
             OutExpression::Literal(10), 
             Box::new(|mut g: Box<dyn BlockGenerator>, tid| {
-                g.write_index_assign(
+                g.write_entry_assign(
                     device_ty,
                     OutExpression::Symbol("foo".to_owned()),
                     tid.clone(),

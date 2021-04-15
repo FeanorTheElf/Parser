@@ -407,6 +407,7 @@ fn test_ref_remove_get_negative() {
 }
 
 #[cfg(test)]
+#[allow(unused)]
 fn _test_compile_errors() {
     let mut vec: DynRefVec<i32> = DynRefVec::new();
 

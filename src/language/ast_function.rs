@@ -246,7 +246,7 @@ impl Program {
         order: Vec<Ptr<'a, Function>>
     ) -> impl 'a + Iterator<Item = usize> 
     {
-        self.items.iter().map(move |f: &Function| order.iter().enumerate().find(|(i, g)| g.get_name() == f.get_name()).unwrap().0)
+        self.items.iter().map(move |f: &Function| order.iter().enumerate().find(|(_, g)| g.get_name() == f.get_name()).unwrap().0)
     }
 
     fn for_functions_stored_order<'a, I>(
