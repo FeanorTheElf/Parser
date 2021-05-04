@@ -21,4 +21,4 @@ pub mod concrete_views;
 
 #[cfg(test)]
 #[macro_use]
-pub mod ast_test;
+pub mod test;

@@ -16,4 +16,4 @@ pub use super::super::util::ref_eq::*;
 pub use std::cell::{Ref, RefCell};
 
 #[cfg(test)]
-pub use super::ast_test::*;
+pub use super::test::*;

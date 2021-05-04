@@ -526,3 +526,69 @@ impl StatementFuncs for ParallelFor {
 }
 
 impl Statement for ParallelFor {}
+
+#[cfg(test)]
+use super::super::language::test::*;
+
+#[test]
+fn test_symbols_pfor() {
+    let pfor = ParallelFor::parse(&mut fragment_lex("
+
+        pfor a: int, b: int, with write this[a, 2 * b,] as even, write this[a, 2 * b + 1,] as odd, in array with this[a, i,] as foo, in array2 {
+            even = foo + a;
+            odd = even - b;
+        }
+
+    "), &mut ParserContext::new()).unwrap();
+    
+    let mut scopes = DefinitionScopeStackConst::new();
+    let defs = [testdef("array"), testdef("array2"), testdef("i")];
+    for d in &defs {
+        scopes.register_symbol(d);
+    }
+
+    let mut counter = 0;
+    pfor.traverse_preorder(&scopes, &mut |_, scopes| {
+        counter += 1;
+        if counter > 1 {
+            assert!(scopes.get(&Name::l("a")).is_some());
+            assert!(scopes.get(&Name::l("b")).is_some());
+            assert!(scopes.get(&Name::l("i")).is_some());
+            assert!(scopes.get(&Name::l("even")).is_some());
+            assert!(scopes.get(&Name::l("odd")).is_some());
+            assert!(scopes.get(&Name::l("foo")).is_some());
+        }
+        return RECURSE;
+    }).unwrap();
+
+    assert_eq!(3, counter);
+}
+
+#[test]
+fn test_transform_pfor() {
+    let pfor = ParallelFor::parse(&mut fragment_lex("
+
+        pfor a: int, b: int, with write this[a, 2 * b,] as even, write this[a, 2 * b + 1,] as odd, in array with this[a, i,] as foo, in array2 {
+            even = foo + a;
+            odd = even - b;
+        }
+
+    "), &mut ParserContext::new()).unwrap();
+    
+    assert_eq!(1, pfor.used_variables.len());
+    assert_eq!(2, pfor.index_variables.len());
+
+    let t1 = pfor.access_pattern().unwrap().next().unwrap().accessed_entries().next().unwrap().transform();
+
+    #[rustfmt::skip]
+    assert_eq!(Matrix::from_array([[r64::ONE,  r64::ZERO,    r64::ZERO], 
+                                   [r64::ZERO, r64::from(2), r64::ZERO]]), t1.linear_part);
+    assert_eq!(Vector::from_array([r64::ZERO, r64::ZERO]), t1.affine_part);
+    
+    let t2 = pfor.access_pattern().unwrap().next().unwrap().accessed_entries().skip(1).next().unwrap().transform();
+
+    #[rustfmt::skip]
+    assert_eq!(Matrix::from_array([[r64::ONE,  r64::ZERO,    r64::ZERO], 
+                                   [r64::ZERO, r64::from(2), r64::ZERO]]), t2.linear_part);
+    assert_eq!(Vector::from_array([r64::ZERO, r64::ONE]), t2.affine_part);
+}
