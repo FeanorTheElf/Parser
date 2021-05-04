@@ -1,3 +1,7 @@
+pub use crate::language::error::{CompileError, ErrorType};
+pub use crate::language::position::TextPosition;
+pub use crate::lexer::tokens::Token;
+
 pub trait Flatten {
     type Flattened;
 
@@ -8,7 +12,6 @@ impl<A> Flatten for (A, ()) {
     type Flattened = (A,);
 
     fn flatten(self) -> Self::Flattened {
-
         (self.0,)
     }
 }
@@ -17,7 +20,6 @@ impl<A, B> Flatten for (A, (B,)) {
     type Flattened = (A, B);
 
     fn flatten(self) -> Self::Flattened {
-
         (self.0, (self.1).0)
     }
 }
@@ -26,7 +28,6 @@ impl<A, B, C> Flatten for (A, (B, C)) {
     type Flattened = (A, B, C);
 
     fn flatten(self) -> Self::Flattened {
-
         (self.0, (self.1).0, (self.1).1)
     }
 }
@@ -35,7 +36,6 @@ impl<A, B, C, D> Flatten for (A, (B, C, D)) {
     type Flattened = (A, B, C, D);
 
     fn flatten(self) -> Self::Flattened {
-
         (self.0, (self.1).0, (self.1).1, (self.1).2)
     }
 }
@@ -44,11 +44,71 @@ impl<A, B, C, D, E> Flatten for (A, (B, C, D, E)) {
     type Flattened = (A, B, C, D, E);
 
     fn flatten(self) -> Self::Flattened {
-
         (self.0, (self.1).0, (self.1).1, (self.1).2, (self.1).3)
     }
 }
 
+impl<A, B, C, D, E, F> Flatten for (A, (B, C, D, E, F)) {
+    type Flattened = (A, B, C, D, E, F);
+
+    fn flatten(self) -> Self::Flattened {
+        (self.0, (self.1).0, (self.1).1, (self.1).2, (self.1).3, (self.1).4)
+    }
+}
+
+pub trait ToArray {
+    type ArrayType;
+
+    fn to_array(self) -> Self::ArrayType;
+}
+
+impl<A> ToArray for (A,) {
+    type ArrayType = [A; 1];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0]
+    }
+}
+
+impl<A> ToArray for (A, A) {
+    type ArrayType = [A; 2];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0, self.1]
+    }
+}
+
+impl<A> ToArray for (A, A, A) {
+    type ArrayType = [A; 3];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0, self.1, self.2]
+    }
+}
+
+impl<A> ToArray for (A, A, A, A) {
+    type ArrayType = [A; 4];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0, self.1, self.2, self.3]
+    }
+}
+
+impl<A> ToArray for (A, A, A, A, A) {
+    type ArrayType = [A; 5];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0, self.1, self.2, self.3, self.4]
+    }
+}
+
+impl<A> ToArray for (A, A, A, A, A, A) {
+    type ArrayType = [A; 6];
+
+    fn to_array(self) -> Self::ArrayType {
+        [self.0, self.1, self.2, self.3, self.4, self.5]
+    }
+}
 macro_rules! debug_assert_at_most_one_of_applicable {
     ($stream:ident; $($variant:ident)|*) => {
         debug_assert!([$(
@@ -174,27 +234,42 @@ macro_rules! impl_is_applicable_predicate
     };
 }
 
+impl CompileError {
+
+    pub fn unexpected_token(pos: &TextPosition, got: &Token, expected: &[&str], while_parsing: &str) -> CompileError {
+        CompileError::new(
+            pos,
+            format!("Expected one of {:?}, but got {:?} while parsing {}", expected, got, while_parsing),
+            ErrorType::SyntaxError
+        )
+    }
+}
+
 macro_rules! impl_parse_function
 {
-    ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident) =>
+    ($stream:ident; $progcontainer:ident; $result:ty; $expected_tokens:expr; $variant:ident) =>
     {
         if <$variant>::is_applicable($stream) {
             let pos = ($stream).pos().clone();
             let parts = $variant::parse($stream, $progcontainer)?;
 			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
-			Err(CompileError::new(($stream.pos()),
-				format!("{} or {}, got {:?} while parsing {}", $expected_string, stringify!($variant), ($stream).peek().unwrap(), stringify!($result)), ErrorType::SyntaxError))
+			Err(CompileError::unexpected_token(
+                ($stream).pos(), 
+                ($stream).peek().unwrap(), 
+                &(stringify!($variant), $expected_tokens).flatten().to_array()[..],
+                stringify!($result)
+            ))
 		}
     };
-    ($stream:ident; $progcontainer:ident; $result:ty; $expected_string:expr; $variant:ident | $($tail:tt)*) =>
+    ($stream:ident; $progcontainer:ident; $result:ty; $expected_tokens:expr; $variant:ident | $($tail:tt)*) =>
     {
         if <$variant>::is_applicable($stream) {
             let pos = ($stream).pos().clone();
             let parts = $variant::parse($stream, $progcontainer)?;
 			Ok(<$result>::build(pos, $progcontainer, parts))
 		} else {
-			impl_parse_function!($stream; $progcontainer; $result;  format!("{}, {}", $expected_string, stringify!($variant)); $($tail)*)
+			impl_parse_function!($stream; $progcontainer; $result; (stringify!($variant), $expected_tokens).flatten(); $($tail)*)
 		}
     };
 }
@@ -223,7 +298,7 @@ macro_rules! impl_parse_trait
             fn parse(stream: &mut Stream, context: &mut ParserContext) -> Result<Self::ParseOutputType, CompileError>
             {
                 debug_assert_at_most_one_of_applicable!(stream; $($variant)|*);
-                impl_parse_function!(stream; context; $result; "Expected"; $($variant)|*)
+                impl_parse_function!(stream; context; $result; (); $($variant)|*)
 			}
 		}
     };

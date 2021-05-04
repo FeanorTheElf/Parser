@@ -127,6 +127,20 @@ impl Expression {
         };
         return Ok(());
     }
+
+    pub fn apply_operator<I>(pos: &TextPosition, it: I, op: BuiltInIdentifier) -> Expression 
+        where I: IntoIterator<Item = Expression>
+    {
+        Expression::Call(Box::new(FunctionCall {
+            pos: pos.clone(),
+            function: Expression::Variable(Variable {
+                pos: pos.clone(),
+                identifier: Identifier::BuiltIn(op)
+            }),
+            result_type_cache: None,
+            parameters: it.into_iter().collect()
+        }))
+    }
 }
 
 pub struct ExpressionIdentifierIter<'a> {

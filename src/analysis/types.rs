@@ -309,7 +309,7 @@ fn determine_types_in_statement(
     }
     if let Some(decl) = statement.downcast_mut::<LocalVariableDeclaration>() {
         let assigned_type = get_expression_type_nonvoid(&decl.value, scopes)?;
-        let target_type = &mut decl.declaration.var_type;
+        let target_type = decl.declaration.get_type_mut();
         if !target_type.is_initializable_by(target_type) {
             Err(CompileError::not_initializable(&decl.value.pos(), target_type, assigned_type))?;
         }
@@ -361,7 +361,7 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
         let mut counter = 0;
         for p in &mut func.parameters {
             if p.get_type().is_view() {
-                p.var_type.as_view_mut().unwrap().concrete_view = Some(Box::new(ViewTemplate::new(counter)));
+                p.get_type_mut().as_view_mut().unwrap().concrete_view = Some(Box::new(ViewTemplate::new(counter)));
                 counter += 1;
             }
         }
@@ -374,37 +374,48 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
     return Ok(());
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TypeNotYetCalculated;
+
 pub trait TypeStored {
-    fn get_stored_voidable_type(&self) -> Option<&Type>;
+    fn get_stored_type_if_calculated(&self) -> Result<Option<&Type>, TypeNotYetCalculated>;
 
     fn get_stored_type(&self) -> &Type {
-        self.get_stored_voidable_type().unwrap()
+        self.get_stored_type_if_calculated().unwrap().unwrap()
+    }
+
+    fn get_voidable_stored_type(&self) -> Option<&Type> {
+        self.get_stored_type_if_calculated().unwrap()
     }
 }
 
 impl TypeStored for FunctionCall {
-    fn get_stored_voidable_type(&self) -> Option<&Type> {
-        self.result_type_cache.as_ref().expect("Called get_type() on a function call expression whose type has not yet been calculated").as_ref()
+    fn get_stored_type_if_calculated(&self) -> Result<Option<&Type>, TypeNotYetCalculated> {
+        self.result_type_cache.as_ref().map(Option::as_ref).ok_or(TypeNotYetCalculated)
     }
 }
 
 impl TypeStored for Literal {
-    fn get_stored_voidable_type(&self) -> Option<&Type> {
-        Some(&self.literal_type)
+    fn get_stored_type_if_calculated(&self) -> Result<Option<&Type>, TypeNotYetCalculated> {
+        Ok(Some(&self.literal_type))
+    }
+}
+
+pub fn get_expression_type_if_calculated<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expression, scopes: &'a D) -> Result<Option<&'a Type>, TypeNotYetCalculated> {
+    match expr {
+        Expression::Call(call) => {
+            call.get_stored_type_if_calculated()
+        },
+        Expression::Variable(var) => match &var.identifier {
+            Identifier::Name(name) => Ok(Some(scopes.get_defined(name, var.pos()).internal_error().get_type())),
+            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
+        },
+        Expression::Literal(lit) => lit.get_stored_type_if_calculated()
     }
 }
 
 pub fn get_expression_type<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expression, scopes: &'a D) -> Option<&'a Type> {
-    match expr {
-        Expression::Call(call) => {
-            call.get_stored_voidable_type()
-        },
-        Expression::Variable(var) => match &var.identifier {
-            Identifier::Name(name) => Some(scopes.get_defined(name, var.pos()).internal_error().get_type()),
-            Identifier::BuiltIn(op) => panic!("Called calculate_type() on builtin identifier {:?}, but builtin identifiers can have different types depending on context", op)
-        },
-        Expression::Literal(lit) => lit.get_stored_voidable_type()
-    }
+    get_expression_type_if_calculated(expr, scopes).unwrap()
 }
 
 pub fn get_expression_type_nonvoid<'a, D: DefinitionEnvironment<'a, 'a>>(expr: &'a Expression, scopes: &'a D) -> Result<&'a Type, CompileError> {
@@ -429,7 +440,7 @@ fn test_determine_types_in_program() {
         program.items[0].body.as_ref().unwrap()
             .statements().next().unwrap()
             .downcast::<LocalVariableDeclaration>().unwrap()
-            .declaration.var_type
+            .declaration.get_type()
             .as_view().unwrap()
             .get_concrete()
     );
@@ -439,7 +450,7 @@ fn test_determine_types_in_program() {
         program.items[0].body.as_ref().unwrap()
             .statements().skip(1).next().unwrap()
             .downcast::<LocalVariableDeclaration>().unwrap()
-            .declaration.var_type
+            .declaration.get_type()
             .as_view().unwrap()
             .get_concrete()
     );

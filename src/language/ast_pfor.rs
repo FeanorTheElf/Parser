@@ -8,6 +8,7 @@ use super::ast_statement::*;
 use super::gwaihir_writer::*;
 use super::scopes::*;
 use super::symbol::*;
+use super::concrete_views::*;
 use feanor_la::la::mat::*;
 use feanor_la::algebra::rat::*;
 
@@ -137,7 +138,6 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
     
     match expr {
         Expression::Call(call) if call.function == BuiltInIdentifier::FunctionMul => {
-
             let mut factor = r64::ONE;
             let mut transform: Option<AffineTransform1D> = None;
             for p in &call.parameters {
@@ -154,7 +154,6 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
             return Ok(result);
         },
         Expression::Call(call) if call.function == BuiltInIdentifier::FunctionAdd => {
-
             let mut result = to_affine_transform(&call.parameters[0], vars)?;
             for p in call.parameters.iter().skip(1) {
                 result = result.add(to_affine_transform(p, vars)?);
@@ -162,13 +161,11 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
             return Ok(result);
         },
         Expression::Call(call) if call.function == BuiltInIdentifier::FunctionUnaryNeg => {
-
             assert!(call.parameters.len() == 1);
             let result = to_affine_transform(&call.parameters[0], vars)?;
             return Ok(result.neg());
         },
         Expression::Call(call) if call.function == BuiltInIdentifier::FunctionUnaryDiv => {
-
             assert!(call.parameters.len() == 1);
             let result = to_constant(&call.parameters[0])?;
             return Ok(AffineTransform1D::only_affine(vars.len(), r64::ONE / result));
@@ -193,12 +190,20 @@ pub struct AffineTransform {
     pub affine_part: Vector<VectorOwned<r64>, r64>
 }
 
+impl AffineTransform {
+
+    pub fn components<'a>(&'a self) -> impl 'a + Iterator<Item = (Vector<MatrixRow<'a, r64, MatrixOwned<r64>>, r64>, r64)> {
+        (0..self.linear_part.row_count()).map(move |i| (self.linear_part.row(i), self.affine_part[i]))
+    }
+}
+
 #[derive(Debug)]
 pub struct ArrayEntryAccess {
     pos: TextPosition,
     alias: Name,
     pub writeable: bool,
-    entry: AffineTransform
+    entry: AffineTransform,
+    ty: Option<Type>
 }
 
 impl AstNodeFuncs for ArrayEntryAccess {
@@ -238,15 +243,48 @@ impl ArrayEntryAccess {
             linear_part: transform_linear_part,
             affine_part: transform_affine_part
         };
+        let ty = None;
         return Ok(ArrayEntryAccess {
-            pos, alias, writeable, entry
+            pos, alias, writeable, entry, ty
         });
     }
 
-    pub fn get_transform(&self) -> &AffineTransform {
+    pub fn transform(&self) -> &AffineTransform {
         &self.entry
     }
+
+    fn store_type(&mut self, array_type: &Type) {
+        let ty = match array_type {
+            Type::Static(s) => s.get_base().as_scalar_type(self.writeable).with_concrete_view(VIEW_INDEX),
+            Type::View(v) => v.view_onto.get_base()
+                .as_scalar_type(self.writeable)
+                .with_concrete_view_dyn(ViewComposed::compose(VIEW_INDEX, v.get_concrete().dyn_clone())),
+            Type::Function(_) => panic!("function type cannot be used in pfor")
+        };
+        self.ty = Some(ty);
+    }
 }
+
+impl SymbolDefinitionFuncs for ArrayEntryAccess {
+    
+    fn get_name(&self) -> &Name {
+        &self.alias
+    }
+
+    fn get_name_mut(&mut self) -> &mut Name {
+        &mut self.alias
+    }
+
+    fn cast_statement_mut(&mut self) -> Option<&mut dyn Statement> {
+        None
+    }
+
+    fn get_type(&self) -> &Type {
+        self.ty.as_ref().unwrap()
+    }
+}
+
+impl SymbolDefinition for ArrayEntryAccess {}
 
 #[derive(Debug)]
 pub struct ArrayAccessPattern {
@@ -290,6 +328,17 @@ impl ArrayAccessPattern {
 
     pub fn accessed_entries(&self) -> impl Iterator<Item = &ArrayEntryAccess> {
         self.pattern.iter()
+    }
+
+    ///
+    /// Stores the correct types for the variables in the pfor body that reference
+    /// the corresponding array entries. This just stores types, but performs no
+    /// type checking etc.
+    /// 
+    pub fn store_array_entry_types(&mut self, array_type: &Type) {
+        for entry in &mut self.pattern {
+            entry.store_type(array_type);
+        }
     }
 }
 
@@ -369,6 +418,17 @@ impl ParallelFor {
     pub fn access_pattern(&self) -> Result<impl Iterator<Item = &ArrayAccessPattern>, CompileError> {
         self.access_pattern.as_ref().map(|v| v.iter()).map_err(CompileError::clone)
     }
+
+    pub fn variable_by_index(&self, i: usize, pos: &TextPosition) -> Expression {
+        if i < self.index_variables.len() {
+            Expression::Variable(Variable {
+                pos: pos.clone(),
+                identifier: Identifier::Name(self.index_variables[i].get_name().clone())
+            })
+        } else {
+            self.used_variables[i - self.index_variables.len()].clone()
+        }
+    }
 }
 
 impl AstNodeFuncs for ParallelFor {
@@ -412,7 +472,6 @@ impl StatementFuncs for ParallelFor {
                         .chain(self.used_variables.iter())
                         .flat_map(|e| e.names())
                 )
-                .chain(self.body.names())
         )
     }
 
@@ -424,7 +483,6 @@ impl StatementFuncs for ParallelFor {
                     .chain(self.used_variables.iter_mut())
                     .flat_map(|e| e.names_mut())
             )
-            .chain(self.body.names_mut())
         )
     }
 
@@ -436,9 +494,15 @@ impl StatementFuncs for ParallelFor {
         let recurse = f(self, parent_scopes);
         let mut scopes = parent_scopes.child_stack();
         for def in &self.index_variables {
-            scopes.register(def.name.clone(), def as &dyn SymbolDefinition);
+            scopes.register(def.get_name().clone(), def as &dyn SymbolDefinition);
         }
-        self.body.traverse_preorder_base(&scopes, f, recurse)
+        for array in self.access_pattern.as_ref()?.iter() {
+            for access in array.pattern.iter() {
+                scopes.register_symbol(access);
+            }
+        }
+
+        return self.body.traverse_preorder_base(&scopes, f, recurse);
     }
 
     fn traverse_preorder_mut<'a>(
@@ -449,9 +513,15 @@ impl StatementFuncs for ParallelFor {
         let recurse = f(self, parent_scopes);
         let mut scopes = parent_scopes.child_stack();
         for def in &mut self.index_variables {
-            scopes.register(def.name.clone(), def as &mut dyn SymbolDefinition);
+            scopes.register_symbol(def as &mut dyn SymbolDefinition);
         }
-        self.body.traverse_preorder_mut_base(&scopes, f, recurse)
+        for array in self.access_pattern.as_mut()?.iter_mut() {
+            for access in array.pattern.iter_mut() {
+                scopes.register_symbol(access);
+            }
+        }
+
+        return self.body.traverse_preorder_mut_base(&scopes, f, recurse);
     }
 }
 

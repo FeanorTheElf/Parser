@@ -53,6 +53,7 @@ pub struct ScopeStack<'a, T> {
 }
 
 impl<'a, T> ScopeStack<'a, T> {
+
     pub fn new() -> ScopeStack<'a, T> {
         ScopeStack {
             parent: None,
@@ -85,25 +86,11 @@ impl<'a, T> ScopeStack<'a, T> {
         self.all_stacks().flat_map(|stack| stack.this_scope_definitions())
     }
 
-    pub fn rename_disjunct<'b>(&'b self) -> impl 'b + FnMut(Name) -> Name {
-        let mut current: HashMap<String, u32> = HashMap::new();
-        move |name: Name| {
-            if let Some(index) = current.get_mut(&name.name) {
-                *index += 1;
-                Name::new(name.name, *index)
-            } else {
-                let index: u32 = self
-                    .definitions()
-                    .filter(|def| def.0.name == name.name)
-                    .map(|def| def.0.id)
-                    .max()
-                    .map(|x| x + 1)
-                    .unwrap_or(0);
-
-                current.insert(name.name.clone(), index);
-                Name::new(name.name, index)
-            }
+    pub fn rename_disjunct<'b>(&'b self, mut name: Name) -> Name {
+        while self.get(&name).is_some() {
+            name.id += 1;
         }
+        return name;
     }
 
     pub fn get<'b>(&'b self, name: &Name) -> Option<&'b T> {
@@ -135,5 +122,19 @@ impl<'a, T> ScopeStack<'a, T> {
         let entry = self.definitions.remove(name);
         assert!(entry.is_some());
         return entry.unwrap();
+    }
+}
+
+impl<'a, 'b> ScopeStack<'a, &'b dyn SymbolDefinition> {
+
+    pub fn register_symbol(&mut self, symbol: &'b dyn SymbolDefinition) {
+        self.register(symbol.get_name().clone(), symbol)
+    }
+}
+
+impl<'a, 'b> ScopeStack<'a, &'b mut dyn SymbolDefinition> {
+
+    pub fn register_symbol(&mut self, symbol: &'b mut dyn SymbolDefinition) {
+        self.register(symbol.get_name().clone(), symbol)
     }
 }

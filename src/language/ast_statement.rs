@@ -53,8 +53,8 @@ pub trait StatementFuncs: AstNode {
     /// 
     /// # Details
     /// This will return all names (i.e. user-defined identifiers) in this statement, which includes uses of variables/functions/... and
-    /// also declarations. Since names cannot be nested, all names are returned (as opposed to subblocks() and expressions()). The order
-    /// in which the names are returned is unspecified.
+    /// also declarations. As in `subblocks()` and `expressions()` only top-level names are returned, i.e. a name occurrence is listed if
+    /// it is part of this statement but not of a sub-statement.
     ///
     /// # Example
     /// ```
@@ -109,6 +109,7 @@ pub trait StatementFuncs: AstNode {
     ///     } else {
     ///         assert!(s.get(&Name::l("a")).is_none());
     ///     }
+    ///     return RECURSE;
     /// });
     /// assert_eq!(3, counter);
     /// ```
@@ -255,11 +256,11 @@ impl StatementFuncs for Block {
     }
 
     fn names<'a>(&'a self) -> Box<(dyn Iterator<Item = &'a Name> + 'a)> {
-        Box::new(self.statements.iter().flat_map(|s| s.names()))
+        Box::new(std::iter::empty())
     }
 
     fn names_mut<'a>(&'a mut self) -> Box<(dyn Iterator<Item = &'a mut Name> + 'a)> {
-        Box::new(self.statements.iter_mut().flat_map(|s| s.names_mut()))
+        Box::new(std::iter::empty())
     }
 
     fn traverse_preorder<'a>(
@@ -425,6 +426,13 @@ impl AstNodeFuncs for Declaration {
 }
 
 impl AstNode for Declaration {}
+
+impl Declaration {
+
+    pub fn get_type_mut(&mut self) -> &mut Type {
+        &mut self.var_type
+    }
+}
 
 impl SymbolDefinitionFuncs for Declaration {
 

@@ -3,8 +3,9 @@ use super::super::language::ast_ifwhile::*;
 use super::super::language::ast_return::*;
 use super::super::language::ast_assignment::*;
 use super::super::language::ast_pfor::*;
+use super::super::language::ast_goto::*;
 use super::super::lexer::tokens::{Stream, Token};
-use super::parser_gen::Flatten;
+use super::parser_gen::*;
 use super::{Build, Parseable, Parser, TopLevelParser, ParserContext};
 
 impl Parseable for Program {
@@ -121,7 +122,6 @@ impl Parseable for Declaration {
 
 impl Build<(Name, <Type as Parseable>::ParseOutputType)> for Declaration {
     fn build(pos: TextPosition, _context: &mut ParserContext, param: (Name, <Type as Parseable>::ParseOutputType)) -> Self::ParseOutputType {
-
         Declaration {
             pos: pos,
             var_type: param.1,
@@ -391,25 +391,46 @@ impl Build<ParallelFor> for dyn Statement {
     }
 }
 
-impl Parseable for Expression {
+impl Parseable for Label {
     type ParseOutputType = Self;
 }
 
-fn build_function_call(
-    pos: TextPosition,
-    function: BuiltInIdentifier,
-    params: Vec<<Expression as Parseable>::ParseOutputType>,
-) -> Expression {
+impl Build<(Name,)> for Label {
+    fn build(
+        pos: TextPosition, _context: &mut ParserContext,
+        param: (Name,),
+    ) -> Self::ParseOutputType {
+        Label::new(pos, param.0)
+    }
+}
 
-    Expression::Call(Box::new(FunctionCall {
-        pos: pos.clone(),
-        function: Expression::Variable(Variable {
-            pos: pos,
-            identifier: Identifier::BuiltIn(function),
-        }),
-        parameters: params,
-        result_type_cache: None
-    }))
+impl Build<Label> for dyn Statement {
+    fn build(_pos: TextPosition, _context: &mut ParserContext, param: Label) -> Self::ParseOutputType {
+        Box::new(param)
+    }
+}
+
+impl Parseable for Goto {
+    type ParseOutputType = Self;
+}
+
+impl Build<(Name,)> for Goto {
+    fn build(
+        pos: TextPosition, _context: &mut ParserContext,
+        param: (Name,),
+    ) -> Self::ParseOutputType {
+        Goto::new(pos, param.0)
+    }
+}
+
+impl Build<Goto> for dyn Statement {
+    fn build(_pos: TextPosition, _context: &mut ParserContext, param: Goto) -> Self::ParseOutputType {
+        Box::new(param)
+    }
+}
+
+impl Parseable for Expression {
+    type ParseOutputType = Self;
 }
 
 fn build_expr<T>(
@@ -427,14 +448,13 @@ where
     let second: Option<T> = data.next();
 
     if let Some(sec) = second {
-        build_function_call(
-            pos,
-            function,
+        Expression::apply_operator(
+            &pos,
             std::iter::once(first)
                 .chain(std::iter::once(sec))
                 .chain(data)
-                .map(|e| Expression::build(e.pos().clone(), context, e))
-                .collect(),
+                .map(|e| Expression::build(e.pos().clone(), context, e)),
+            function,
         )
     } else {
         Expression::build(pos, context, first)
@@ -507,7 +527,7 @@ impl Build<ExprNodeLevelCmp> for Expression {
                     ),
                 };
 
-                build_function_call(pos.clone(), function, vec![current, parameter])
+                Expression::apply_operator(&pos, vec![current, parameter], function)
             },
         )
     }
@@ -519,21 +539,20 @@ impl Build<ExprNodeLevelAdd> for Expression {
         let mut start_expr = Expression::build(param.0.clone(), context, (param.1).1);
 
         if let Some(unary_negation) = (param.1).0 {
-
-            start_expr = build_function_call(
-                unary_negation.0,
+            start_expr = Expression::apply_operator(
+                &unary_negation.0,
+                std::iter::once(start_expr),
                 BuiltInIdentifier::FunctionUnaryNeg,
-                vec![start_expr],
             );
         }
         let others = (param.1).2.into_iter().map(|node| match node {
             ExprNodeLevelAddPart::ExprNodeLevelAddPartAdd(part) => {
                 Expression::build(part.0, context, (part.1).0)
             }
-            ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => build_function_call(
-                part.0.clone(),
+            ExprNodeLevelAddPart::ExprNodeLevelAddPartSub(part) => Expression::apply_operator(
+                &part.0,
+                vec![Expression::build(part.0.clone(), context, (part.1).0)],
                 BuiltInIdentifier::FunctionUnaryNeg,
-                vec![Expression::build(part.0, context, (part.1).0)],
             ),
         }).collect();
         build_expr(
@@ -553,10 +572,10 @@ impl Build<ExprNodeLevelMul> for Expression {
             ExprNodeLevelMulPart::ExprNodeLevelMulPartMul(part) => {
                 Expression::build(part.0, context, (part.1).0)
             }
-            ExprNodeLevelMulPart::ExprNodeLevelMulPartDiv(part) => build_function_call(
-                part.0.clone(),
+            ExprNodeLevelMulPart::ExprNodeLevelMulPartDiv(part) => Expression::apply_operator(
+                &part.0,
+                vec![Expression::build(part.0.clone(), context, (part.1).0)],
                 BuiltInIdentifier::FunctionUnaryDiv,
-                vec![Expression::build(part.0, context, (part.1).0)],
             ),
         }).collect();
         build_expr(
@@ -581,10 +600,10 @@ impl Build<ExprNodeLevelCall> for Expression {
                     FunctionCallOrIndexAccess::IndexAccessParameters(index_access) => {
                         let mut indices = (index_access.1).0;
                         indices.insert(0, current);
-                        build_function_call(
-                            index_access.0,
+                        Expression::apply_operator(
+                            &index_access.0,
+                            indices.into_iter(),
                             BuiltInIdentifier::FunctionIndex,
-                            indices,
                         )
                     }
                     FunctionCallOrIndexAccess::FunctionCallParameters(function_call) => {
@@ -646,8 +665,8 @@ impl Parser for dyn Statement {
             || Block::is_applicable(stream)
             || Expression::is_applicable(stream)
             || LocalVariableDeclaration::is_applicable(stream)
-            // || Goto::is_applicable(stream)
-            // || Label::is_applicable(stream)
+            || Goto::is_applicable(stream)
+            || Label::is_applicable(stream)
             || ParallelFor::is_applicable(stream)
     }
 
@@ -673,12 +692,12 @@ impl Parser for dyn Statement {
                 pos, context,
                 statement,
             ))
-        // } else if Label::is_applicable(stream) {
-        //     let statement = Label::parse(stream, context)?;
-        //     Ok(<dyn Statement>::build(pos, context, statement))
-        // } else if Goto::is_applicable(stream) {
-        //     let statement = Goto::parse(stream, context)?;
-        //     Ok(<dyn Statement>::build(pos, context, statement))
+        } else if Label::is_applicable(stream) {
+            let statement = Label::parse(stream, context)?;
+            Ok(<dyn Statement>::build(pos, context, statement))
+        } else if Goto::is_applicable(stream) {
+            let statement = Goto::parse(stream, context)?;
+            Ok(<dyn Statement>::build(pos, context, statement))
         } else if ParallelFor::is_applicable(stream) {
             let statement = ParallelFor::parse(stream, context)?;
             Ok(<dyn Statement>::build(pos, context, statement))
@@ -713,9 +732,9 @@ impl_parse_trait! { While := Token#While Expression Block }
 
 impl_parse_trait! { Return := Token#Return [ Expression ] Token#Semicolon }
 
-// impl_parse_trait! { Label := Token#Target Name }
+impl_parse_trait! { Label := Token#Target Name }
 
-// impl_parse_trait! { Goto := Token#Goto Name Token#Semicolon }
+impl_parse_trait! { Goto := Token#Goto Name Token#Semicolon }
 
 grammar_rule! { ExpressionNode := Expression Token#Semicolon }
 
@@ -811,10 +830,10 @@ fn test_parser() {
     assert_eq!(1, ast.items.len());
 
     let param0 = &ast.items[0].parameters[0];
-    assert_eq!(Name::l("a"), param0.name);
+    assert_eq!(Name::l("a"), *param0.get_name());
     assert_eq!(
         Type::array_type(PrimitiveType::Int, 1, false), 
-        param0.var_type
+        *param0.get_type()
     );
 
     let pfor = ast.items[0].body.as_ref().unwrap()
@@ -824,8 +843,8 @@ fn test_parser() {
         .unwrap();
 
     let index_var = &pfor.index_variables[0];
-    assert_eq!(Name::l("c"), index_var.name);
-    assert_eq!(SCALAR_INT, index_var.var_type);
+    assert_eq!(Name::l("c"), *index_var.get_name());
+    assert_eq!(SCALAR_INT, *index_var.get_type());
 
     let assignment = pfor.body
         .statements().next().unwrap()

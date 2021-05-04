@@ -22,8 +22,8 @@ fn check_pfor_data_races(pfor: &ParallelFor) -> Result<(), CompileError> {
             for (j, entry2) in access_pattern.accessed_entries().enumerate() {
 
                 let one_write = entry1.writeable || entry2.writeable;
-                let transform1 = entry1.get_transform();
-                let transform2 = entry2.get_transform();
+                let transform1 = entry1.transform();
+                let transform2 = entry2.transform();
 
                 if one_write {
                     let index_var_transform1 = transform1.linear_part.submatrix(.., ..index_var_count);
@@ -105,10 +105,10 @@ impl CompileError {
         where V: VectorView<i32>, W: VectorView<i32>, U: VectorView<i32>
     {
         let var_assignment1 = pfor.index_variables.iter().enumerate()
-            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(&variable.name), *vars1.at(i)));
+            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(variable.get_name()), *vars1.at(i)));
 
         let var_assignment2 = pfor.index_variables.iter().enumerate()
-            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(&variable.name), *vars2.at(i)));
+            .map(|(i, variable)| format!("{} = {}", DisplayWrapper::from(variable.get_name()), *vars2.at(i)));
 
         let shared_var_assignment = pfor.used_variables.iter().enumerate()
             .map(|(i, expr)| format!("{} = {}", DisplayWrapper::from(expr), *shared_vars.at(i)));

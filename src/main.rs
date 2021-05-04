@@ -25,7 +25,7 @@ mod lexer;
 mod parser;
 
 mod analysis;
-// mod transformation;
+mod transformation;
 
 mod cuda;
 

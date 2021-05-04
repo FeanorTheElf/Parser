@@ -13,10 +13,12 @@ pub mod ast_return;
 pub mod ast_assignment;
 pub mod ast_function;
 pub mod ast_pfor;
+pub mod ast_goto;
 pub mod prelude;
 pub mod compiler;
 pub mod gwaihir_writer;
 pub mod concrete_views;
 
 #[cfg(test)]
+#[macro_use]
 pub mod ast_test;

@@ -24,7 +24,7 @@ impl Function {
         Function {
             pos: pos,
             name: name,
-            function_type: Type::function_type(parameters.iter().map(|d| d.var_type.clone()), return_type),
+            function_type: Type::function_type(parameters.iter().map(|d| d.get_type().clone()), return_type),
             parameters: parameters,
             body: body
         }

@@ -87,3 +87,17 @@ impl<T> InternalErrorConvertable<T> for Result<T, CompileError> {
         self.expect(INTERNAL_ERROR)
     }
 }
+
+impl<'a> From<&'a CompileError> for CompileError {
+
+    fn from(x: &'a CompileError) -> Self {
+        x.clone()
+    }
+}
+
+impl<'a> From<&'a mut CompileError> for CompileError {
+
+    fn from(x: &'a mut CompileError) -> Self {
+        x.clone()
+    }
+}

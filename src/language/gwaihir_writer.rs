@@ -2,6 +2,8 @@ use super::prelude::*;
 use super::ast_assignment::*;
 use super::ast_ifwhile::*;
 use super::ast_return::*;
+use super::ast_goto::*;
+use super::ast_pfor::*;
 use super::compiler::*;
 use super::super::util::cmp::Comparing;
 
@@ -223,33 +225,46 @@ impl AstWriter for Return {
     }
 }
 
-// impl AstWriter for ParallelFor {
-//     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-//         write!(out, "pfor ")?;
-//         for index_var in &self.index_variables {
-//             index_var.variable.write(out)?;
-//             write!(out, ": int, ")?;
-//         }
-//         for access_pattern in &self.access_pattern {
-//             write!(out, "with ")?;
-//             for entry_access in &access_pattern.entry_accesses {
-//                 write!(out, "this[")?;
-//                 for index in &entry_access.indices {
-//                     index.write(out)?;
-//                     write!(out, ", ")?;
-//                 }
-//                 write!(out, "]")?;
-//                 if let Some(alias) = &entry_access.alias {
-//                     write!(out, " as ")?;
-//                     alias.write(out)?;
-//                 }
-//                 write!(out, ", ")?;
-//             }
-//         }
-//         self.body.write(out)?;
-//         return Ok(());
-//     }
-// }
+impl AstWriter for ParallelFor {
+
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        // write!(out, "pfor ")?;
+        // for index_var in &self.index_variables {
+        //     index_var.name.write(out)?;
+        //     write!(out, ": int, ")?;
+        // }
+        // for access_pattern in self.access_pattern().internal_error() {
+        //     write!(out, "with ")?;
+        //     for entry_access in access_pattern.accessed_entries() {
+        //         write!(out, "this[")?;
+        //         for (linear_part, affine_part) in entry_access.transform().components() {
+        //             write_expression(
+        //                 &Expression::apply_operator(
+        //                     &TextPosition::NONEXISTING, 
+        //                     (0..linear_part.len()).map(|i| Expression::apply_operator(
+        //                         &TextPosition::NONEXISTING, 
+        //                         vec![self.variable_by_index(i, &TextPosition::NONEXISTING)], 
+        //                         BuiltInIdentifier::FunctionMul
+        //                     )), 
+        //                     BuiltInIdentifier::FunctionAdd
+        //                 ), 
+        //                 i32::MIN, 
+        //                 out
+        //             )?;
+        //             write!(out, ", ")?;
+        //         }
+        //         write!(out, "]")?;
+        //         if let Some(alias) = &entry_access.alias() {
+        //             write!(out, " as ")?;
+        //             alias.write(out)?;
+        //         }
+        //         write!(out, ", ")?;
+        //     }
+        // }
+        // self.body.write(out)?;
+        return Ok(());
+    }
+}
 
 impl AstWriter for dyn Statement {
 
@@ -266,12 +281,12 @@ impl AstWriter for dyn Statement {
             statement.write(out)
         } else if let Some(statement) = self.any().downcast_ref::<Assignment>() {
             statement.write(out)
-        // } else if let Some(statement) = self.any().downcast_ref::<Goto>() {
-        //     statement.write(out)
-        // } else if let Some(statement) = self.any().downcast_ref::<Label>() {
-        //     statement.write(out)
-        // } else if let Some(statement) = self.any().downcast_ref::<ParallelFor>() {
-        //     statement.write(out)
+        } else if let Some(statement) = self.any().downcast_ref::<Goto>() {
+            statement.write(out)
+        } else if let Some(statement) = self.any().downcast_ref::<Label>() {
+            statement.write(out)
+        } else if let Some(statement) = self.any().downcast_ref::<ParallelFor>() {
+            statement.write(out)
         } else if let Some(statement) = self.any().downcast_ref::<Expression>() {
             statement.write(out)?;
             write!(out, ";").map_err(OutputError::from)
@@ -296,9 +311,9 @@ impl AstWriter for Block {
 impl AstWriter for LocalVariableDeclaration {
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
         write!(out, "let ")?;
-        self.declaration.name.write(out)?;
+        self.declaration.get_name().write(out)?;
         write!(out, ": ")?;
-        self.declaration.var_type.write(out)?;
+        self.declaration.get_type().write(out)?;
         write!(out, " = ")?;
         write_expression(&self.value, i32::MIN, out)?;
         write!(out, ";")?;
@@ -315,23 +330,23 @@ impl AstWriter for Assignment {
     }
 }
 
-// impl AstWriter for Label {
-//     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-//         write!(out, "@")?;
-//         self.label.write(out)?;
-//         write!(out, ":")?;
-//         return Ok(());
-//     }
-// }
+impl AstWriter for Label {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "@")?;
+        self.name.write(out)?;
+        write!(out, ":")?;
+        return Ok(());
+    }
+}
 
-// impl AstWriter for Goto {
-//     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-//         write!(out, "goto ")?;
-//         self.target.write(out)?;
-//         write!(out, ";")?;
-//         return Ok(());
-//     }
-// }
+impl AstWriter for Goto {
+    fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
+        write!(out, "goto ")?;
+        self.target.write(out)?;
+        write!(out, ";")?;
+        return Ok(());
+    }
+}
 
 impl AstWriter for Function {
 
@@ -340,9 +355,9 @@ impl AstWriter for Function {
         self.name.write(out)?;
         write!(out, "(")?;
         for param in &self.parameters {
-            param.name.write(out)?;
+            param.get_name().write(out)?;
             write!(out, ": ")?;
-            param.var_type.write(out)?;
+            param.get_type().write(out)?;
             write!(out, ", ")?;
         }
         write!(out, ")")?;
