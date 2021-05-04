@@ -1,3 +1,4 @@
+use super::super::analysis::types::get_expression_type_nonvoid;
 use super::position::TextPosition;
 use super::types::*;
 use super::error::{CompileError, ErrorType};
@@ -330,15 +331,13 @@ impl ArrayAccessPattern {
         self.pattern.iter()
     }
 
-    ///
-    /// Stores the correct types for the variables in the pfor body that reference
-    /// the corresponding array entries. This just stores types, but performs no
-    /// type checking etc.
-    /// 
-    pub fn store_array_entry_types(&mut self, array_type: &Type) {
+    pub fn store_array_entry_types<'a, D>(&mut self, scopes: &D) -> Result<(), CompileError> 
+        where D: DefinitionEnvironment<'a, 'a>
+    {
         for entry in &mut self.pattern {
-            entry.store_type(array_type);
+            entry.store_type(get_expression_type_nonvoid(&self.array, scopes)?);
         }
+        return Ok(());
     }
 }
 
@@ -416,7 +415,11 @@ impl ParallelFor {
     }
 
     pub fn access_pattern(&self) -> Result<impl Iterator<Item = &ArrayAccessPattern>, CompileError> {
-        self.access_pattern.as_ref().map(|v| v.iter()).map_err(CompileError::clone)
+        self.access_pattern.as_ref().map(|v| v.iter()).map_err(|e| e.clone())
+    }
+
+    pub fn access_pattern_mut(&mut self) -> Result<impl Iterator<Item = &mut ArrayAccessPattern>, CompileError> {
+        self.access_pattern.as_mut().map(|v| v.iter_mut()).map_err(|e| e.clone())
     }
 
     pub fn variable_by_index(&self, i: usize, pos: &TextPosition) -> Expression {
