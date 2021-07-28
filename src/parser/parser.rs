@@ -724,7 +724,8 @@ impl Parser for dyn Statement {
     }
 }
 
-impl_parse_trait! { Block := Token#CurlyBracketOpen { Statement } Token#CurlyBracketClose }
+type DynStatement = dyn Statement;
+impl_parse_trait! { Block := Token#CurlyBracketOpen { DynStatement } Token#CurlyBracketClose }
 
 impl_parse_trait! { If := Token#If Expression Block }
 

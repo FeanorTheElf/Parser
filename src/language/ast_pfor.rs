@@ -11,6 +11,7 @@ use super::scopes::*;
 use super::symbol::*;
 use super::concrete_views::*;
 use feanor_la::la::mat::*;
+use feanor_la::la::matrix_row_col::*;
 use feanor_la::algebra::rat::*;
 
 use std::collections::HashMap;
@@ -130,7 +131,7 @@ fn to_constant(expr: &Expression) -> Result<r64, ()> {
             assert!(call.parameters.len() == 1);
             Ok(r64::ONE / to_constant(&call.parameters[0])?)
         },
-        Expression::Literal(lit) => Ok(r64::from(lit.value as i64)),
+        Expression::Literal(lit) => Ok(r64::from(&lit.value)),
         _ => Err(())
     }
 }
@@ -177,7 +178,7 @@ fn to_affine_transform(expr: &Expression, vars: &HashMap<Identifier, usize>) -> 
             return Ok(result);
         },
         Expression::Literal(lit) => {
-            return Ok(AffineTransform1D::only_affine(vars.len(), r64::from(lit.value as i64)));
+            return Ok(AffineTransform1D::only_affine(vars.len(), r64::from(&lit.value)));
         },
         _ => {
             return Err(());
@@ -193,7 +194,7 @@ pub struct AffineTransform {
 
 impl AffineTransform {
 
-    pub fn components<'a>(&'a self) -> impl 'a + Iterator<Item = (Vector<MatrixRow<'a, r64, MatrixOwned<r64>>, r64>, r64)> {
+    pub fn components<'a>(&'a self) -> impl 'a + Iterator<Item = (Vector<MatrixRow<r64, MatrixRef<'a, MatrixOwned<r64>, r64>>, r64>, r64)> {
         (0..self.linear_part.row_count()).map(move |i| (self.linear_part.row(i), self.affine_part[i]))
     }
 }
