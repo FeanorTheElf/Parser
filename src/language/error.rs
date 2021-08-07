@@ -5,6 +5,8 @@ use std::fmt::{Display, Error, Formatter};
 const INTERNAL_ERROR: &'static str =
     "Compiler error should have been detected earlier, did all checkers run?";
 
+pub const NO_ERR: Result<(), CompileError> = Ok(());
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ErrorType {
     SyntaxError,

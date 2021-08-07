@@ -1,8 +1,8 @@
-use super::super::language::prelude::*;
-use super::repr_utils::*;
-use super::gwh_str::*;
-use super::code_gen::*;
-use super::repr::*;
+use super::super::super::language::prelude::*;
+use super::super::repr_utils::*;
+use super::super::gwh_str::*;
+use super::super::code_gen::*;
+use super::super::repr::*;
 
 #[derive(Debug, Clone)]
 pub struct ArrayRepr {
@@ -12,6 +12,16 @@ pub struct ArrayRepr {
 }
 
 impl ArrayRepr {
+
+    pub fn new(ty: Type, on_device: bool) -> Self {
+        assert!(ty.as_static().is_some());
+        let array_type = ty.as_static().unwrap();
+        ArrayRepr {
+            struct_name: format!("{}{:?}{}", GWH_ARRAY_STRUCT_NAME_PREFIX, convert_base_type(array_type.base), array_type.dims),
+            on_device: on_device,
+            ty: ty
+        }
+    }
 
     fn get_data_storage(&self) -> OutStorage {
         if self.on_device {
@@ -37,7 +47,7 @@ impl ArrayRepr {
 fn write_for_loop_copy_recursive(
     target: &ArrayRepr, 
     target_name: &str, 
-    source: &dyn TypeRepresentation, 
+    source: &dyn VariableStorage, 
     source_name: &str, 
     index: usize, 
     dims: usize, 
@@ -71,7 +81,7 @@ fn write_for_loop_copy_recursive(
         }))
 }
 
-impl TypeRepresentationFuncs for ArrayRepr {
+impl VariableStorageFuncs for ArrayRepr {
 
     fn write_struct(&self, g: &mut dyn CodeGenerator) -> OutResult {
         let mut vars = Vec::new();
@@ -89,7 +99,7 @@ impl TypeRepresentationFuncs for ArrayRepr {
         )
     }
 
-    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult {
         assert_eq!(self.get_dims(), rhs.get_dims());
         assert!(self.get_dims() > 0);
 
@@ -127,7 +137,7 @@ impl TypeRepresentationFuncs for ArrayRepr {
         return Ok(());
     }
 
-    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult {
         if let Some(rhs_cast) = rhs.downcast::<ArrayRepr>() {
             g.write_range_assign(
                 self.get_data_type(),
@@ -195,4 +205,4 @@ impl TypeRepresentationFuncs for ArrayRepr {
     }
 }
 
-impl TypeRepresentation for ArrayRepr {}
+impl VariableStorage for ArrayRepr {}

@@ -49,14 +49,12 @@ impl TextPosition {
 
 impl Debug for TextPosition {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-
         write!(f, "{}:{}", self.line(), self.column())
     }
 }
 
 impl Display for TextPosition {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-
         write!(f, "{}:{}", self.line(), self.column())
     }
 }

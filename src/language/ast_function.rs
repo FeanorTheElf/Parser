@@ -1,5 +1,5 @@
 use super::position::TextPosition;
-use super::error::CompileError;
+use super::error::*;
 use super::identifier::Name;
 use super::ast::*;
 use super::ast_statement::*;
@@ -206,36 +206,36 @@ enum FunctionMutOrPlaceholder<'a> {
 
 impl Program {
     
-    pub fn for_functions<'a>(
+    pub fn for_functions<'a, E>(
         &'a self,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> {
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), E>
+    ) -> Result<(), E> {
         self.for_functions_stored_order(self.items(), f)
     }
 
-    pub fn for_functions_mut<'a>(
+    pub fn for_functions_mut<'a, E>(
         &'a mut self, 
-        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> {
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), E>
+    ) -> Result<(), E> {
         self.for_functions_stored_order_mut(0..self.items.len(), f)
     }
 
-    pub fn for_functions_ordered<'a, F>(
+    pub fn for_functions_ordered<'a, F, E>(
         &'a self,
         order: F,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> 
-        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, CompileError>
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), E>
+    ) -> Result<(), E> 
+        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, E>
     {
         self.for_functions_stored_order(order(self)?.into_iter().map(Ptr::get), f)
     }
 
-    pub fn for_functions_ordered_mut<'a, F>(
+    pub fn for_functions_ordered_mut<'a, F, E>(
         &'a mut self,
         order: F,
-        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> 
-        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, CompileError>
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), E>
+    ) -> Result<(), E> 
+        where F: FnOnce(&Program) -> Result<Vec<Ptr<Function>>, E>
     {
         let order_indices = self.get_function_order_indices(order(self)?).collect::<Vec<_>>();
         self.for_functions_stored_order_mut(order_indices.into_iter(), f)
@@ -249,11 +249,11 @@ impl Program {
         self.items.iter().map(move |f: &Function| order.iter().enumerate().find(|(_, g)| g.get_name() == f.get_name()).unwrap().0)
     }
 
-    fn for_functions_stored_order<'a, I>(
+    fn for_functions_stored_order<'a, I, E>(
         &'a self,
         order: I,
-        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> 
+        f: &mut dyn FnMut(&'a Function, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), E>
+    ) -> Result<(), E> 
         where I: Iterator<Item = &'a Function>
     {
         let mut child_scope = DefinitionScopeStackConst::new();
@@ -277,11 +277,11 @@ impl Program {
     /// 
     /// For the non-order-related contract, see `for_functions_mut()`.
     /// 
-    fn for_functions_stored_order_mut<'a, I>(
+    fn for_functions_stored_order_mut<'a, I, E>(
         &'a mut self,
         mut order: I,
-        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
-    ) -> Result<(), CompileError> 
+        f: &mut dyn FnMut(&mut Function, &DefinitionScopeStackMut<'_, '_>) -> Result<(), E>
+    ) -> Result<(), E> 
         where I: Iterator<Item = usize>
     {
         // the idea is the same as in `traverse_preorder_mut()`, it is just a bit
@@ -386,14 +386,14 @@ fn test_for_functions_ordered() {
     let mut names = Vec::new();
     program.for_functions(&mut |f: &Function, _| {
         names.push(f.get_name().clone());
-        return Ok(());
+        return NO_ERR;
     }).unwrap();
     assert_eq!(names, vec!["foo", "bar", "foobar", "baz"]);
 
     names.clear();
     program.for_functions_mut(&mut |f, _| {
         names.push(f.get_name().clone());
-        return Ok(());
+        return NO_ERR;
     }).unwrap();
     assert_eq!(names, vec!["foo", "bar", "foobar", "baz"]);
 
@@ -402,7 +402,7 @@ fn test_for_functions_ordered() {
         |prog| Ok([&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect()),
         &mut |f, _| {
             names.push(f.get_name().clone());
-            return Ok(());
+            return NO_ERR;
         }
     ).unwrap();
     assert_eq!(names, vec!["foo", "foobar", "bar", "baz"]);
@@ -412,7 +412,7 @@ fn test_for_functions_ordered() {
         |prog| Ok([&prog.items[0], &prog.items[2], &prog.items[1], &prog.items[3]].iter().map(|x| Ptr::from(*x)).collect()),
         &mut |f, _| {
             names.push(f.get_name().clone());
-            return Ok(());
+            return NO_ERR;
         }
     ).unwrap();
     assert_eq!(names, vec!["foo", "foobar", "bar", "baz"]);

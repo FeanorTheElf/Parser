@@ -269,25 +269,25 @@ impl AstWriter for ParallelFor {
 impl AstWriter for dyn Statement {
 
     fn write(&self, out: &mut CodeWriter) -> Result<(), OutputError> {
-        if let Some(statement) = self.any().downcast_ref::<If>() {
+        if let Some(statement) = self.downcast::<If>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<While>() {
+        } else if let Some(statement) = self.downcast::<While>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Block>() {
+        } else if let Some(statement) = self.downcast::<Block>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Return>() {
+        } else if let Some(statement) = self.downcast::<Return>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<LocalVariableDeclaration>() {
+        } else if let Some(statement) = self.downcast::<LocalVariableDeclaration>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Assignment>() {
+        } else if let Some(statement) = self.downcast::<Assignment>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Goto>() {
+        } else if let Some(statement) = self.downcast::<Goto>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Label>() {
+        } else if let Some(statement) = self.downcast::<Label>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<ParallelFor>() {
+        } else if let Some(statement) = self.downcast::<ParallelFor>() {
             statement.write(out)
-        } else if let Some(statement) = self.any().downcast_ref::<Expression>() {
+        } else if let Some(statement) = self.downcast::<Expression>() {
             statement.write(out)?;
             write!(out, ";").map_err(OutputError::from)
         } else {

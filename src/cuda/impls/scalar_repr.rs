@@ -1,8 +1,7 @@
-use super::super::language::prelude::*;
-use super::repr_utils::*;
-use super::gwh_str::*;
-use super::code_gen::*;
-use super::repr::*;
+use super::super::super::language::prelude::*;
+use super::super::repr_utils::*;
+use super::super::code_gen::*;
+use super::super::repr::*;
 
 #[derive(Debug, Clone)]
 pub struct ScalarRepr {
@@ -21,13 +20,13 @@ impl ScalarRepr {
     }
 }
 
-impl TypeRepresentationFuncs for ScalarRepr {
+impl VariableStorageFuncs for ScalarRepr {
 
     fn write_struct(&self, _g: &mut dyn CodeGenerator) -> OutResult {
         Ok(())
     }
 
-    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult {
         assert_eq!(0, rhs.get_dims());
         assert_eq!(0, self.get_dims());
 
@@ -59,7 +58,7 @@ impl TypeRepresentationFuncs for ScalarRepr {
         return Ok(());
     }
 
-    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult {
         assert_eq!(0, rhs.get_dims());
         assert_eq!(0, self.get_dims());
 
@@ -108,4 +107,4 @@ impl TypeRepresentationFuncs for ScalarRepr {
     }
 }
 
-impl TypeRepresentation for ScalarRepr {}
+impl VariableStorage for ScalarRepr {}

@@ -1,8 +1,15 @@
 use super::position::TextPosition;
-use super::error::CompileError;
+use super::error::{CompileError, ErrorType};
 use super::identifier::{Identifier, Name, BuiltInIdentifier};
 use super::ast::*;
 use super::types::*;
+
+impl CompileError {
+
+    fn expected_identifier(expr: &Expression) -> CompileError {
+        CompileError::new(expr.pos(), format!("Expected an identifier, found a complex expression"), ErrorType::VariableRequired)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
@@ -140,6 +147,13 @@ impl Expression {
             result_type_cache: None,
             parameters: it.into_iter().collect()
         }))
+    }
+
+    pub fn expect_identifier(&self) -> Result<&Identifier, CompileError> {
+        match self {
+            Expression::Variable(var) => Ok(&var.identifier),
+            _ => Err(CompileError::expected_identifier(self))
+        }
     }
 }
 

@@ -293,8 +293,8 @@ pub fn determine_types_in_program(program: &mut Program) -> Result<(), CompileEr
                 counter += 1;
             }
         }
-        return Ok(());
-    })?;
+        return Ok(()) as Result<(), !>;
+    }).unwrap();
     program.for_functions_ordered_mut(
         |prog| topological_sort::call_graph_topological_sort(prog),
         &mut |function, global_scope| determine_types_in_function(function, global_scope)

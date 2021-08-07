@@ -51,7 +51,24 @@ impl StaticType {
 
 pub trait ViewFuncs: std::fmt::Debug + std::any::Any + DynEq {
 
+    fn dyn_hash(&self) -> u64;
 }
+
+impl std::hash::Hash for dyn View {
+
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u64(self.dyn_hash())
+    }
+}
+
+impl std::cmp::PartialEq for dyn View {
+
+    fn eq(&self, rhs: &dyn View) -> bool {
+        self.dyn_eq(rhs.any())
+    }
+}
+
+impl std::cmp::Eq for dyn View {}
 
 dynamic_trait_cloneable!{ View: ViewFuncs; ViewDynCastable }
 
@@ -61,24 +78,6 @@ impl Clone for Box<dyn View> {
         self.dyn_clone()
     }
 }
-
-impl PartialEq for &dyn View {
-
-    fn eq(&self, rhs: &&dyn View) -> bool {
-        (*self).dyn_eq((*rhs).any())
-    }
-}
-
-impl Eq for &dyn View {}
-
-impl PartialEq for Box<dyn View> {
-
-    fn eq(&self, rhs: &Box<dyn View>) -> bool {
-        self.dyn_eq(&*rhs)
-    }
-}
-
-impl Eq for Box<dyn View> {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewType {

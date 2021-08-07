@@ -1,6 +1,6 @@
-use super::code_gen::*;
-use super::gwh_str::*;
-use super::super::language::compiler::CodeWriter;
+use super::super::code_gen::*;
+use super::super::gwh_str::*;
+use super::super::super::language::compiler::CodeWriter;
 
 use std::io::Write;
 
@@ -330,6 +330,18 @@ impl<'c> BlockGenerator for CudaHostBlockGenerator<'c> {
         return Ok(());
     }
     
+    fn write_block<'b>(
+        &mut self, 
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult {
+        self.out.enter_block()?;
+
+        body(Box::new(self as &mut dyn BlockGenerator))?;
+
+        self.out.exit_block()?;
+        return Ok(());
+    }
+
     fn write_while<'b>(
         &mut self, 
         condition: OutExpression, 
@@ -545,6 +557,18 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
         return Ok(());
     }
     
+    fn write_block<'b>(
+        &mut self,
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult {
+        self.out.enter_block()?;
+
+        body(Box::new(self as &mut dyn BlockGenerator))?;
+
+        self.out.exit_block()?;
+        return Ok(());
+    }
+    
     fn write_while<'b>(
         &mut self, 
         condition: OutExpression, 
@@ -594,7 +618,7 @@ impl<'c> BlockGenerator for CudaDeviceBlockGenerator<'c> {
 }
 
 #[cfg(test)]
-use super::super::language::compiler::StringWriter;
+use super::super::super::language::compiler::StringWriter;
 
 #[test]
 fn test_cuda_block_gen() {

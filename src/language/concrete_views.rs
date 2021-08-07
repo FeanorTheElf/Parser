@@ -1,9 +1,21 @@
 use super::types::*;
 
+const VIEW_ZEROS_HASH: u8 = 0;
+const VIEW_INDEX_HASH: u8 = 1;
+const VIEW_REFERENCE_HASH: u8 = 2;
+const VIEW_COMPOSED_HASH: u8 = 3;
+const VIEW_TEMPLATE_HASH: u8 = 3;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewZeros {}
 
-impl ViewFuncs for ViewZeros {}
+impl ViewFuncs for ViewZeros {
+    
+    fn dyn_hash(&self) -> u64 {
+        VIEW_ZEROS_HASH as u64
+    }
+}
+
 impl View for ViewZeros {}
 
 pub const VIEW_ZEROS: ViewZeros = ViewZeros {};
@@ -11,7 +23,12 @@ pub const VIEW_ZEROS: ViewZeros = ViewZeros {};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewIndex {}
 
-impl ViewFuncs for ViewIndex {}
+impl ViewFuncs for ViewIndex {
+
+    fn dyn_hash(&self) -> u64 {
+        VIEW_INDEX_HASH as u64
+    }
+}
 impl View for ViewIndex {}
 
 pub const VIEW_INDEX: ViewIndex = ViewIndex {};
@@ -19,7 +36,12 @@ pub const VIEW_INDEX: ViewIndex = ViewIndex {};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewReference {}
 
-impl ViewFuncs for ViewReference {}
+impl ViewFuncs for ViewReference {
+
+    fn dyn_hash(&self) -> u64 {
+        VIEW_REFERENCE_HASH as u64
+    }
+}
 impl View for ViewReference {}
 
 pub const VIEW_REFERENCE: ViewReference = ViewReference {};
@@ -29,7 +51,11 @@ pub struct ViewComposed {
     parts: Vec<Box<dyn View>>
 }
 
-impl ViewFuncs for ViewComposed {}
+impl ViewFuncs for ViewComposed {
+    fn dyn_hash(&self) -> u64 {
+        VIEW_COMPOSED_HASH as u64 | (self.parts.iter().fold(0, |a, b| (a << 13) ^ b.dyn_hash()) << 8)
+    }
+}
 impl View for ViewComposed {}
 
 impl ViewComposed {
@@ -59,6 +85,10 @@ impl ViewComposed {
     pub fn compose<V: View>(fst: V, snd: Box<dyn View>) -> Box<dyn View> {
         Self::compose_dyn(Box::new(fst), snd)
     }
+
+    pub fn get_first(&self) -> &dyn View {
+        &**self.parts.first().unwrap()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +96,12 @@ pub struct ViewTemplate {
     index: usize
 }
 
-impl ViewFuncs for ViewTemplate {}
+impl ViewFuncs for ViewTemplate {
+
+    fn dyn_hash(&self) -> u64 {
+        VIEW_TEMPLATE_HASH as u64 | ((self.index as u64) << 8)
+    }
+}
 impl View for ViewTemplate {}
 
 impl ViewTemplate {

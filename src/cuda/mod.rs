@@ -1,11 +1,8 @@
 pub mod gwh_str;
 pub mod code_gen;
-pub mod cuda_block_gen;
 pub mod sort_by_name;
 pub mod kernel_analysis;
 pub mod repr;
 pub mod repr_utils;
-pub mod array_repr;
-pub mod scalar_repr;
-pub mod zero_view_repr;
-pub mod index_view_repr;
+pub mod impls;
+pub mod cuda_backend;

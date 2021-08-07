@@ -17,3 +17,4 @@ pub const GWH_FOR_LOOP_INDEX_PREFIX: &'static str = "gwh_i_" /* + unique number 
 pub const GWH_FOR_LOOP_THREADCOUNT_PREFIX: &'static str = "gwh_thread_count_" /* + unique number */;
 
 pub const GWH_ZERO_VIEW_STRUCT_NAME_PREFIX: &'static str = "GwhZeros" /* + dimensions */;
+pub const GWH_ARRAY_STRUCT_NAME_PREFIX: &'static str = "GwhArray" /* + primitive type + dimensions */;

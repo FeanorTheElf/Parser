@@ -54,7 +54,7 @@ pub trait StatementFuncs: AstNode {
     /// # Details
     /// This will return all names (i.e. user-defined identifiers) in this statement, which includes uses of variables/functions/... and
     /// also declarations. As in `subblocks()` and `expressions()` only top-level names are returned, i.e. a name occurrence is listed if
-    /// it is part of this statement but not of a sub-statement.
+    /// it is part of this statement but not of a sub-statement. If the name is nested in expressions however, it will be returned.
     ///
     /// # Example
     /// ```
@@ -90,6 +90,12 @@ pub trait StatementFuncs: AstNode {
     /// By returning `RECURSE` resp. `DONT_RECURSE`, one can control whether the search continues
     /// in potential subblocks of the current statement. If `DONT_RECURSE` is returned, the whole
     /// subtree whose root is the current statement is skipped.
+    /// 
+    /// # See also
+    /// 
+    /// - `traverse_preorder_mut()` if mutable access to the children is required
+    /// - `traverse_preorder_block()` if not statements but blocks should be visited
+    /// - `traverse_proper_children()` if only the direct descendants should be visited
     /// 
     /// # Example
     /// ```
@@ -145,6 +151,11 @@ pub trait StatementFuncs: AstNode {
         self.traverse_preorder(parent_scopes, &mut |statement, scopes| {
             let mut subblocks = statement.subblocks();
             if let Some(block) = subblocks.next() {
+                // This idea only works as long as the statement contains at most one block.
+                // If this is not the case, an new, specific implementation must be used, as then
+                // a statement contains multiple blocks and a block contains multiple statements,
+                // so neither `traverse_preorder()` nor `traverse_preorder_block()` can be 
+                // implemented in terms of the other
                 assert!(subblocks.next().is_none());
                 return f(block, scopes);
             } else {
@@ -173,6 +184,83 @@ pub trait StatementFuncs: AstNode {
     }
 
     ///
+    /// Calls the given closure once for each proper child statement of this statement.
+    /// In all other aspects, this is similar to `traverse_preorder()`, it does not support
+    /// recursion however.
+    /// 
+    fn traverse_proper_children<'a>(
+        &'a self, 
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a dyn Statement, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> {
+        self.traverse_preorder(parent_scopes, &mut |statement, scopes| {
+            if self.any() as *const dyn std::any::Any == statement.any() as *const dyn std::any::Any {
+                return RECURSE;
+            } else {
+                f(statement, scopes)?;
+                return DONT_RECURSE;
+            }
+        })
+    }
+
+    ///
+    /// See `traverse_proper_children()`
+    /// 
+    fn traverse_proper_children_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut dyn Statement, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> {
+        let self_ptr = self.any() as *const dyn std::any::Any;
+        self.traverse_preorder_mut(parent_scopes, &mut |statement, scopes| {
+            if self_ptr == statement.any() as *const dyn std::any::Any {
+                return RECURSE;
+            } else {
+                f(statement, scopes)?;
+                return DONT_RECURSE;
+            }
+        })
+    }
+
+    ///
+    /// Calls the given closure once for each proper subblock of this statement.
+    /// In all other aspects, this is similar to `traverse_preorder()`, it does not support
+    /// recursion however.
+    /// 
+    fn traverse_proper_blocks<'a>(
+        &'a self, 
+        parent_scopes: &DefinitionScopeStackConst<'_, 'a>, 
+        f: &mut dyn FnMut(&'a Block, &DefinitionScopeStackConst<'_, 'a>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> {
+        self.traverse_preorder_block(parent_scopes, &mut |block, scopes| {
+            if self.any() as *const dyn std::any::Any == block.any() as *const dyn std::any::Any {
+                return RECURSE;
+            } else {
+                f(block, scopes)?;
+                return DONT_RECURSE;
+            }
+        })
+    }
+
+    ///
+    /// See `traverse_proper_blocks()`
+    /// 
+    fn traverse_proper_blocks_mut<'a>(
+        &'a mut self, 
+        parent_scopes: &DefinitionScopeStackMut<'_, '_>, 
+        f: &mut dyn FnMut(&mut Block, &DefinitionScopeStackMut<'_, '_>) -> Result<(), CompileError>
+    ) -> Result<(), CompileError> {
+        let self_ptr = self.any() as *const dyn std::any::Any;
+        self.traverse_preorder_block_mut(parent_scopes, &mut |block, scopes| {
+            if self_ptr == block.any() as *const dyn std::any::Any {
+                return RECURSE;
+            } else {
+                f(block, scopes)?;
+                return DONT_RECURSE;
+            }
+        })
+    }
+    ///
     /// If this statement defines a symbol that is visible in the whole parent scope
     /// (i.e. also by sibling statements), this returns the corresponding symbol
     /// definition object. If no such symbol is defined by the current statement, this
@@ -184,7 +272,7 @@ pub trait StatementFuncs: AstNode {
     }
 
     ///
-    /// See `as_sibling_symbol_definition`.
+    /// See `as_sibling_symbol_definition()`.
     /// 
     fn as_sibling_symbol_definition_mut(&mut self) -> Option<&mut dyn SiblingSymbolDefinition> {
         None
@@ -210,7 +298,7 @@ dynamic_subtrait!{ SiblingSymbolDefinition: SiblingSymbolDefinitionFuncs; Siblin
 #[derive(Debug)]
 pub struct Block {
     pos: TextPosition,
-    statements: Vec<Box<dyn Statement>>
+    pub statements: Vec<Box<dyn Statement>>
 }
 
 impl PartialEq for Block {
@@ -614,7 +702,7 @@ impl StatementFuncs for Expression {
 impl Statement for Expression {}
 
 #[test]
-fn test_block_preorder_traversal_mut() {
+fn test_block_traverse_preorder_mut() {
     let mut block = Block::test([
         Box::new(LocalVariableDeclaration::new("a", SCALAR_INT, Expression::var("x"))), 
         Box::new(Block::test([])),
@@ -641,4 +729,26 @@ fn test_block_preorder_traversal_mut() {
     block.traverse_preorder_mut(&DefinitionScopeStackMut::new(), &mut callback).unwrap();
 
     assert_eq!(3, counter);
+}
+
+#[test]
+fn test_block_tranverse_proper_children() {
+    let block = Block::test([
+        Box::new(LocalVariableDeclaration::new("a", SCALAR_INT, Expression::var("x"))), 
+        Box::new(Block::test([])),
+    ]);
+    let mut counter = 0;
+    let mut callback = |statement: &dyn Statement, scopes: &DefinitionScopeStackConst| {
+        if counter == 0 {
+            assert!(statement.downcast::<LocalVariableDeclaration>().is_some());
+        } else if counter == 1 {
+            assert!(statement.downcast::<Block>().is_some());
+        }
+        counter += 1;
+        return Ok(());
+    };
+
+    block.traverse_proper_children(&DefinitionScopeStackConst::new(), &mut callback).unwrap();
+
+    assert_eq!(2, counter);
 }

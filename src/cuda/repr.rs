@@ -1,11 +1,11 @@
 use super::code_gen::*;
 use super::super::language::prelude::*;
 
-pub trait TypeRepresentationFuncs: std::any::Any + std::fmt::Debug {
+pub trait VariableStorageFuncs: std::any::Any + std::fmt::Debug {
 
     fn write_struct(&self, g: &mut dyn CodeGenerator) -> OutResult;
-    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult;
-    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn TypeRepresentation, g: &mut dyn BlockGenerator) -> OutResult;
+    fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult;
+    fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult;
 
     fn get_out_type(&self) -> OutType;
     fn get_type(&self) -> &Type;
@@ -14,4 +14,4 @@ pub trait TypeRepresentationFuncs: std::any::Any + std::fmt::Debug {
     fn get_entry_at(&self, name: &str, indices: Vec<OutExpression>) -> OutExpression;
 }
 
-dynamic_trait!{ TypeRepresentation: TypeRepresentationFuncs; TypeRepresentationDynCastable }
+dynamic_trait!{ VariableStorage: VariableStorageFuncs; VariableStorageDynCastable }

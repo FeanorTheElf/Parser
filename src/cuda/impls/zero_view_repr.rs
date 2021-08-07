@@ -1,9 +1,9 @@
-use super::super::language::prelude::*;
-use super::super::language::concrete_views::*;
-use super::repr_utils::*;
-use super::gwh_str::*;
-use super::code_gen::*;
-use super::repr::*;
+use super::super::super::language::prelude::*;
+use super::super::super::language::concrete_views::*;
+use super::super::repr_utils::*;
+use super::super::gwh_str::*;
+use super::super::code_gen::*;
+use super::super::repr::*;
 
 #[derive(Debug, Clone)]
 pub struct ZeroViewRepr {
@@ -39,7 +39,7 @@ impl ZeroViewRepr {
     }
 }
 
-impl TypeRepresentationFuncs for ZeroViewRepr {
+impl VariableStorageFuncs for ZeroViewRepr {
 
     fn write_struct(&self, g: &mut dyn CodeGenerator) -> OutResult {
         let mut vars = Vec::new();
@@ -56,11 +56,11 @@ impl TypeRepresentationFuncs for ZeroViewRepr {
         )
     }
 
-    fn write_init_from(&self, _name: &str, _rhs_name: &str, _rhs: &dyn TypeRepresentation, _g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_init_from(&self, _name: &str, _rhs_name: &str, _rhs: &dyn VariableStorage, _g: &mut dyn BlockGenerator) -> OutResult {
         panic!("only creatable from zeros-fn")
     }
 
-    fn write_copy_from(&self, _name: &str, _rhs_name: &str, _rhs: &dyn TypeRepresentation, _g: &mut dyn BlockGenerator) -> OutResult {
+    fn write_copy_from(&self, _name: &str, _rhs_name: &str, _rhs: &dyn VariableStorage, _g: &mut dyn BlockGenerator) -> OutResult {
         panic!("immutable")
     }
 
@@ -94,4 +94,4 @@ impl TypeRepresentationFuncs for ZeroViewRepr {
     }
 }
 
-impl TypeRepresentation for ZeroViewRepr {}
+impl VariableStorage for ZeroViewRepr {}

@@ -63,6 +63,10 @@ pub struct FunctionInfo<'a> {
 
 pub type OutputError = !;
 
+///
+/// Traverses the program, and collects data about all functions and pfor-loops (that
+/// will be compiled to cuda kernels later).
+/// 
 pub fn collect_functions<'a, 'ast>(
     program: &'ast Program
 ) -> Result<
@@ -85,7 +89,7 @@ pub fn collect_functions<'a, 'ast>(
                 called_from_host: false,
             },
         );
-        return Ok(());
+        return Ok(()) as Result<(), !>;
     }).unwrap();
 
     program.for_functions(&mut |func, scopes| {
@@ -176,7 +180,6 @@ use super::super::lexer::lexer::lex_str;
 use super::super::parser::TopLevelParser;
 
 #[test]
-
 fn test_collect_functions() {
 
     let program = Program::parse(&mut lex_str("

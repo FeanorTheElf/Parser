@@ -17,7 +17,7 @@ pub trait CodeGenerator {
     fn write_function<'a, 'b>(
         &'a mut self, 
         params: Vec<(OutType, String)>, 
-        return_type: OutType, 
+        return_type: Option<OutType>, 
         body: Box<dyn 'b + FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>,
         device_called: bool,
         host_called: bool
@@ -46,6 +46,11 @@ pub trait BlockGenerator {
         body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
     ) -> OutResult;
     
+    fn write_block<'b>(
+        &mut self, 
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult;
+
     fn write_while<'b>(
         &mut self, 
         condition: OutExpression, 
@@ -118,6 +123,13 @@ impl<'c> BlockGenerator for &'c mut dyn BlockGenerator {
         (**self).write_if(condition, body)
     }
     
+    fn write_block<'b>(
+        &mut self, 
+        body: Box<dyn 'b + for<'a> FnOnce(Box<dyn 'a + BlockGenerator>) -> OutResult>
+    ) -> OutResult {
+        (**self).write_block(body)
+    }
+
     fn write_while<'b>(
         &mut self, 
         condition: OutExpression, 
