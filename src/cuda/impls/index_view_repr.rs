@@ -20,7 +20,7 @@ impl IndexViewRepr {
         IndexViewRepr { ty, on_device }
     }
 
-    pub fn write_init_from_index(
+    fn write_init_from_index(
         &self, 
         name: &str, 
         arr_name: &str, 
@@ -55,6 +55,11 @@ impl IndexViewRepr {
 }
 
 impl VariableStorageFuncs for IndexViewRepr {
+
+    fn write_builtin_init(&self, name: &str, function: BuiltInIdentifier, params: &Vec<(&str, &dyn VariableStorage)>, g: &mut dyn BlockGenerator) -> OutResult {
+        assert!(function == BuiltInIdentifier::FunctionIndex);
+        self.write_init_from_index(name, params[0].0, params[0].1, unimplemented!(), g);
+    }
 
     fn write_struct(&self, g: &mut dyn CodeGenerator) -> OutResult {
         return Ok(())

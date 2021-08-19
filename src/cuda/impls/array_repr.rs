@@ -99,6 +99,10 @@ impl VariableStorageFuncs for ArrayRepr {
         )
     }
 
+    fn write_builtin_init(&self, name: &str, function: BuiltInIdentifier, params: &Vec<(&str, &dyn VariableStorage)>, g: &mut dyn BlockGenerator) -> OutResult {
+        panic!()
+    }
+
     fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult {
         assert_eq!(self.get_dims(), rhs.get_dims());
         assert!(self.get_dims() > 0);

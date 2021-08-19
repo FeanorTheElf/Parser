@@ -11,7 +11,7 @@ use super::super::language::ast_pfor::*;
 
 use std::collections::HashMap;
 
-fn get_variable_storate<'a>(ty: &Type, on_device: bool) -> Box<dyn VariableStorage> {
+fn get_variable_storage<'a>(ty: &Type, on_device: bool) -> Box<dyn VariableStorage> {
     if ty.is_scalar() {
         return Box::new(ScalarRepr::new(ty.clone()));
     } else if ty.as_static().is_some() {
@@ -44,10 +44,10 @@ fn generate(program: &Program, generator: &mut dyn CodeGenerator) {
                 return Ok(());
             }
             for decl in &f.parameters {
-                variable_storages.insert(Ptr::from(decl as &dyn SymbolDefinition), get_variable_storate(&decl.var_type, get_default_location(&decl.var_type)));
+                variable_storages.insert(Ptr::from(decl as &dyn SymbolDefinition), get_variable_storage(&decl.var_type, get_default_location(&decl.var_type)));
             }
             if let Some(return_type) = f.return_type() {
-                variable_storages.insert(Ptr::from(f as &dyn SymbolDefinition), get_variable_storate(return_type, get_default_location(return_type)));
+                variable_storages.insert(Ptr::from(f as &dyn SymbolDefinition), get_variable_storage(return_type, get_default_location(return_type)));
             }
             let function_info = function_infos.get(&RefEq::from(f)).unwrap();
             generator.write_function(
@@ -72,12 +72,12 @@ fn generate(program: &Program, generator: &mut dyn CodeGenerator) {
     ).unwrap();
 }
 
-fn generate_block(
-    block: &Block, 
+fn generate_block<'a>(
+    block: &'a Block, 
     generator: &mut dyn BlockGenerator, 
-    scopes: &DefinitionScopeStackConst, 
+    scopes: &DefinitionScopeStackConst<'_, 'a>, 
     kernel_infos: &HashMap<Ptr<ParallelFor>, KernelInfo>, 
-    variable_storages: &mut HashMap<Ptr<dyn SymbolDefinition>, Box<dyn VariableStorage>>
+    variable_storages: &mut HashMap<Ptr<'a, dyn SymbolDefinition>, Box<dyn VariableStorage>>
 ) {
     block.traverse_proper_children(
         scopes,
@@ -91,14 +91,16 @@ fn generate_block(
     ).unwrap();
 }
 
-fn generate_statement(
-    statement: &dyn Statement, 
+fn generate_statement<'a>(
+    statement: &'a dyn Statement, 
     generator: &mut dyn BlockGenerator, 
-    scopes: &DefinitionScopeStackConst, 
+    scopes: &DefinitionScopeStackConst<'_, 'a>, 
     kernel_infos: &HashMap<Ptr<ParallelFor>, KernelInfo>, 
-    variable_storages: &mut HashMap<Ptr<dyn SymbolDefinition>, Box<dyn VariableStorage>>
+    variable_storages: &mut HashMap<Ptr<'a, dyn SymbolDefinition>, Box<dyn VariableStorage>>
 ) {
     if let Some(decl) = statement.downcast::<LocalVariableDeclaration>() {
-        let variable_storage = get_variable_storate(&decl.declaration.var_type, get_default_location(&decl.declaration.var_type));
+        let variable_storage = get_variable_storage(&decl.declaration.var_type, get_default_location(&decl.declaration.var_type));
+        variable_storage.write_init
+        variable_storages.insert(Ptr::from(decl as &dyn SymbolDefinition), variable_storage);
     }
 }

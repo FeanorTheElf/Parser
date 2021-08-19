@@ -5,6 +5,7 @@ pub trait VariableStorageFuncs: std::any::Any + std::fmt::Debug {
 
     fn write_struct(&self, g: &mut dyn CodeGenerator) -> OutResult;
     fn write_init_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult;
+    fn write_builtin_init(&self, name: &str, function: BuiltInIdentifier, params: &Vec<(&str, &dyn VariableStorage)>, g: &mut dyn BlockGenerator) -> OutResult;
     fn write_copy_from(&self, name: &str, rhs_name: &str, rhs: &dyn VariableStorage, g: &mut dyn BlockGenerator) -> OutResult;
 
     fn get_out_type(&self) -> OutType;
